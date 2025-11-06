@@ -1,0 +1,364 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  MERCHANT
+  RIDER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  PREPARING
+  READY_FOR_PICKUP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH_ON_DELIVERY
+  UPI
+  CARD
+  WALLET
+  NET_BANKING
+}
+
+enum DeliveryStatus {
+  ASSIGNED
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum AddressType {
+  HOME
+  WORK
+  OTHER
+}
+
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_ACCEPTED
+  ORDER_READY
+  DELIVERY_ASSIGNED
+  DELIVERY_PICKED_UP
+  DELIVERY_OUT
+  ORDER_DELIVERED
+  ORDER_CANCELLED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  GENERAL
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+}
+
+model User {
+  id                String   @id @default(cuid())
+  phoneNumber       String   @unique
+  fullName          String?
+  email             String?  @unique
+  userRoles         UserRole[]
+  activeRole        UserRole @default(CUSTOMER)
+  profileImageUrl   String?
+  emailVerified     Boolean  @default(false)
+  phoneVerified     Boolean  @default(true)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  customerProfile   CustomerProfile?
+  merchantProfile   MerchantProfile?
+  riderProfile      RiderProfile?
+  addresses         Address[]
+  orders            Order[]
+  reviews           Review[]
+  notifications     Notification[]
+  wallet            Wallet?
+
+  @@map("users")
+}
+
+model CustomerProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  preferences Json?    // Store user preferences as JSON
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("customer_profiles")
+}
+
+model MerchantProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  businessName      String
+  description       String?
+  address           String
+  latitude          Float
+  longitude         Float
+  category          String
+  subcategory       String?
+  averageRating     Float    @default(0)
+  totalOrders       Int      @default(0)
+  openingHours      String?  // JSON string for flexible hours
+  closingHours      String?  // JSON string for flexible hours
+  isActive          Boolean  @default(true)
+  isVerified        Boolean  @default(false)
+  commissionRate    Float    @default(0.10) // 10% default
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  products          Product[]
+  orders            Order[]
+
+  @@map("merchant_profiles")
+}
+
+model RiderProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  vehicleType     String   @default("bike")
+  vehicleNumber   String?
+  licenseNumber   String?
+  isAvailable     Boolean  @default(false)
+  currentLat      Float?
+  currentLng      Float?
+  rating          Float    @default(0)
+  totalDeliveries Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  deliveries      Delivery[]
+
+  @@map("rider_profiles")
+}
+
+model Address {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  line1       String
+  line2       String?
+  landmark    String?
+  city        String
+  state       String
+  pincode     String
+  latitude    Float?
+  longitude   Float?
+  addressType AddressType @default(HOME)
+  isDefault   Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("addresses")
+}
+
+model Product {
+  id            String   @id @default(cuid())
+  merchantId    String
+  merchant      MerchantProfile @references([id]) @relation(fields: [merchantId], onDelete: Cascade)
+  name          String
+  description   String?
+  price         Float
+  discountedPrice Float?
+  stockQuantity Int      @default(0)
+  category      String
+  subcategory   String?
+  images        Json?    // Array of image URLs
+  isAvailable   Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  orderItems    OrderItem[]
+
+  @@map("products")
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique @default(cuid())
+  customerId      String
+  customer        User        @references([id]) @relation(fields: [customerId], onDelete: Cascade)
+  merchantId      String
+  merchant        MerchantProfile @references([id]) @relation(fields: [merchantId], onDelete: Cascade)
+  totalAmount     Float
+  deliveryFee     Float       @default(0)
+  taxAmount       Float       @default(0)
+  discountAmount  Float       @default(0)
+  finalAmount     Float
+  paymentMethod   PaymentMethod
+  paymentStatus   PaymentStatus @default(PENDING)
+  orderStatus     OrderStatus @default(PENDING_CONFIRMATION)
+  deliveryAddress Json        // Store address as JSON for flexibility
+  specialInstructions String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  deliveredAt     DateTime?
+
+  // Relations
+  orderItems      OrderItem[]
+  delivery        Delivery?
+  payment         Payment?
+  review          Review?
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  order       Order   @references([id]) @relation(fields: [orderId], onDelete: Cascade)
+  productId   String
+  product     Product @references([id]) @relation(fields: [productId], onDelete: Cascade)
+  productSnapshot Json    // Store product data at time of order
+  quantity    Int
+  unitPrice   Float
+  subtotal    Float
+  createdAt   DateTime @default(now())
+
+  @@map("order_items")
+}
+
+model Delivery {
+  id              String        @id @default(cuid())
+  orderId         String        @unique
+  order           Order         @references([id]) @relation(fields: [orderId], onDelete: Cascade)
+  riderId         String
+  rider           RiderProfile  @references([id]) @relation(fields: [riderId], onDelete: Cascade)
+  pickupTime      DateTime?
+  deliveryTime    DateTime?
+  pickupOtp       String        // 4-digit OTP
+  deliveryOtp     String        // 4-digit OTP
+  deliveryStatus  DeliveryStatus @default(ASSIGNED)
+  proofPhotoUrl   String?
+  distanceKm      Float?
+  deliveryFee     Float         @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@map("deliveries")
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String        @unique
+  order             Order         @references([id]) @relation(fields: [orderId], onDelete: Cascade)
+  amount            Float
+  paymentMethod     PaymentMethod
+  transactionId     String?       @unique
+  paymentStatus     PaymentStatus @default(PENDING)
+  gatewayOrderId    String?
+  gatewayPaymentId  String?
+  gatewaySignature  String?
+  createdAt         DateTime      @default(now())
+  completedAt       DateTime?
+
+  @@map("payments")
+}
+
+model Review {
+  id            String   @id @default(cuid())
+  orderId       String   @unique
+  order         Order    @references([id]) @relation(fields: [orderId], onDelete: Cascade)
+  customerId    String
+  customer      User     @references([id]) @relation(fields: [customerId], onDelete: Cascade)
+  merchantId    String
+  merchant      MerchantProfile @references([id]) @relation(fields: [merchantId], onDelete: Cascade)
+  riderId       String?
+  rider         RiderProfile? @references([id]) @relation(fields: [riderId], onDelete: Cascade)
+  merchantRating Int?    // 1-5 stars
+  riderRating   Int?     // 1-5 stars
+  comment       String?
+  createdAt     DateTime @default(now())
+
+  @@map("reviews")
+}
+
+model Wallet {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  userType      String   // 'merchant' or 'rider'
+  currentBalance Float    @default(0)
+  totalEarned   Float    @default(0)
+  totalWithdrawn Float    @default(0)
+  lastUpdatedAt DateTime @updatedAt
+
+  // Relations
+  transactions  WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id            String          @id @default(cuid())
+  walletId      String
+  wallet        Wallet          @references([id]) @relation(fields: [walletId], onDelete: Cascade)
+  orderId       String?
+  order         Order?          @references([id]) @relation(fields: [orderId], onDelete: Cascade)
+  amount        Float
+  transactionType TransactionType
+  description   String
+  balanceAfter  Float
+  createdAt     DateTime        @default(now())
+
+  @@map("wallet_transactions")
+}
+
+model Notification {
+  id               String           @id @default(cuid())
+  userId           String
+  user             User             @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  title            String
+  message          String
+  notificationType NotificationType
+  referenceId      String?          // ID of related entity (order, delivery, etc.)
+  isRead           Boolean          @default(false)
+  priority         String           @default("medium") // low, medium, high
+  createdAt        DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+model OTP {
+  id          String   @id @default(cuid())
+  phoneNumber String
+  otp         String
+  purpose     String   // 'LOGIN', 'REGISTER', 'RESET_PASSWORD'
+  expiresAt   DateTime
+  isUsed      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@map("otps")
+}

@@ -1,0 +1,301 @@
+/* CSS Custom Properties for TownKart */
+:root {
+  /* Color Palette */
+  --townkart-primary: #ff6b35;
+  --townkart-secondary: #f7931e;
+  --townkart-accent: #39b54a;
+  --townkart-success: #10b981;
+  --townkart-warning: #f59e0b;
+  --townkart-error: #ef4444;
+  --townkart-info: #3b82f6;
+
+  /* Neutral Colors */
+  --white: #ffffff;
+  --black: #000000;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+
+  /* Background Colors */
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+
+  /* Foreground Colors */
+  --foreground-rgb: 0, 0, 0;
+
+  /* Spacing */
+  --spacing-xs: 0.25rem; /* 4px */
+  --spacing-sm: 0.5rem; /* 8px */
+  --spacing-md: 0.75rem; /* 12px */
+  --spacing-lg: 1rem; /* 16px */
+  --spacing-xl: 1.25rem; /* 20px */
+  --spacing-2xl: 1.5rem; /* 24px */
+  --spacing-3xl: 2rem; /* 32px */
+  --spacing-4xl: 2.5rem; /* 40px */
+  --spacing-5xl: 3rem; /* 48px */
+  --spacing-6xl: 4rem; /* 64px */
+
+  /* Border Radius */
+  --radius-sm: 0.125rem; /* 2px */
+  --radius-md: 0.375rem; /* 6px */
+  --radius-lg: 0.5rem; /* 8px */
+  --radius-xl: 0.75rem; /* 12px */
+  --radius-2xl: 1rem; /* 16px */
+  --radius-full: 9999px; /* Fully rounded */
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg:
+    0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl:
+    0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-townkart: 0 4px 14px 0 rgba(255, 107, 53, 0.15);
+  --shadow-townkart-lg: 0 10px 25px 0 rgba(255, 107, 53, 0.2);
+
+  /* Typography */
+  --font-size-xs: 0.75rem; /* 12px */
+  --font-size-sm: 0.875rem; /* 14px */
+  --font-size-base: 1rem; /* 16px */
+  --font-size-lg: 1.125rem; /* 18px */
+  --font-size-xl: 1.25rem; /* 20px */
+  --font-size-2xl: 1.5rem; /* 24px */
+  --font-size-3xl: 1.875rem; /* 30px */
+  --font-size-4xl: 2.25rem; /* 36px */
+  --font-size-5xl: 3rem; /* 48px */
+  --font-size-6xl: 3.75rem; /* 60px */
+
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.25;
+  --line-height-snug: 1.375;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.625;
+  --line-height-loose: 2;
+
+  /* Transitions */
+  --transition-fast: 150ms;
+  --transition-normal: 300ms;
+  --transition-slow: 500ms;
+
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Z-Index Scale */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-toast: 1080;
+
+  /* Breakpoints (for reference) */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
+/* Dark Mode Variables */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-start-rgb: 17, 24, 39;
+    --background-end-rgb: 31, 41, 55;
+    --foreground-rgb: 255, 255, 255;
+
+    /* Dark mode color adjustments */
+    --townkart-primary: #ff8b5a;
+    --townkart-secondary: #ffb347;
+    --townkart-accent: #4ade80;
+
+    --gray-50: #1f2937;
+    --gray-100: #374151;
+    --gray-200: #4b5563;
+    --gray-300: #6b7280;
+    --gray-400: #9ca3af;
+    --gray-500: #d1d5db;
+    --gray-600: #e5e7eb;
+    --gray-700: #f3f4f6;
+    --gray-800: #f9fafb;
+    --gray-900: #ffffff;
+  }
+}
+
+/* Component-specific Variables */
+:root {
+  /* Button Variables */
+  --button-height-sm: 2rem; /* 32px */
+  --button-height-md: 2.5rem; /* 40px */
+  --button-height-lg: 3rem; /* 48px */
+
+  --button-padding-x-sm: 0.75rem; /* 12px */
+  --button-padding-x-md: 1rem; /* 16px */
+  --button-padding-x-lg: 1.5rem; /* 24px */
+
+  /* Input Variables */
+  --input-height: 2.5rem; /* 40px */
+  --input-padding-x: 0.75rem; /* 12px */
+  --input-border-width: 1px;
+  --input-border-radius: 0.375rem; /* 6px */
+
+  /* Card Variables */
+  --card-padding: 1.5rem; /* 24px */
+  --card-border-radius: 0.5rem; /* 8px */
+  --card-shadow: var(--shadow-md);
+
+  /* Modal Variables */
+  --modal-max-width-sm: 20rem; /* 320px */
+  --modal-max-width-md: 28rem; /* 448px */
+  --modal-max-width-lg: 32rem; /* 512px */
+  --modal-max-width-xl: 48rem; /* 768px */
+
+  /* Toast Variables */
+  --toast-max-width: 22rem; /* 352px */
+  --toast-duration: 4000ms; /* 4 seconds */
+
+  /* Tooltip Variables */
+  --tooltip-max-width: 12rem; /* 192px */
+  --tooltip-arrow-size: 0.5rem; /* 8px */
+
+  /* Dropdown Variables */
+  --dropdown-max-height: 12rem; /* 192px */
+  --dropdown-shadow: var(--shadow-lg);
+}
+
+/* Animation Variables */
+:root {
+  --animation-duration-fast: 150ms;
+  --animation-duration-normal: 300ms;
+  --animation-duration-slow: 500ms;
+
+  --animation-easing: cubic-bezier(0.4, 0, 0.2, 1);
+  --animation-easing-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Status Color Variables */
+:root {
+  /* Order Status Colors */
+  --status-pending-bg: #fef3c7;
+  --status-pending-text: #92400e;
+  --status-pending-border: #f59e0b;
+
+  --status-confirmed-bg: #dbeafe;
+  --status-confirmed-text: #1e40af;
+  --status-confirmed-border: #3b82f6;
+
+  --status-preparing-bg: #fed7aa;
+  --status-preparing-text: #9a3412;
+  --status-preparing-border: #ea580c;
+
+  --status-ready-bg: #e9d5ff;
+  --status-ready-text: #6b21a8;
+  --status-ready-border: #a855f7;
+
+  --status-out-for-delivery-bg: #ddd6fe;
+  --status-out-for-delivery-text: #3730a3;
+  --status-out-for-delivery-border: #6366f1;
+
+  --status-delivered-bg: #d1fae5;
+  --status-delivered-text: #065f46;
+  --status-delivered-border: #10b981;
+
+  --status-cancelled-bg: #fee2e2;
+  --status-cancelled-text: #991b1b;
+  --status-cancelled-border: #ef4444;
+
+  --status-refunded-bg: #f3f4f6;
+  --status-refunded-text: #374151;
+  --status-refunded-border: #6b7280;
+
+  /* Payment Status Colors */
+  --payment-pending-bg: #fef3c7;
+  --payment-pending-text: #92400e;
+
+  --payment-completed-bg: #d1fae5;
+  --payment-completed-text: #065f46;
+
+  --payment-failed-bg: #fee2e2;
+  --payment-failed-text: #991b1b;
+
+  --payment-refunded-bg: #e0e7ff;
+  --payment-refunded-text: #3730a3;
+}
+
+/* Utility Classes */
+.text-balance {
+  text-wrap: balance;
+}
+
+.prose-custom {
+  color: var(--gray-700);
+}
+
+.prose-custom h1,
+.prose-custom h2,
+.prose-custom h3,
+.prose-custom h4,
+.prose-custom h5,
+.prose-custom h6 {
+  color: var(--gray-900);
+  font-weight: var(--font-weight-semibold);
+}
+
+.prose-custom a {
+  color: var(--townkart-primary);
+  text-decoration: underline;
+}
+
+.prose-custom a:hover {
+  color: var(--townkart-secondary);
+}
+
+.prose-custom code {
+  background-color: var(--gray-100);
+  padding: 0.125rem 0.25rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.prose-custom pre {
+  background-color: var(--gray-900);
+  color: var(--white);
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.prose-custom pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.prose-custom blockquote {
+  border-left: 4px solid var(--townkart-primary);
+  padding-left: var(--spacing-lg);
+  color: var(--gray-600);
+  font-style: italic;
+}
+
+.prose-custom ul,
+.prose-custom ol {
+  padding-left: var(--spacing-xl);
+}
+
+.prose-custom li {
+  margin-bottom: var(--spacing-xs);
+}
