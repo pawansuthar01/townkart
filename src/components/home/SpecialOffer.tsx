@@ -3,8 +3,20 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchSpecialOffers } from "@/store/slices/specialOfferSlice";
+import { RootState, AppDispatch } from "@/store";
+import {
+  ImageWithFallback,
+  getDefaultImage,
+} from "@/components/shared/ImageWithFallback";
 
 export default function SpecialOffer() {
+  const dispatch = useDispatch<AppDispatch>();
+  const { offers, loading } = useSelector(
+    (state: RootState) => state.specialOffers,
+  );
+  const [currentOffer, setCurrentOffer] = useState<any>(null);
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
     hours: 0,
@@ -13,9 +25,23 @@ export default function SpecialOffer() {
   });
 
   useEffect(() => {
-    // Set countdown to end in 7 days from now
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 7);
+    if (offers.length === 0) {
+      dispatch(fetchSpecialOffers())
+        .unwrap()
+        .catch(() => {});
+    }
+  }, [dispatch, offers.length]);
+
+  useEffect(() => {
+    if (offers.length > 0 && !currentOffer) {
+      setCurrentOffer(offers[0]); // Show first offer
+    }
+  }, [offers, currentOffer]);
+
+  const startCountdown = (offer: any) => {
+    const endDate = offer.endDate
+      ? new Date(offer.endDate)
+      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const timer = setInterval(() => {
       const now = new Date().getTime();
@@ -36,7 +62,40 @@ export default function SpecialOffer() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  };
+
+  useEffect(() => {
+    if (currentOffer) {
+      const cleanup = startCountdown(currentOffer);
+      return cleanup;
+    }
+  }, [currentOffer]);
+
+  if (loading) {
+    return (
+      <section className="py-20 bg-gradient-to-r from-townkart-primary/20 to-townkart-secondary/20 dark:from-gray-800 dark:to-gray-900 relative overflow-hidden">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-townkart-primary mx-auto mb-4"></div>
+              <p className="text-gray-600 dark:text-gray-300">
+                Loading special offers...
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (!currentOffer) {
+    return null;
+  }
+
+  const discountText =
+    currentOffer.discountType === "percentage"
+      ? `${currentOffer.discountValue}% OFF`
+      : `₹${currentOffer.discountValue} OFF`;
 
   return (
     <section className="py-20 bg-gradient-to-r from-townkart-primary/20 to-townkart-secondary/20 dark:from-gray-800 dark:to-gray-900 relative overflow-hidden">
@@ -64,14 +123,14 @@ export default function SpecialOffer() {
               viewport={{ once: true }}
             >
               <h2 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold text-gray-900 dark:text-white mb-4">
-                Up to 50% Off on
+                {currentOffer.title}
                 <span className="block text-townkart-primary dark:text-townkart-primary">
-                  Summer Collection
+                  Special Offer
                 </span>
               </h2>
               <p className="text-base md:text-lg lg:text-xl text-gray-600 dark:text-gray-300 mb-6 md:mb-8 max-w-lg mx-auto lg:mx-0">
-                Don't miss out on our biggest summer sale! Get amazing discounts
-                on trendy summer fashion, accessories, and more.
+                {currentOffer.description ||
+                  "Don't miss out on this amazing offer! Limited time only."}
               </p>
             </motion.div>
 
@@ -84,7 +143,7 @@ export default function SpecialOffer() {
               className="mb-6 md:mb-8"
             >
               <p className="text-base md:text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
-                Sale ends in:
+                Offer ends in:
               </p>
               <div className="flex flex-wrap justify-center lg:justify-start gap-2 md:gap-4">
                 <div className="text-center">
@@ -138,10 +197,10 @@ export default function SpecialOffer() {
               viewport={{ once: true }}
             >
               <Link
-                href="/product"
+                href={currentOffer.linkUrl || "/products"}
                 className="inline-block bg-townkart-primary hover:bg-townkart-primary/90 text-white font-semibold py-3 md:py-4 px-6 md:px-8 rounded-lg transition-colors duration-300 transform hover:scale-105 shadow-lg text-sm md:text-base"
               >
-                Shop Sale Now
+                Shop Now
               </Link>
             </motion.div>
           </motion.div>
@@ -155,16 +214,18 @@ export default function SpecialOffer() {
             className="relative order-1 lg:order-2"
           >
             <div className="relative flex justify-center lg:justify-end">
-              <img
-                src="https://res.cloudinary.com/dzyaapsz3/image/upload/v1762258197/restaurants/cmh4yzf1o0000g0y0y5lfqod0/pexels-photo-8638766-removebg-preview-1762258196927.png"
-                alt="Summer Collection Sale"
-                className="w-full max-w-sm md:max-w-md lg:max-w-lg h-auto rounded-2xl  object-contain"
-                loading="lazy"
+              <ImageWithFallback
+                src={currentOffer.imageUrl}
+                fallbackSrc={getDefaultImage("offer")}
+                alt={currentOffer.title}
+                width={400}
+                height={300}
+                className="w-full max-w-sm md:max-w-md lg:max-w-lg h-auto rounded-2xl object-contain"
               />
 
               {/* Sale Badge */}
               <div className="absolute top-3 md:top-6 left-3 md:left-6 bg-red-500 text-white px-3 md:px-4 py-1 md:py-2 rounded-full font-bold text-sm md:text-lg shadow-lg">
-                50% OFF
+                {discountText}
               </div>
 
               {/* Floating Elements */}
@@ -196,7 +257,7 @@ export default function SpecialOffer() {
                 }}
                 className="absolute -bottom-2 md:-bottom-4 -left-2 md:-left-4 bg-townkart-secondary text-white px-2 md:px-3 py-1 md:py-2 rounded-full font-bold shadow-lg text-sm md:text-base"
               >
-                SALE!
+                OFFER!
               </motion.div>
             </div>
           </motion.div>

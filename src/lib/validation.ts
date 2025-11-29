@@ -4,24 +4,49 @@ import { z } from "zod";
 export const loginSchema = z.object({
   phoneNumber: z
     .string()
-    .regex(/^\+91[6-9]\d{9}$/, "Please enter a valid Indian phone number"),
+    .min(1, "Phone number or email is required")
+    .refine((value) => {
+      // Allow either phone number or email
+      const phoneRegex = /^\+91[6-9]\d{9}$/;
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return phoneRegex.test(value) || emailRegex.test(value);
+    }, "Please enter a valid phone number (+91XXXXXXXXXX) or email address"),
 });
 
 export const registerSchema = z.object({
   phoneNumber: z
     .string()
-    .regex(/^\+91[6-9]\d{9}$/, "Please enter a valid Indian phone number"),
+    .regex(
+      /^\+91[6-9]\d{9}$/,
+      "Please enter a valid Indian phone number (e.g., +919876543210)",
+    ),
   fullName: z
     .string()
     .min(2, "Name must be at least 2 characters")
-    .max(50, "Name must be less than 50 characters"),
-  email: z.string().email("Please enter a valid email address").optional(),
+    .max(50, "Name must be less than 50 characters")
+    .regex(/^[a-zA-Z\s]+$/, "Name can only contain letters and spaces"),
+  email: z
+    .string()
+    .email("Please enter a valid email address")
+    .min(5, "Email must be at least 5 characters")
+    .max(100, "Email must be less than 100 characters")
+    .refine((email) => {
+      // Additional email validation
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      return emailRegex.test(email);
+    }, "Please enter a valid email address"),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
-    .max(100, "Password must be less than 100 characters"),
+    .max(100, "Password must be less than 100 characters")
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
+      "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character",
+    ),
   role: z.enum(["CUSTOMER", "MERCHANT", "RIDER"], {
-    errorMap: () => ({ message: "Role must be CUSTOMER, MERCHANT, or RIDER" }),
+    errorMap: () => ({
+      message: "Please select a valid role: Customer, Merchant, or Rider",
+    }),
   }),
 });
 
@@ -33,6 +58,17 @@ export const verifyOtpSchema = z.object({
     .string()
     .length(4, "OTP must be 4 digits")
     .regex(/^\d{4}$/, "OTP must contain only digits"),
+  deviceInfo: z
+    .object({
+      deviceId: z.string().min(1, "Device ID is required"),
+      deviceName: z.string().optional(),
+      deviceType: z.enum(["mobile", "desktop", "tablet"]).default("mobile"),
+      os: z.string().optional(),
+      browser: z.string().optional(),
+      fingerprint: z.string().optional(),
+    })
+    .optional(),
+  batteryLevel: z.number().min(0).max(100).optional(),
 });
 
 export const refreshTokenSchema = z.object({
@@ -40,14 +76,38 @@ export const refreshTokenSchema = z.object({
 });
 
 // User Schemas
-export const updateProfileSchema = z.object({
-  fullName: z
-    .string()
-    .min(2, "Name must be at least 2 characters")
-    .max(50, "Name must be less than 50 characters")
-    .optional(),
-  email: z.string().email("Please enter a valid email address").optional(),
-});
+export const updateProfileSchema = z
+  .object({
+    fullName: z
+      .string()
+      .min(2, "Name must be at least 2 characters")
+      .max(50, "Name must be less than 50 characters")
+      .optional(),
+    email: z.string().email("Please enter a valid email address").optional(),
+    profileImageUrl: z
+      .string()
+      .url("Please enter a valid image URL")
+      .optional(),
+    currentPassword: z.string().optional(),
+    newPassword: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .max(100, "Password must be less than 100 characters")
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      // If newPassword is provided, currentPassword must also be provided
+      if (data.newPassword && !data.currentPassword) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Current password is required to set a new password",
+      path: ["currentPassword"],
+    },
+  );
 
 export const addressSchema = z.object({
   line1: z.string().min(1, "Address line 1 is required"),
@@ -86,27 +146,243 @@ export const createMerchantSchema = z.object({
 
 // Product Schemas
 export const createProductSchema = z.object({
+  // Basic Information
   name: z
     .string()
     .min(2, "Product name must be at least 2 characters")
     .max(100, "Product name must be less than 100 characters"),
+  slug: z.string().optional(),
   description: z
     .string()
-    .max(500, "Description must be less than 500 characters")
+    .max(2000, "Description must be less than 2000 characters")
     .optional(),
+  shortDescription: z
+    .string()
+    .max(300, "Short description must be less than 300 characters")
+    .optional(),
+  sku: z.string().max(50, "SKU must be less than 50 characters").optional(),
+  barcode: z
+    .string()
+    .max(50, "Barcode must be less than 50 characters")
+    .optional(),
+  brand: z.string().max(50, "Brand must be less than 50 characters").optional(),
+
+  // Pricing
   price: z.number().positive("Price must be greater than 0"),
   discountedPrice: z.number().positive().optional(),
+  costPrice: z.number().positive().optional(),
+  taxRate: z.number().min(0).max(100).default(0),
+
+  // Inventory
   stockQuantity: z.number().int().min(0, "Stock quantity cannot be negative"),
-  category: z.string().min(1, "Category is required"),
+  minStockLevel: z.number().int().min(0).default(0),
+  maxStockLevel: z.number().int().positive().optional(),
+
+  // Categories & Classification
+  categoryName: z.string().min(1, "Category is required"),
   subcategory: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  keywords: z.array(z.string()).optional(),
+
+  // Product Details
+  weight: z.number().positive().optional(), // in grams
+  dimensions: z
+    .object({
+      length: z.number().positive(),
+      width: z.number().positive(),
+      height: z.number().positive(),
+    })
+    .optional(),
+  packageWeight: z.number().positive().optional(),
+  packageDimensions: z
+    .object({
+      length: z.number().positive(),
+      width: z.number().positive(),
+      height: z.number().positive(),
+    })
+    .optional(),
+
+  // Specifications & Attributes
+  specifications: z.record(z.string()).optional(), // Key-value pairs
+  features: z.array(z.string()).optional(),
+
+  // Media
+  imageUrls: z.array(z.string().url()).optional(),
+  videos: z.array(z.string().url()).optional(),
+  documents: z.array(z.string().url()).optional(),
+
+  // SEO & Marketing
+  metaTitle: z
+    .string()
+    .max(60, "Meta title must be less than 60 characters")
+    .optional(),
+  metaDescription: z
+    .string()
+    .max(160, "Meta description must be less than 160 characters")
+    .optional(),
+  seoUrl: z.string().optional(),
+
+  // Status & Visibility
+  isAvailable: z.boolean().default(true),
+  isFeatured: z.boolean().default(false),
+  isNew: z.boolean().default(false),
+  isOnSale: z.boolean().default(false),
+  isDigital: z.boolean().default(false),
+  requiresShipping: z.boolean().default(true),
+});
+
+export const updateProductSchema = createProductSchema.partial();
+
+// Product Review Schemas
+export const createProductReviewSchema = z.object({
+  productId: z.string().min(1, "Product ID is required"),
+  orderId: z.string().optional(),
+  rating: z.number().int().min(1).max(5, "Rating must be between 1 and 5"),
+  title: z
+    .string()
+    .max(100, "Title must be less than 100 characters")
+    .optional(),
+  comment: z
+    .string()
+    .max(1000, "Comment must be less than 1000 characters")
+    .optional(),
+  pros: z.array(z.string()).optional(),
+  cons: z.array(z.string()).optional(),
   images: z
     .array(z.string().url())
     .max(5, "Maximum 5 images allowed")
     .optional(),
-  isAvailable: z.boolean().default(true),
+  videos: z
+    .array(z.string().url())
+    .max(3, "Maximum 3 videos allowed")
+    .optional(),
 });
 
-export const updateProductSchema = createProductSchema.partial();
+// Product Variant Schemas
+export const createProductVariantSchema = z.object({
+  name: z.string().min(1, "Variant name is required"),
+  sku: z.string().max(50).optional(),
+  barcode: z.string().max(50).optional(),
+  price: z.number().positive().optional(),
+  discountedPrice: z.number().positive().optional(),
+  stockQuantity: z.number().int().min(0).default(0),
+  attributes: z.record(z.string()),
+  images: z.array(z.string().url()).optional(),
+});
+
+// Product Image Schemas
+export const createProductImageSchema = z.object({
+  url: z.string().url("Valid image URL is required"),
+  alt: z.string().max(100).optional(),
+  caption: z.string().max(200).optional(),
+  sortOrder: z.number().int().min(0).default(0),
+  isPrimary: z.boolean().default(false),
+});
+
+// Product Category Schemas
+export const createProductCategorySchema = z.object({
+  name: z.string().min(1, "Category name is required").max(50),
+  slug: z.string().min(1, "Category slug is required").max(50),
+  description: z.string().max(500).optional(),
+  image: z.string().url().optional(),
+  parentId: z.string().optional(),
+  sortOrder: z.number().int().min(0).default(0),
+});
+
+// Product Attribute Schemas
+export const createProductAttributeSchema = z.object({
+  name: z.string().min(1, "Attribute name is required").max(50),
+  values: z.array(z.string()).min(1, "At least one value is required"),
+  sortOrder: z.number().int().min(0).default(0),
+});
+
+// Offer Schemas
+export const createOfferSchema = z.object({
+  title: z.string().min(1, "Title is required").max(100),
+  description: z.string().max(500).optional(),
+  type: z.enum([
+    "PERCENTAGE_DISCOUNT",
+    "FIXED_DISCOUNT",
+    "FREE_SHIPPING",
+    "BUY_ONE_GET_ONE",
+    "BUNDLE_DISCOUNT",
+  ]),
+  discountValue: z.number().positive("Discount value must be positive"),
+  maxDiscount: z.number().positive().optional(),
+  minOrderValue: z.number().min(0).default(0),
+  startDate: z.string().datetime(),
+  endDate: z.string().datetime(),
+  applicableTo: z.enum([
+    "ALL_PRODUCTS",
+    "SPECIFIC_PRODUCTS",
+    "SPECIFIC_CATEGORIES",
+    "SPECIFIC_MERCHANTS",
+  ]),
+  productIds: z.array(z.string()).optional(),
+  categoryIds: z.array(z.string()).optional(),
+  merchantIds: z.array(z.string()).optional(),
+  targetUsers: z.enum([
+    "ALL_USERS",
+    "SPECIFIC_USERS",
+    "NEW_USERS",
+    "RETURNING_USERS",
+    "LOYAL_CUSTOMERS",
+    "FIRST_TIME_USERS",
+  ]),
+  userIds: z.array(z.string()).optional(),
+  userSegments: z.array(z.string()).optional(),
+  usageLimit: z.number().int().positive().optional(),
+  perUserLimit: z.number().int().positive().default(1),
+  couponCode: z.string().max(20).optional(),
+  isAutoApply: z.boolean().default(false),
+  priority: z.number().int().min(0).default(0),
+  terms: z.string().max(1000).optional(),
+});
+
+// Collection Schemas
+export const createCollectionSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100),
+  slug: z.string().min(1, "Slug is required").max(100),
+  description: z.string().max(500).optional(),
+  products: z.array(
+    z.object({
+      productId: z.string(),
+      sortOrder: z.number().int().min(0).default(0),
+    }),
+  ),
+  type: z.enum([
+    "MANUAL",
+    "DYNAMIC",
+    "FEATURED_PRODUCTS",
+    "BEST_SELLERS",
+    "NEW_ARRIVALS",
+    "ON_SALE",
+  ]),
+  filters: z.record(z.any()).optional(),
+  image: z.string().url().optional(),
+  bannerImage: z.string().url().optional(),
+  isFeatured: z.boolean().default(false),
+  sortOrder: z.number().int().min(0).default(0),
+  metaTitle: z.string().max(60).optional(),
+  metaDescription: z.string().max(160).optional(),
+  targetUsers: z.enum(["ALL_USERS", "SPECIFIC_USERS", "USER_SEGMENTS"]),
+  userSegments: z.array(z.string()).optional(),
+});
+
+// Coupon Schemas
+export const createCouponSchema = z.object({
+  code: z.string().min(1, "Code is required").max(20),
+  title: z.string().min(1, "Title is required").max(100),
+  description: z.string().max(500).optional(),
+  type: z.enum(["PERCENTAGE", "FIXED_AMOUNT"]),
+  value: z.number().positive("Value must be positive"),
+  maxDiscount: z.number().positive().optional(),
+  minOrderValue: z.number().min(0).default(0),
+  maxUses: z.number().int().positive().optional(),
+  perUserLimit: z.number().int().positive().default(1),
+  startDate: z.string().datetime(),
+  endDate: z.string().datetime(),
+});
 
 // Order Schemas
 export const createOrderSchema = z.object({
@@ -166,7 +442,13 @@ export const updateDeliveryStatusSchema = z.object({
 // Payment Schemas
 export const initiatePaymentSchema = z.object({
   orderId: z.string().min(1, "Order ID is required"),
-  paymentMethod: z.enum(["UPI", "CARD", "WALLET", "NET_BANKING"]),
+  paymentMethod: z.enum([
+    "UPI",
+    "CARD",
+    "WALLET",
+    "NET_BANKING",
+    "CASH_ON_DELIVERY",
+  ]),
 });
 
 export const verifyPaymentSchema = z.object({
@@ -270,6 +552,19 @@ export type AddressInput = z.infer<typeof addressSchema>;
 export type CreateMerchantInput = z.infer<typeof createMerchantSchema>;
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
+export type CreateProductReviewInput = z.infer<
+  typeof createProductReviewSchema
+>;
+export type CreateProductVariantInput = z.infer<
+  typeof createProductVariantSchema
+>;
+export type CreateProductImageInput = z.infer<typeof createProductImageSchema>;
+export type CreateProductCategoryInput = z.infer<
+  typeof createProductCategorySchema
+>;
+export type CreateProductAttributeInput = z.infer<
+  typeof createProductAttributeSchema
+>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type UpdateOrderStatusInput = z.infer<typeof updateOrderStatusSchema>;
 export type AcceptDeliveryInput = z.infer<typeof acceptDeliverySchema>;
@@ -280,5 +575,8 @@ export type InitiatePaymentInput = z.infer<typeof initiatePaymentSchema>;
 export type VerifyPaymentInput = z.infer<typeof verifyPaymentSchema>;
 export type CreateReviewInput = z.infer<typeof createReviewSchema>;
 export type CreateNotificationInput = z.infer<typeof createNotificationSchema>;
+export type CreateOfferInput = z.infer<typeof createOfferSchema>;
+export type CreateCollectionInput = z.infer<typeof createCollectionSchema>;
+export type CreateCouponInput = z.infer<typeof createCouponSchema>;
 export type SearchProductsInput = z.infer<typeof searchProductsSchema>;
 export type SearchMerchantsInput = z.infer<typeof searchMerchantsSchema>;

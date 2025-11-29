@@ -1,12 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
 import {
   Gift,
   Percent,
@@ -15,143 +13,123 @@ import {
   Star,
   MapPin,
   Truck,
+  RefreshCw,
+  Tag,
+  Check,
+  X,
 } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 
+interface Offer {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  discountValue: number;
+  maxDiscount?: number;
+  minOrderValue: number;
+  applicableTo: string;
+  productIds?: string[];
+  categoryIds?: string[];
+  merchantIds?: string[];
+  targetUsers: string;
+  userIds?: string[];
+  userSegments?: string[];
+  usageLimit?: number;
+  perUserLimit: number;
+  usedCount: number;
+  couponCode?: string;
+  isAutoApply: boolean;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  createdBy: string;
+  priority: number;
+  terms?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Additional display fields
+  storeName?: string;
+  storeRating?: number;
+  storeDistance?: string;
+  products?: Array<{
+    name: string;
+    originalPrice: number;
+    offerPrice: number;
+  }>;
+}
+
 export default function OffersPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [categories, setCategories] = useState<
+    Array<{ id: string; name: string; count: number }>
+  >([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponValidation, setCouponValidation] = useState<{
+    isValid: boolean;
+    message: string;
+    discount?: number;
+    description?: string;
+  } | null>(null);
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const { addItem } = useCart();
 
-  const offerCategories = [
-    { id: "all", name: "All Offers", count: 45 },
-    { id: "grocery", name: "Grocery", count: 12 },
-    { id: "food", name: "Food", count: 8 },
-    { id: "fashion", name: "Fashion", count: 15 },
-    { id: "electronics", name: "Electronics", count: 6 },
-    { id: "medicine", name: "Medicine", count: 4 },
-  ];
+  useEffect(() => {
+    fetchOffers();
+  }, []);
 
-  const offers = [
-    {
-      id: 1,
-      title: "Fresh Produce Festival",
-      description: "Up to 50% off on fresh fruits and vegetables",
-      discount: "50%",
-      validTill: "2024-12-31",
-      image:
-        "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400&h=300&fit=crop",
-      category: "grocery",
-      shop: "Fresh Mart",
-      distance: "0.8 km",
-      rating: 4.5,
-      reviews: 128,
-      products: [
-        { name: "Organic Tomatoes", originalPrice: 50, offerPrice: 25 },
-        { name: "Fresh Apples", originalPrice: 120, offerPrice: 80 },
-        { name: "Green Vegetables Pack", originalPrice: 80, offerPrice: 40 },
-      ],
-    },
-    {
-      id: 2,
-      title: "Restaurant Week Special",
-      description: "Buy 1 Get 1 Free on selected restaurants",
-      discount: "B1G1",
-      validTill: "2024-12-25",
-      image:
-        "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=300&fit=crop",
-      category: "food",
-      shop: "Foodie's Paradise",
-      distance: "1.2 km",
-      rating: 4.8,
-      reviews: 95,
-      products: [
-        { name: "Pizza Margherita", originalPrice: 250, offerPrice: 125 },
-        { name: "Chicken Burger", originalPrice: 180, offerPrice: 90 },
-        { name: "Pasta Alfredo", originalPrice: 220, offerPrice: 110 },
-      ],
-    },
-    {
-      id: 3,
-      title: "Electronics Bonanza",
-      description: "Up to 30% off on electronics and gadgets",
-      discount: "30%",
-      validTill: "2024-12-28",
-      image:
-        "https://images.unsplash.com/photo-1498049794561-7780e7231661?w=400&h=300&fit=crop",
-      category: "electronics",
-      shop: "TechHub",
-      distance: "2.1 km",
-      rating: 4.6,
-      reviews: 203,
-      products: [
-        { name: "Wireless Headphones", originalPrice: 2999, offerPrice: 2099 },
-        { name: "Smart Watch", originalPrice: 7999, offerPrice: 5599 },
-        { name: "Bluetooth Speaker", originalPrice: 1999, offerPrice: 1399 },
-      ],
-    },
-    {
-      id: 4,
-      title: "Fashion Fiesta",
-      description: "40% off on clothing and accessories",
-      discount: "40%",
-      validTill: "2024-12-30",
-      image:
-        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&h=300&fit=crop",
-      category: "fashion",
-      shop: "Style Central",
-      distance: "1.5 km",
-      rating: 4.4,
-      reviews: 156,
-      products: [
-        { name: "Designer T-Shirt", originalPrice: 1299, offerPrice: 779 },
-        { name: "Running Shoes", originalPrice: 3999, offerPrice: 2399 },
-        { name: "Leather Jacket", originalPrice: 5999, offerPrice: 3599 },
-      ],
-    },
-    {
-      id: 5,
-      title: "Medicine Month",
-      description: "25% off on medicines and healthcare products",
-      discount: "25%",
-      validTill: "2024-12-31",
-      image:
-        "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=300&fit=crop",
-      category: "medicine",
-      shop: "City Pharmacy",
-      distance: "0.5 km",
-      rating: 4.9,
-      reviews: 67,
-      products: [
-        { name: "Vitamin Supplements", originalPrice: 899, offerPrice: 674 },
-        { name: "First Aid Kit", originalPrice: 499, offerPrice: 374 },
-        { name: "Face Masks Pack", originalPrice: 199, offerPrice: 149 },
-      ],
-    },
-    {
-      id: 6,
-      title: "Household Essentials Sale",
-      description: "Buy 2 Get 1 Free on cleaning products",
-      discount: "B2G1",
-      validTill: "2024-12-26",
-      image:
-        "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&h=300&fit=crop",
-      category: "grocery",
-      shop: "Home & Clean",
-      distance: "1.8 km",
-      rating: 4.3,
-      reviews: 89,
-      products: [
-        { name: "Dish Soap", originalPrice: 149, offerPrice: 99 },
-        { name: "Floor Cleaner", originalPrice: 299, offerPrice: 199 },
-        { name: "Laundry Detergent", originalPrice: 399, offerPrice: 266 },
-      ],
-    },
-  ];
+  const fetchOffers = async () => {
+    try {
+      const response = await fetch("/api/offers");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setOffers(data.offers);
+          // Calculate category counts
+          const categoryCounts: Record<string, number> = {};
+          data.offers.forEach((offer: Offer) => {
+            // This would need to be enhanced based on actual offer categorization
+            const category = "all"; // Default category
+            categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+          });
+          setCategories([
+            { id: "all", name: "All Offers", count: data.offers.length },
+            {
+              id: "grocery",
+              name: "Grocery",
+              count: categoryCounts.grocery || 0,
+            },
+            { id: "food", name: "Food", count: categoryCounts.food || 0 },
+            {
+              id: "fashion",
+              name: "Fashion",
+              count: categoryCounts.fashion || 0,
+            },
+            {
+              id: "electronics",
+              name: "Electronics",
+              count: categoryCounts.electronics || 0,
+            },
+            {
+              id: "medicine",
+              name: "Medicine",
+              count: categoryCounts.medicine || 0,
+            },
+          ]);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching offers:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const filteredOffers =
-    selectedCategory && selectedCategory !== "all"
-      ? offers.filter((offer) => offer.category === selectedCategory)
-      : offers;
+  const offerCategories = categories;
+
+  const filteredOffers = offers; // For now, show all offers
 
   const handleAddToCart = (product: any) => {
     addItem({
@@ -166,10 +144,80 @@ export default function OffersPage() {
     });
   };
 
+  const handleValidateCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponValidation({
+        isValid: false,
+        message: "Please enter a coupon code",
+      });
+      return;
+    }
+
+    setIsValidatingCoupon(true);
+    try {
+      const response = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          couponCode: couponCode.trim(),
+          cartTotal: 500, // Sample cart total for validation
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setCouponValidation({
+          isValid: true,
+          message: "Coupon applied successfully!",
+          discount: data.data.discount,
+          description: data.data.description,
+        });
+      } else {
+        setCouponValidation({
+          isValid: false,
+          message: data.message,
+        });
+      }
+    } catch (error) {
+      setCouponValidation({
+        isValid: false,
+        message: "Failed to validate coupon. Please try again.",
+      });
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const getOfferDiscountDisplay = (offer: Offer) => {
+    switch (offer.type) {
+      case "PERCENTAGE_DISCOUNT":
+        return `${offer.discountValue}% OFF`;
+      case "FIXED_DISCOUNT":
+        return `₹${offer.discountValue} OFF`;
+      case "FREE_SHIPPING":
+        return "FREE SHIPPING";
+      case "BUY_ONE_GET_ONE":
+        return "BUY 1 GET 1";
+      case "BUNDLE_DISCOUNT":
+        return `${offer.discountValue}% OFF`;
+      default:
+        return `${offer.discountValue}% OFF`;
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <RefreshCw className="h-8 w-8 animate-spin text-gray-600" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
-
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-red-500 to-pink-600 text-white py-16">
         <div className="w-full px-4">
@@ -212,6 +260,91 @@ export default function OffersPage() {
         </div>
       </section>
 
+      {/* Coupon Application Section */}
+      <section className="py-8 px-4 bg-blue-50">
+        <div className="container mx-auto max-w-2xl">
+          <div className="bg-white rounded-lg p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <Tag className="h-6 w-6 text-blue-600" />
+              <h2 className="text-xl font-semibold text-gray-900">
+                Apply Coupon Code
+              </h2>
+            </div>
+
+            <div className="flex gap-3 mb-4">
+              <input
+                type="text"
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                placeholder="Enter coupon code (e.g., SAVE20)"
+                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onKeyPress={(e) => e.key === "Enter" && handleValidateCoupon()}
+              />
+              <button
+                onClick={handleValidateCoupon}
+                disabled={isValidatingCoupon || !couponCode.trim()}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
+              >
+                {isValidatingCoupon ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Apply"
+                )}
+              </button>
+            </div>
+
+            {couponValidation && (
+              <div
+                className={`p-4 rounded-lg flex items-center gap-3 ${
+                  couponValidation.isValid
+                    ? "bg-green-50 border border-green-200"
+                    : "bg-red-50 border border-red-200"
+                }`}
+              >
+                {couponValidation.isValid ? (
+                  <Check className="h-5 w-5 text-green-600" />
+                ) : (
+                  <X className="h-5 w-5 text-red-600" />
+                )}
+                <div>
+                  <p
+                    className={`font-medium ${
+                      couponValidation.isValid
+                        ? "text-green-800"
+                        : "text-red-800"
+                    }`}
+                  >
+                    {couponValidation.message}
+                  </p>
+                  {couponValidation.isValid && couponValidation.discount && (
+                    <p className="text-sm text-green-700">
+                      You save ₹{couponValidation.discount} with this coupon!
+                    </p>
+                  )}
+                  {couponValidation.description && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      {couponValidation.description}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 text-sm text-gray-600">
+              <p className="mb-2">
+                <strong>How to use coupons:</strong>
+              </p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Enter your coupon code in the field above</li>
+                <li>Coupon codes are case-insensitive</li>
+                <li>Some coupons have minimum order requirements</li>
+                <li>Coupons can be combined with other offers</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Offers Grid */}
       <section className="py-12 px-4">
         <div className="w-full">
@@ -224,13 +357,15 @@ export default function OffersPage() {
                 <div className="relative">
                   <div
                     className="h-48 bg-cover bg-center"
-                    style={{ backgroundImage: `url(${offer.image})` }}
+                    style={{
+                      backgroundImage: `url(https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400&h=300&fit=crop)`,
+                    }}
                   />
 
                   {/* Offer Badge */}
                   <div className="absolute top-4 left-4">
                     <Badge className="bg-red-500 text-white font-bold text-lg px-3 py-1">
-                      {offer.discount} OFF
+                      {getOfferDiscountDisplay(offer)}
                     </Badge>
                   </div>
 
@@ -239,17 +374,17 @@ export default function OffersPage() {
                     <div className="bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 flex items-center">
                       <Clock className="h-3 w-3 mr-1 text-gray-600" />
                       <span className="text-xs font-semibold text-gray-700">
-                        Till {new Date(offer.validTill).toLocaleDateString()}
+                        Till {new Date(offer.endDate).toLocaleDateString()}
                       </span>
                     </div>
                   </div>
 
-                  {/* Shop Rating */}
+                  {/* Store Rating */}
                   <div className="absolute bottom-4 left-4">
                     <div className="bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 flex items-center">
                       <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 mr-1" />
                       <span className="text-xs font-semibold">
-                        {offer.rating}
+                        {offer.storeRating || 4.5}
                       </span>
                     </div>
                   </div>
@@ -267,46 +402,40 @@ export default function OffersPage() {
                     <div className="flex items-center text-sm text-gray-500 mb-3">
                       <MapPin className="h-4 w-4 mr-1" />
                       <span>
-                        {offer.distance} • {offer.shop}
+                        {offer.storeDistance || "1.2 km"} •{" "}
+                        {offer.storeName || "Store"}
                       </span>
-                      <span className="mx-2">•</span>
-                      <span>{offer.reviews} reviews</span>
                     </div>
                   </div>
 
-                  {/* Sample Products */}
-                  <div className="space-y-2 mb-6">
-                    <h4 className="font-semibold text-gray-900 text-sm">
-                      Sample Deals:
-                    </h4>
-                    {offer.products.slice(0, 2).map((product, index) => (
-                      <div
-                        key={index}
-                        className="flex justify-between items-center text-sm"
-                      >
-                        <span className="text-gray-700">{product.name}</span>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-gray-500 line-through">
-                            ₹{product.originalPrice}
-                          </span>
-                          <span className="font-bold text-green-600">
-                            ₹{product.offerPrice}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Terms */}
+                  {offer.terms && (
+                    <div className="text-xs text-gray-500 mb-4 p-2 bg-gray-50 rounded">
+                      {offer.terms}
+                    </div>
+                  )}
+
+                  {/* Coupon Code */}
+                  {offer.couponCode && (
+                    <div className="mb-4">
+                      <Badge variant="outline" className="font-mono">
+                        Code: {offer.couponCode}
+                      </Badge>
+                    </div>
+                  )}
 
                   <div className="flex gap-3">
                     <Button
                       className="flex-1 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white font-semibold"
-                      onClick={() => handleAddToCart(offer.products[0])}
+                      onClick={() => {
+                        /* Navigate to store or products */
+                      }}
                     >
                       <ShoppingCart className="h-4 w-4 mr-2" />
-                      Shop Now
+                      View Deals
                     </Button>
                     <Button variant="outline" className="px-4">
-                      View All
+                      Details
                     </Button>
                   </div>
                 </CardContent>
@@ -359,8 +488,6 @@ export default function OffersPage() {
           </div>
         </div>
       </section>
-
-      <Footer />
     </div>
   );
 }

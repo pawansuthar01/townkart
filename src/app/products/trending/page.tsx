@@ -5,8 +5,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
 import {
   TrendingUp,
   ShoppingCart,
@@ -227,8 +225,6 @@ export default function TrendingProductsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
-
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-orange-500 to-red-600 text-white py-16">
         <div className="w-full px-4">
@@ -258,7 +254,7 @@ export default function TrendingProductsPage() {
                 <div className="text-3xl font-bold">
                   {trendingProducts.reduce(
                     (sum, p) => sum + p.salesThisWeek,
-                    0,
+                    0
                   )}
                 </div>
                 <div className="text-white/80">Sales This Week</div>
@@ -268,7 +264,7 @@ export default function TrendingProductsPage() {
                   {Math.round(
                     (trendingProducts.reduce((sum, p) => sum + p.rating, 0) /
                       trendingProducts.length) *
-                      10,
+                      10
                   ) / 10}
                 </div>
                 <div className="text-white/80">Avg Rating</div>
@@ -501,8 +497,6 @@ export default function TrendingProductsPage() {
           </div>
         </div>
       </section>
-
-      <Footer />
     </div>
   );
 }

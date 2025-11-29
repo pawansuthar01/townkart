@@ -105,11 +105,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center space-x-3">
                   <div className="w-10 h-10 bg-townkart-primary rounded-full flex items-center justify-center text-white font-semibold">
-                    {user.fullName?.charAt(0)?.toUpperCase() || "U"}
+                    {user.name?.charAt(0)?.toUpperCase() || "U"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
-                      {user.fullName}
+                      {user.name}
                     </p>
                     <p className="text-xs text-gray-500 capitalize">
                       {user.activeRole?.toLowerCase()}

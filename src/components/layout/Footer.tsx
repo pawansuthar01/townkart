@@ -98,8 +98,8 @@ export function Footer() {
             <h3 className="font-semibold mb-4">Contact</h3>
             <ul className="space-y-2 text-gray-400 text-sm">
               <li>📧 support@townkart.com</li>
-              <li>📱 +91 98765 43210</li>
-              <li>🏢 Bangalore, Karnataka</li>
+              <li>📱 +91 9784740736</li>
+              <li>🏢 Rajasthan </li>
               <li>🌐 www.townkart.com</li>
             </ul>
           </div>
@@ -107,8 +107,15 @@ export function Footer() {
 
         <div className="border-t border-gray-800 mt-8 pt-6 text-center text-gray-400 text-sm">
           <p>
-            &copy; 2024 TownKart. All rights reserved. Made with ❤️ for local
-            communities.
+            © 2025 TownKart. All rights reserved. Made with{" "}
+            <a
+              href="https://www.pawansuthar.in"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              Pawan Kumar
+            </a>
           </p>
         </div>
       </div>

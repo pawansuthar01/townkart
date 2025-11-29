@@ -17,11 +17,13 @@ interface UseWebSocketOptions {
 
 export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   const {
-    url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000",
+    url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001",
     autoConnect = true,
     reconnectAttempts = 5,
     reconnectInterval = 3000,
   } = options;
+
+  console.log("useWebSocket: Initializing with URL:", url);
 
   const [state, setState] = useState<WebSocketState>({
     isConnected: false,
@@ -38,6 +40,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   const connect = useCallback(() => {
     if (socketRef.current?.connected) return;
 
+    console.log("useWebSocket: Attempting to connect to:", url);
     setState((prev) => ({ ...prev, isConnecting: true, error: null }));
 
     socketRef.current = io(url, {
@@ -50,7 +53,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
     const socket = socketRef.current;
 
     socket.on("connect", () => {
-      console.log("WebSocket connected");
+      console.log("useWebSocket: Connected successfully");
       setState((prev) => ({
         ...prev,
         isConnected: true,
@@ -61,7 +64,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
     });
 
     socket.on("disconnect", (reason) => {
-      console.log("WebSocket disconnected:", reason);
+      console.log("useWebSocket: Disconnected with reason:", reason);
       setState((prev) => ({
         ...prev,
         isConnected: false,
@@ -78,7 +81,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
     });
 
     socket.on("connect_error", (error) => {
-      console.error("WebSocket connection error:", error);
+      console.error("useWebSocket: Connection error:", error.message);
       setState((prev) => ({
         ...prev,
         isConnecting: false,

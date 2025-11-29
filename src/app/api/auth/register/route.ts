@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-import { hashPassword, generateOTP } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
 import { registerSchema } from "@/lib/validation";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
+import { OTPService } from "@/lib/otpService";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,10 +18,12 @@ export async function POST(request: NextRequest) {
     });
 
     if (existingUser) {
+      const conflictField =
+        existingUser.email === email ? "email" : "phone number";
       return NextResponse.json(
         {
           success: false,
-          message: "User with this email or phone number already exists",
+          message: `User with this ${conflictField} already exists. Please use a different ${conflictField} or try logging in.`,
         },
         { status: 409 },
       );
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.create({
       data: {
         email,
+        password: hashedPassword, // Add the hashed password
         fullName,
         phoneNumber,
         userRoles: [role.toUpperCase() as any],
@@ -53,30 +55,29 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Generate OTP for phone verification
-    const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    // Send OTP using the new service
+    const result = await OTPService.sendOTP(phoneNumber, email, "REGISTER");
 
-    await prisma.oTP.create({
-      data: {
-        phoneNumber,
-        otp,
-        purpose: "REGISTER",
-        expiresAt,
-      },
-    });
+    if (!result.success) {
+      // Delete the created user if OTP sending failed
+      await prisma.user.delete({
+        where: { id: user.id },
+      });
 
-    // In production, send OTP via SMS
-    console.log(`Registration OTP for ${phoneNumber}: ${otp}`);
+      return NextResponse.json(
+        { success: false, message: result.message },
+        { status: 429 },
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      message:
-        "Registration initiated. Please verify your phone number with the OTP sent.",
+      message: result.message,
       data: {
         userId: user.id,
         phoneNumber,
         otpSent: true,
+        channels: result.channels,
       },
     });
   } catch (error: any) {

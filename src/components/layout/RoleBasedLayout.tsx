@@ -1,0 +1,138 @@
+"use client";
+
+import { ReactNode } from "react";
+import { useSession } from "next-auth/react";
+import { usePathname } from "next/navigation";
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
+import { BottomNav } from "@/components/shared/BottomNav";
+import { CustomerHeader } from "@/components/customer/CustomerHeader";
+import { CustomerFooter } from "@/components/customer/CustomerFooter";
+import { CustomerSidebar } from "@/components/customer/CustomerSidebar";
+import { RiderHeader } from "@/components/rider/RiderHeader";
+import { RiderSidebar } from "@/components/rider/RiderSidebar";
+import { MerchantHeader } from "@/components/merchant/MerchantHeader";
+import { MerchantSidebar } from "@/components/merchant/MerchantSidebar";
+import { AdminHeader } from "@/components/admin/AdminHeader";
+import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import { useState } from "react";
+
+interface RoleBasedLayoutProps {
+  children: ReactNode;
+}
+
+export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
+  const { data: session, status } = useSession();
+  const pathname = usePathname();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const userRole = (session?.user as any)?.activeRole;
+
+  // Check if current path is an auth page
+  const isAuthPage =
+    pathname?.startsWith("/auth/") || pathname?.startsWith("/verify-otp");
+
+  // For auth pages, don't apply any layout
+  if (isAuthPage) {
+    return <>{children}</>;
+  }
+
+  // Show loading state
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-townkart-primary mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Role-specific layouts
+  switch (userRole) {
+    case "CUSTOMER":
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <CustomerHeader
+            onMenuClick={() => setSidebarOpen(true)}
+            isMenuOpen={sidebarOpen}
+          />
+          <div className="flex">
+            <CustomerSidebar
+              isOpen={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+            />
+            <main className="flex-1">{children}</main>
+          </div>
+          <CustomerFooter />
+        </div>
+      );
+
+    case "RIDER":
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <RiderHeader
+            onMenuClick={() => setSidebarOpen(true)}
+            isMenuOpen={sidebarOpen}
+          />
+          <div className="flex">
+            <RiderSidebar
+              isOpen={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+            />
+            <main className="flex-1 p-6">{children}</main>
+          </div>
+        </div>
+      );
+
+    case "MERCHANT":
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <MerchantHeader
+            onMenuClick={() => setSidebarOpen(true)}
+            isMenuOpen={sidebarOpen}
+          />
+          <div className="flex">
+            <MerchantSidebar
+              isOpen={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+            />
+            <main className="flex-1 p-6">{children}</main>
+          </div>
+        </div>
+      );
+
+    case "STORE_MANAGER":
+      // Store manager uses its own layout in the store directory
+      return <>{children}</>;
+
+    case "ADMIN":
+      return (
+        <div className="min-h-screen bg-gray-50 overflow-auto">
+          <AdminHeader
+            onMenuClick={() => setSidebarOpen(true)}
+            isMenuOpen={sidebarOpen}
+          />
+          <div className="flex">
+            <AdminSidebar
+              isOpen={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+            />
+            <main className="flex-1 p-6">{children}</main>
+          </div>
+        </div>
+      );
+
+    default:
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <Header />
+          <main className="flex-1">{children}</main>
+          <div className="hidden md:block">
+            <Footer />
+          </div>
+          <BottomNav />
+        </div>
+      );
+  }
+}

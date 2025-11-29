@@ -9,6 +9,7 @@ declare module "next-auth" {
       image?: string | null;
       phoneNumber?: string;
       activeRole?: string;
+      roles?: string[];
       isVerified?: boolean;
     };
   }
@@ -19,6 +20,7 @@ declare module "next-auth" {
     name: string;
     phoneNumber: string;
     activeRole: string;
+    roles: string[];
     isVerified: boolean;
   }
 
@@ -26,6 +28,7 @@ declare module "next-auth" {
     id: string;
     phoneNumber?: string;
     activeRole?: string;
+    roles?: string[];
     isVerified?: boolean;
   }
 }

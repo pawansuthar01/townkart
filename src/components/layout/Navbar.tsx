@@ -1,9 +1,24 @@
 import Link from "next/link";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useCart } from "@/hooks/useCart";
 import { useAuth } from "@/hooks/useAuth";
-import { ShoppingCart, User, Store, Bike, Bell, Settings } from "lucide-react";
+import { signOut } from "next-auth/react";
+import {
+  ShoppingCart,
+  User,
+  Store,
+  Bike,
+  Bell,
+  Settings,
+  LogOut,
+  Shield,
+  Monitor,
+  Package,
+  Heart,
+} from "lucide-react";
 
 export function Navbar() {
   const { user, isAuthenticated } = useAuth();
@@ -61,7 +76,7 @@ export function Navbar() {
 
             {/* User Menu */}
             {isAuthenticated ? (
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 {/* Role-based navigation */}
                 {user?.activeRole === "MERCHANT" && (
                   <Link href="/merchant">
@@ -80,12 +95,26 @@ export function Navbar() {
                   </Link>
                 )}
                 {user?.activeRole === "CUSTOMER" && (
-                  <Link href="/customer">
-                    <Button variant="outline" size="sm">
-                      <User className="h-4 w-4 mr-2" />
-                      Account
-                    </Button>
-                  </Link>
+                  <>
+                    <Link href="/orders">
+                      <Button variant="outline" size="sm">
+                        <Package className="h-4 w-4 mr-2" />
+                        Orders
+                      </Button>
+                    </Link>
+                    <Link href="/wishlist">
+                      <Button variant="outline" size="sm">
+                        <Heart className="h-4 w-4 mr-2" />
+                        Wishlist
+                      </Button>
+                    </Link>
+                    <Link href="/customer">
+                      <Button variant="outline" size="sm">
+                        <User className="h-4 w-4 mr-2" />
+                        Account
+                      </Button>
+                    </Link>
+                  </>
                 )}
 
                 {/* Notifications */}
@@ -93,12 +122,34 @@ export function Navbar() {
                   <Bell className="h-4 w-4" />
                 </Button>
 
-                {/* Settings */}
-                <Link href="/settings">
-                  <Button variant="outline" size="sm">
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </Link>
+                {/* User Profile */}
+                <div className="flex items-center space-x-2">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage
+                      src={user?.image || undefined}
+                      alt={user?.name || "User"}
+                    />
+                    <AvatarFallback>
+                      {user?.name?.charAt(0)?.toUpperCase() || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="hidden md:block text-sm">
+                    <p className="font-medium text-gray-900">{user?.name}</p>
+                    <p className="text-gray-500 capitalize">
+                      {user?.activeRole?.toLowerCase()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Logout */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => signOut({ callbackUrl: "/" })}
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Logout
+                </Button>
               </div>
             ) : (
               <Link href="/auth/login">

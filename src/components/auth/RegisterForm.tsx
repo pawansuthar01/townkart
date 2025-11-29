@@ -68,17 +68,34 @@ export function RegisterForm() {
     if (!formData.confirmPassword) return "Please confirm your password";
     if (!formData.role) return "Please select a role";
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) return "Invalid email format";
+    // Enhanced email validation
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(formData.email))
+      return "Please enter a valid email address";
 
-    if (formData.password.length < 6)
-      return "Password must be at least 6 characters long";
+    // Enhanced password validation
+    if (formData.password.length < 8)
+      return "Password must be at least 8 characters long";
+    if (
+      !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/.test(
+        formData.password,
+      )
+    ) {
+      return "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character";
+    }
+
     if (formData.password !== formData.confirmPassword)
       return "Passwords do not match";
 
-    const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
+    // Enhanced phone validation
+    const phoneRegex = /^\+91[6-9]\d{9}$/;
     if (!phoneRegex.test(formData.phoneNumber))
-      return "Invalid phone number format";
+      return "Please enter a valid Indian phone number (e.g., +919876543210)";
+
+    // Name validation
+    const nameRegex = /^[a-zA-Z\s]+$/;
+    if (!nameRegex.test(formData.fullName.trim()))
+      return "Name can only contain letters and spaces";
 
     return null;
   };
@@ -104,7 +121,19 @@ export function RegisterForm() {
         role: formData.role,
       });
       if (result) {
-        router.push("/");
+        // Redirect based on role
+        switch (formData.role) {
+          case "MERCHANT":
+            router.push("/store/setup");
+            break;
+          case "RIDER":
+            router.push("/rider/setup");
+            break;
+          case "CUSTOMER":
+          default:
+            router.push("/");
+            break;
+        }
       } else {
         throw new Error("Registration failed");
       }
@@ -195,7 +224,7 @@ export function RegisterForm() {
               <Input
                 id="phoneNumber"
                 type="tel"
-                placeholder="+91 98765 43210"
+                placeholder="+919876543210"
                 value={formData.phoneNumber}
                 onChange={(e) =>
                   handleInputChange("phoneNumber", e.target.value)
@@ -247,7 +276,7 @@ export function RegisterForm() {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Create a password (min 6 characters)"
+                  placeholder="Create a password (min 8 characters, include uppercase, lowercase, number, special character)"
                   value={formData.password}
                   onChange={(e) =>
                     handleInputChange("password", e.target.value)

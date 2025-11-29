@@ -14,42 +14,59 @@ import {
   X,
   LogOut,
   Settings,
+  Heart,
 } from "lucide-react";
 import { useState } from "react";
 import { CartSidebar } from "@/components/shared/CartSidebar";
+import { HomeSidebar } from "@/components/layout/HomeSidebar";
+import { useWishlist } from "@/hooks/useWishlist";
+import { useScrollFixed } from "@/hooks/useScrollFixed";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export function Header() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { getCartSummary } = useCart();
   const { user, isAuthenticated, logout } = useAuth();
+  const { itemCount: wishlistCount } = useWishlist();
   const cartSummary = getCartSummary();
+  const isFixed = useScrollFixed(10);
 
   return (
-    <header className="bg-white shadow-sm border-b sticky top-0 z-50">
+    <header
+      className={`bg-white shadow-sm border-b z-50 ${isFixed ? "sticky top-0" : ""}`}
+    >
       <div className="w-full  pb-2 ">
         {/* Top Bar - Offers & Links */}
-        <div className="flex items-center px-3 py-2 text-white bg-townkart-primary justify-between text-sm mb-3">
-          <div className="flex items-center space-x-6">
-            <span className="flex items-center space-x-1">
+        <div className="flex items-center px-2 md:px-3 py-2 text-white bg-townkart-primary justify-between text-xs md:text-sm mb-3">
+          <div className="flex items-center space-x-1 md:space-x-6 overflow-x-auto flex-1 min-w-0">
+            <span className="flex items-center space-x-1 whitespace-nowrap flex-shrink-0">
               <span>🎉</span>
-              <span>Free delivery on orders above ₹499</span>
+              <span className="hidden sm:inline">
+                Free delivery on orders above ₹499
+              </span>
+              <span className="sm:hidden">Free delivery ₹499+</span>
             </span>
             <Link
               href="/offers"
-              className="hover:text-townkart-primary transition-colors"
+              className="hover:text-townkart-primary transition-colors whitespace-nowrap hidden sm:inline"
             >
               Special Offers
             </Link>
             <Link
               href="/categories"
-              className="hover:text-townkart-primary transition-colors"
+              className="hover:text-townkart-primary transition-colors whitespace-nowrap hidden sm:inline"
             >
               Categories
             </Link>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="hidden lg:flex items-center space-x-4 flex-shrink-0">
             <Link
               href="/merchant/join"
               className="hover:text-townkart-primary transition-colors"
@@ -113,6 +130,18 @@ export function Header() {
 
           {/* Cart & Auth */}
           <div className="flex items-center space-x-4">
+            <Link
+              href="/wishlist"
+              className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Heart className="h-5 w-5" />
+              {wishlistCount > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs bg-townkart-primary">
+                  {wishlistCount}
+                </Badge>
+              )}
+            </Link>
+
             <button
               onClick={() => setIsCartOpen(true)}
               className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -126,34 +155,40 @@ export function Header() {
             </button>
 
             {isAuthenticated ? (
-              <div className="flex items-center space-x-3">
-                {/* User Profile */}
-                <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 bg-townkart-primary rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                    {user?.name?.charAt(0)?.toUpperCase() || "U"}
-                  </div>
-                  <span className="text-sm font-medium text-gray-700 hidden md:block">
-                    {user?.name}
-                  </span>
-                </div>
-
-                {/* Settings */}
-                <Link href="/settings">
-                  <Button variant="outline" size="sm">
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </Link>
-
-                {/* Logout */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => logout()}
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center space-x-2 hover:bg-gray-100 rounded-lg p-2 transition-colors">
+                    <div className="w-8 h-8 bg-townkart-primary rounded-full flex items-center justify-center text-white text-sm font-semibold">
+                      {user?.name?.charAt(0)?.toUpperCase() || "U"}
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 hidden md:block">
+                      {user?.name}
+                    </span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem asChild>
+                    <Link
+                      href={
+                        user?.activeRole === "ADMIN"
+                          ? "/admin/profile"
+                          : `/${user?.activeRole?.toLowerCase()}/profile`
+                      }
+                      className="flex items-center space-x-2"
+                    >
+                      <User className="h-4 w-4" />
+                      <span>Profile</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => logout()}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Logout</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <Link href="/auth/login">
                 <Button variant="townkart">Login</Button>
@@ -162,10 +197,10 @@ export function Header() {
 
             {/* Mobile Menu Button */}
             <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className="md:hidden p-2"
             >
-              {isMenuOpen ? (
+              {isSidebarOpen ? (
                 <X className="h-6 w-6" />
               ) : (
                 <Menu className="h-6 w-6" />
@@ -188,85 +223,11 @@ export function Header() {
           </div>
         </div>
 
-        {/* Mobile Menu */}
-        {isMenuOpen && (
-          <div className="md:hidden mt-4 py-4 border-t bg-white">
-            <nav className="flex flex-col space-y-4">
-              <Link
-                href="/shops"
-                className="text-gray-700 hover:text-townkart-primary transition-colors py-2"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Shops
-              </Link>
-              <Link
-                href="/categories"
-                className="text-gray-700 hover:text-townkart-primary transition-colors py-2"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Categories
-              </Link>
-              <Link
-                href="/offers"
-                className="text-gray-700 hover:text-townkart-primary transition-colors py-2"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Offers
-              </Link>
-
-              {/* User Section in Mobile Menu */}
-              {isAuthenticated ? (
-                <div className="border-t pt-4 mt-4 space-y-4">
-                  <div className="flex items-center space-x-3 pb-3">
-                    <div className="w-10 h-10 bg-townkart-primary rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                      {user?.name?.charAt(0)?.toUpperCase() || "U"}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {user?.name}
-                      </p>
-                      <p className="text-xs text-gray-500 capitalize">
-                        {(user as any)?.activeRole?.toLowerCase()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <Link
-                    href="/settings"
-                    className="flex items-center space-x-3 text-gray-700 hover:text-townkart-primary transition-colors py-2"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <Settings className="h-4 w-4" />
-                    <span>Settings</span>
-                  </Link>
-
-                  <button
-                    onClick={() => {
-                      logout();
-                      setIsMenuOpen(false);
-                    }}
-                    className="flex items-center space-x-3 text-red-600 hover:text-red-700 transition-colors py-2 w-full text-left"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    <span>Logout</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="border-t pt-4 mt-4">
-                  <Link
-                    href="/auth/login"
-                    className="block w-full"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <Button className="w-full townkart-gradient hover:opacity-90">
-                      Login / Sign Up
-                    </Button>
-                  </Link>
-                </div>
-              )}
-            </nav>
-          </div>
-        )}
+        {/* Home Sidebar */}
+        <HomeSidebar
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+        />
       </div>
 
       {/* Cart Sidebar */}

@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 
 interface CartItem {
-  id: number;
+  id: string;
   name: string;
   price: number;
   image: string;
@@ -81,7 +81,7 @@ const cartSlice = createSlice({
       state.error = null;
     },
 
-    removeFromCart: (state, action: PayloadAction<number>) => {
+    removeFromCart: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter((item) => item.id !== action.payload);
       state.total = calculateTotal(state.items);
       state.lastUpdated = new Date().toISOString();
@@ -90,7 +90,7 @@ const cartSlice = createSlice({
 
     updateQuantity: (
       state,
-      action: PayloadAction<{ id: number; quantity: number }>,
+      action: PayloadAction<{ id: string; quantity: number }>,
     ) => {
       const { id, quantity } = action.payload;
       const item = state.items.find((item) => item.id === id);
@@ -111,7 +111,7 @@ const cartSlice = createSlice({
       }
     },
 
-    incrementQuantity: (state, action: PayloadAction<number>) => {
+    incrementQuantity: (state, action: PayloadAction<string>) => {
       const item = state.items.find((item) => item.id === action.payload);
 
       if (item) {
@@ -126,7 +126,7 @@ const cartSlice = createSlice({
       }
     },
 
-    decrementQuantity: (state, action: PayloadAction<number>) => {
+    decrementQuantity: (state, action: PayloadAction<string>) => {
       const item = state.items.find((item) => item.id === action.payload);
 
       if (item) {
@@ -160,7 +160,7 @@ const cartSlice = createSlice({
 
     updateCartItem: (
       state,
-      action: PayloadAction<{ id: number; updates: Partial<CartItem> }>,
+      action: PayloadAction<{ id: string; updates: Partial<CartItem> }>,
     ) => {
       const { id, updates } = action.payload;
       const item = state.items.find((item) => item.id === id);

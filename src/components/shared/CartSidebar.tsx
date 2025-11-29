@@ -32,7 +32,7 @@ export function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
   } = useCart();
   const cartSummary = getCartSummary();
 
-  const handleQuantityChange = (id: number, newQuantity: number) => {
+  const handleQuantityChange = (id: string, newQuantity: number) => {
     if (newQuantity <= 0) {
       removeItem(id);
     } else {

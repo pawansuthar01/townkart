@@ -9,12 +9,20 @@ import cartReducer from "./slices/cartSlice";
 import orderReducer from "./slices/orderSlice";
 import userReducer from "./slices/userSlice";
 import notificationReducer from "./slices/notificationSlice";
+import bannerReducer from "./slices/bannerSlice";
+import adReducer from "./slices/adSlice";
+import specialOfferReducer from "./slices/specialOfferSlice";
+import statsReducer from "./slices/statsSlice";
+import collectionReducer from "./slices/collectionSlice";
+import wishlistReducer from "./slices/wishlistSlice";
+import deliveryReducer from "./slices/deliverySlice";
+import adminReducer from "./slices/adminSlice";
 
 // Persist configuration
 const persistConfig = {
   key: "root",
   storage,
-  whitelist: ["auth", "cart", "user"], // Only persist these slices
+  whitelist: ["auth", "cart", "user", "wishlist"], // Only persist these slices
 };
 
 // Combine reducers
@@ -24,6 +32,14 @@ const rootReducer = combineReducers({
   orders: orderReducer,
   user: userReducer,
   notifications: notificationReducer,
+  banners: bannerReducer,
+  ads: adReducer,
+  specialOffers: specialOfferReducer,
+  stats: statsReducer,
+  collections: collectionReducer,
+  wishlist: wishlistReducer,
+  delivery: deliveryReducer,
+  admin: adminReducer,
 });
 
 // Create persisted reducer

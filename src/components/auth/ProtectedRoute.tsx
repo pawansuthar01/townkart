@@ -2,42 +2,42 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: string[];
+  requiredRoles?: string[];
   fallbackPath?: string;
 }
 
 export function ProtectedRoute({
   children,
-  requiredRole,
+  requiredRoles = [],
   fallbackPath = "/auth/login",
 }: ProtectedRouteProps) {
-  const { data: session, status } = useSession();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (status === "loading") return; // Still loading
+    if (isLoading) return; // Still loading
 
-    if (!session) {
+    if (!isAuthenticated) {
       router.push(fallbackPath);
       return;
     }
 
-    // Check role-based access
-    if (requiredRole && requiredRole.length > 0) {
-      const userRole = session.user?.activeRole;
-      if (!userRole || !requiredRole.includes(userRole)) {
+    // Check role-based access if required roles are specified
+    if (requiredRoles.length > 0) {
+      const userRole = user?.activeRole;
+      if (!userRole || !requiredRoles.includes(userRole)) {
         router.push("/unauthorized");
         return;
       }
     }
-  }, [session, status, requiredRole, router, fallbackPath]);
+  }, [user, isAuthenticated, isLoading, requiredRoles, fallbackPath, router]);
 
-  if (status === "loading") {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner className="h-8 w-8" />
@@ -45,14 +45,14 @@ export function ProtectedRoute({
     );
   }
 
-  if (!session) {
+  if (!isAuthenticated) {
     return null; // Will redirect
   }
 
-  // Check role-based access for rendering
-  if (requiredRole && requiredRole.length > 0) {
-    const userRole = session.user?.activeRole;
-    if (!userRole || !requiredRole.includes(userRole)) {
+  // Check role-based access
+  if (requiredRoles.length > 0) {
+    const userRole = user?.activeRole;
+    if (!userRole || !requiredRoles.includes(userRole)) {
       return null; // Will redirect
     }
   }

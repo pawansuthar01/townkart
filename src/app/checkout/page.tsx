@@ -25,6 +25,9 @@ import {
   CheckCircle,
   AlertCircle,
   ArrowLeft,
+  Gift,
+  Tag,
+  X,
 } from "lucide-react";
 
 interface Address {
@@ -84,17 +87,26 @@ export default function CheckoutPage() {
   // Order state
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [agreeToTerms, setAgreeToTerms] = useState(false);
+  const [orderError, setOrderError] = useState<{
+    message: string;
+    type?: string;
+  } | null>(null);
+
+  // Coupon state
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
 
   const cartSummary = getCartSummary();
   const cartValidation = validateCart();
 
   // Redirect if not authenticated
-  // useEffect(() => {
-  //   if (!isAuthenticated) {
-  //     router.push("/auth/login?redirect=/checkout");
-  //     return;
-  //   }
-  // }, [isAuthenticated, router]);
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push("/auth/login?redirect=/checkout");
+      return;
+    }
+  }, [isAuthenticated, router]);
 
   // Redirect if cart is empty
   useEffect(() => {
@@ -114,7 +126,7 @@ export default function CheckoutPage() {
           setAddresses(data.addresses || []);
           // Set default address if available
           const defaultAddr = data.addresses?.find(
-            (addr: Address) => addr.isDefault,
+            (addr: Address) => addr.isDefault
           );
           if (defaultAddr) {
             setSelectedAddressId(defaultAddr.id);
@@ -187,18 +199,54 @@ export default function CheckoutPage() {
 
     try {
       const selectedAddress = addresses.find(
-        (addr) => addr.id === selectedAddressId,
+        (addr) => addr.id === selectedAddressId
       );
 
+      if (!selectedAddress) {
+        alert("Selected address not found");
+        return;
+      }
+
+      // Transform cart items to order items format
+      const orderItems = items.map((item) => ({
+        productId: item.id, // This should be the actual product ID from cart
+        quantity: item.quantity,
+        unitPrice: item.price,
+        totalPrice: item.price * item.quantity,
+      }));
+
+      // Transform address to match API expectations
+      const orderAddress = {
+        fullName: user?.name || "Customer",
+        phoneNumber: (user as any)?.phoneNumber || user?.phoneNumber || "",
+        email: user?.email || "",
+        addressLine1: selectedAddress.line1,
+        addressLine2: selectedAddress.line2 || "",
+        city: selectedAddress.city,
+        state: selectedAddress.state,
+        pincode: selectedAddress.pincode,
+        landmark: selectedAddress.landmark || "",
+        type: selectedAddress.type,
+      };
+
+      // Map payment methods to enum values
+      const paymentMethodMap: { [key: string]: string } = {
+        cod: "CASH_ON_DELIVERY",
+        card: "CARD",
+        upi: "UPI",
+        wallet: "WALLET",
+      };
+
       const orderData = {
-        items: items.map((item) => ({
-          productId: item.id,
-          quantity: item.quantity,
-        })),
-        deliveryAddress: selectedAddress,
-        paymentMethod: selectedPaymentMethod,
+        customerId: user?.id,
+        items: orderItems,
+        address: orderAddress,
+        paymentMethod:
+          paymentMethodMap[selectedPaymentMethod] || "CASH_ON_DELIVERY",
+        deliveryCharge: cartSummary.deliveryFee,
+        discount: couponDiscount,
+        couponCode: appliedCoupon,
         specialInstructions,
-        totalAmount: cartSummary.total,
       };
 
       const response = await fetch("/api/orders", {
@@ -210,10 +258,13 @@ export default function CheckoutPage() {
       if (response.ok) {
         const data = await response.json();
         clearAllItems();
-        router.push(`/orders/${data.order.id}/success`);
+        router.push(`/orders/${data.id}`);
       } else {
         const error = await response.json();
-        alert(error.message || "Failed to place order");
+        setOrderError({
+          message: error.message || "Failed to place order",
+          type: error.type,
+        });
       }
     } catch (error) {
       console.error("Failed to place order:", error);
@@ -224,7 +275,7 @@ export default function CheckoutPage() {
   };
 
   const selectedAddress = addresses.find(
-    (addr) => addr.id === selectedAddressId,
+    (addr) => addr.id === selectedAddressId
   );
 
   if (!isAuthenticated) {
@@ -250,31 +301,58 @@ export default function CheckoutPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center space-x-2">
-              <div className="townkart-gradient p-2 rounded-lg">
-                <MapPin className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-2xl font-bold text-gray-900">TownKart</span>
-            </Link>
-            <Link href="/cart">
-              <Button variant="outline">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Cart
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+      {/* Back to Cart Button - Mobile First */}
+      <div className="bg-white border-b px-4 py-3 md:hidden">
+        <Link href="/cart">
+          <Button variant="outline" className="w-full">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Cart
+          </Button>
+        </Link>
+      </div>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-4 md:py-8">
         <div className="max-w-4xl mx-auto">
-          {/* Progress Steps */}
-          <div className="mb-8">
-            <div className="flex items-center justify-center space-x-8">
+          {/* Progress Steps - Mobile First */}
+          <div className="mb-6 md:mb-8">
+            {/* Mobile: Horizontal scrollable steps */}
+            <div className="md:hidden overflow-x-auto pb-2">
+              <div className="flex items-center justify-start space-x-4 min-w-max px-2">
+                {[
+                  { key: "address", label: "Address", icon: MapPin },
+                  { key: "payment", label: "Payment", icon: CreditCard },
+                  { key: "review", label: "Review", icon: CheckCircle },
+                ].map(({ key, label, icon: Icon }, index) => (
+                  <div
+                    key={key}
+                    className="flex flex-col items-center space-y-1 min-w-0"
+                  >
+                    <div
+                      className={`flex items-center justify-center w-8 h-8 rounded-full text-xs ${
+                        step === key
+                          ? "bg-townkart-primary text-white"
+                          : ["address", "payment", "review"].indexOf(step) >
+                              index
+                            ? "bg-green-500 text-white"
+                            : "bg-gray-200 text-gray-400"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <span
+                      className={`text-xs font-medium text-center ${
+                        step === key ? "text-townkart-primary" : "text-gray-600"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Desktop: Centered steps */}
+            <div className="hidden md:flex items-center justify-center space-x-8">
               {[
                 { key: "address", label: "Address", icon: MapPin },
                 { key: "payment", label: "Payment", icon: CreditCard },
@@ -305,9 +383,9 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          <div className="grid lg:grid-cols-3 gap-8">
+          <div className="grid lg:grid-cols-3 gap-4 md:gap-8">
             {/* Main Content */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="lg:col-span-2 space-y-4 md:space-y-6">
               {/* Address Step */}
               {step === "address" && (
                 <Card>
@@ -720,6 +798,26 @@ export default function CheckoutPage() {
                     </CardContent>
                   </Card>
 
+                  {/* Error Message */}
+                  {orderError && (
+                    <Alert className="border-red-200 bg-red-50">
+                      <AlertCircle className="h-4 w-4 text-red-600" />
+                      <AlertDescription className="text-red-800">
+                        {orderError.type === "SERVICE_AREA_UNAVAILABLE" ? (
+                          <div className="space-y-2">
+                            <p className="font-medium">{orderError.message}</p>
+                            <p className="text-sm">
+                              We're expanding our services to your area. Stay
+                              tuned for updates!
+                            </p>
+                          </div>
+                        ) : (
+                          <p>{orderError.message}</p>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   <div className="flex space-x-4">
                     <Button
                       variant="outline"
@@ -730,7 +828,10 @@ export default function CheckoutPage() {
                       Back
                     </Button>
                     <Button
-                      onClick={handlePlaceOrder}
+                      onClick={() => {
+                        setOrderError(null); // Clear previous error
+                        handlePlaceOrder();
+                      }}
                       disabled={!agreeToTerms || isLoading}
                       className="flex-1 btn-primary"
                       size="lg"
@@ -753,12 +854,99 @@ export default function CheckoutPage() {
             </div>
 
             {/* Order Summary Sidebar */}
-            <div className="space-y-6">
-              <Card className="sticky top-24">
+            <div className="space-y-4 md:space-y-6">
+              <Card className="md:sticky md:top-24">
                 <CardHeader>
                   <CardTitle>Order Summary</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Coupon Section */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Gift className="h-4 w-4 text-gray-500" />
+                      <span className="text-sm font-medium">
+                        Have a coupon?
+                      </span>
+                    </div>
+                    {!appliedCoupon ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Enter coupon code"
+                          value={couponCode}
+                          onChange={(e) =>
+                            setCouponCode(e.target.value.toUpperCase())
+                          }
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-townkart-primary focus:border-transparent"
+                        />
+                        <button
+                          onClick={async () => {
+                            if (couponCode) {
+                              try {
+                                const response = await fetch(
+                                  "/api/coupons/validate",
+                                  {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                      couponCode,
+                                      cartTotal: cartSummary.subtotal,
+                                      userId: user?.id,
+                                    }),
+                                  }
+                                );
+
+                                const data = await response.json();
+
+                                if (data.success) {
+                                  setAppliedCoupon(data.data.couponCode);
+                                  setCouponDiscount(data.data.discount);
+                                } else {
+                                  alert(data.message || "Invalid coupon code");
+                                }
+                              } catch (error) {
+                                console.error(
+                                  "Coupon validation error:",
+                                  error
+                                );
+                                alert(
+                                  "Failed to validate coupon. Please try again."
+                                );
+                              }
+                            }
+                          }}
+                          disabled={!couponCode}
+                          className="px-4 py-2 bg-townkart-primary text-white text-sm font-medium rounded-md hover:bg-townkart-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between bg-green-50 p-3 rounded-lg border border-green-200">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                          <span className="text-sm font-medium text-green-800">
+                            {appliedCoupon} applied
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setAppliedCoupon(null);
+                            setCouponDiscount(0);
+                            setCouponCode("");
+                          }}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <Separator />
+
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>Subtotal ({items.length} items)</span>
@@ -780,12 +968,20 @@ export default function CheckoutPage() {
                       <span>Tax (5%)</span>
                       <span>₹{cartSummary.tax.toFixed(2)}</span>
                     </div>
+                    {couponDiscount > 0 && (
+                      <div className="flex justify-between text-sm text-green-600">
+                        <span>Coupon Discount</span>
+                        <span>-₹{couponDiscount.toFixed(2)}</span>
+                      </div>
+                    )}
 
                     <Separator />
 
                     <div className="flex justify-between text-lg font-semibold">
                       <span>Total</span>
-                      <span>₹{cartSummary.total.toFixed(2)}</span>
+                      <span>
+                        ₹{(cartSummary.total - couponDiscount).toFixed(2)}
+                      </span>
                     </div>
                   </div>
 

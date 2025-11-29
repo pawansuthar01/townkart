@@ -6,11 +6,13 @@ import {
   updateQuantity,
   clearCart,
   setCartItems,
+  syncCartWithServer,
 } from "@/store/slices/cartSlice";
 import { RootState } from "@/store";
+import { useAuth } from "./useAuth";
 
 interface CartItem {
-  id: number;
+  id: string;
   name: string;
   price: number;
   image: string;
@@ -24,18 +26,23 @@ export const useCart = () => {
   const { items, total, isLoading } = useSelector(
     (state: RootState) => state.cart,
   );
+  const { isAuthenticated, user } = useAuth();
+  const [isAnimating, setIsAnimating] = useState(false);
 
   // Add item to cart (works without authentication)
   const addItem = useCallback(
     (item: CartItem) => {
       dispatch(addToCart(item));
+      // Trigger animation
+      setIsAnimating(true);
+      setTimeout(() => setIsAnimating(false), 1000);
     },
     [dispatch],
   );
 
   // Remove item from cart
   const removeItem = useCallback(
-    (itemId: number) => {
+    (itemId: string) => {
       dispatch(removeFromCart(itemId));
     },
     [dispatch],
@@ -43,7 +50,7 @@ export const useCart = () => {
 
   // Update item quantity
   const updateItemQuantity = useCallback(
-    (itemId: number, quantity: number) => {
+    (itemId: string, quantity: number) => {
       if (quantity <= 0) {
         dispatch(removeFromCart(itemId));
       } else {
@@ -60,7 +67,7 @@ export const useCart = () => {
 
   // Get item count
   const getItemCount = useCallback(
-    (itemId: number) => {
+    (itemId: string) => {
       const item = items.find((item) => item.id === itemId);
       return item?.quantity || 0;
     },
@@ -69,7 +76,7 @@ export const useCart = () => {
 
   // Check if item is in cart
   const isInCart = useCallback(
-    (itemId: number) => {
+    (itemId: string) => {
       return items.some((item) => item.id === itemId);
     },
     [items],
@@ -115,9 +122,18 @@ export const useCart = () => {
     localStorage.setItem("townkart_cart", JSON.stringify(items));
   }, [items]);
 
+  // Sync with server when user logs in
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      // For now, we'll keep the local cart and optionally sync with server later
+      // This could be extended to sync cart items with a user cart API
+      console.log("User logged in, cart persistence maintained locally");
+    }
+  }, [isAuthenticated, user]);
+
   // Validate cart items (check stock availability)
   const validateCart = useCallback(() => {
-    const invalidItems: number[] = [];
+    const invalidItems: string[] = [];
 
     items.forEach((item) => {
       if (item.quantity > item.stock) {
@@ -156,6 +172,7 @@ export const useCart = () => {
     items,
     total,
     isLoading,
+    isAnimating,
     itemCount: items.reduce((total, item) => total + item.quantity, 0),
 
     // Actions

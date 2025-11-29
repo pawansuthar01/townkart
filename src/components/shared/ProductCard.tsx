@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useCart } from "@/hooks/useCart";
+import { useWishlist } from "@/hooks/useWishlist";
 import { Heart, Star, Plus, Check } from "lucide-react";
 
 interface ProductCardProps {
@@ -31,14 +32,14 @@ interface ProductCardProps {
 
 export function ProductCard({ product, compact = false }: ProductCardProps) {
   const { addItem, isInCart } = useCart();
-  const [isWishlisted, setIsWishlisted] = useState(false);
+  const { toggleWishlist, isInWishlist } = useWishlist();
   const [isAdding, setIsAdding] = useState(false);
 
   const handleAddToCart = async () => {
     setIsAdding(true);
     try {
       addItem({
-        id: product.id,
+        id: product.id.toString(),
         name: product.name,
         price: product.price,
         image: product.image,
@@ -84,11 +85,20 @@ export function ProductCard({ product, compact = false }: ProductCardProps) {
             </Link>
 
             <button
-              onClick={() => setIsWishlisted(!isWishlisted)}
+              onClick={() =>
+                toggleWishlist({
+                  id: product.id.toString(),
+                  name: product.name,
+                  price: product.price,
+                  image: product.image,
+                  shop: product.shop,
+                  category: product.category,
+                })
+              }
               className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
             >
               <Heart
-                className={`h-4 w-4 ${isWishlisted ? "fill-red-500 text-red-500" : "text-gray-600"}`}
+                className={`h-4 w-4 ${isInWishlist(product.id.toString()) ? "fill-red-500 text-red-500" : "text-gray-600"}`}
               />
             </button>
           </div>
@@ -122,7 +132,7 @@ export function ProductCard({ product, compact = false }: ProductCardProps) {
               >
                 {isAdding ? (
                   <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
-                ) : isInCart(product.id) ? (
+                ) : isInCart(product.id.toString()) ? (
                   <Check className="h-3 w-3" />
                 ) : (
                   <Plus className="h-3 w-3" />
@@ -166,11 +176,20 @@ export function ProductCard({ product, compact = false }: ProductCardProps) {
           </Link>
 
           <button
-            onClick={() => setIsWishlisted(!isWishlisted)}
+            onClick={() =>
+              toggleWishlist({
+                id: product.id.toString(),
+                name: product.name,
+                price: product.price,
+                image: product.image,
+                shop: product.shop,
+                category: product.category,
+              })
+            }
             className="absolute top-3 right-3 p-2 bg-white/80 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
           >
             <Heart
-              className={`h-5 w-5 ${isWishlisted ? "fill-red-500 text-red-500" : "text-gray-600"}`}
+              className={`h-5 w-5 ${isInWishlist(product.id.toString()) ? "fill-red-500 text-red-500" : "text-gray-600"}`}
             />
           </button>
         </div>
@@ -224,7 +243,7 @@ export function ProductCard({ product, compact = false }: ProductCardProps) {
                   <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin mr-2" />
                   Adding...
                 </>
-              ) : isInCart(product.id) ? (
+              ) : isInCart(product.id.toString()) ? (
                 <>
                   <Check className="h-4 w-4 mr-2" />
                   Added

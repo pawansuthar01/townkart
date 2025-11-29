@@ -1,16 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { generateAccessToken, generateRefreshToken } from "@/lib/auth";
 import { verifyOtpSchema } from "@/lib/validation";
-
-const prisma = new PrismaClient();
+import { DeviceManager, LoginContext } from "@/lib/deviceManager";
+import { LocationService } from "@/lib/locationService";
+import { OTPService } from "@/lib/otpService";
+import { UserRole } from "@prisma/client";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { phoneNumber, otp } = verifyOtpSchema.parse(body);
+    const { phoneNumber, otp, deviceInfo, batteryLevel } =
+      verifyOtpSchema.parse(body);
 
-    // Find the OTP record
+    // Get client information
+    const clientIP =
+      request.headers.get("x-forwarded-for") ||
+      request.headers.get("x-real-ip") ||
+      "127.0.0.1";
+    const userAgent = request.headers.get("user-agent") || "";
+
+    // Parse device info from request
+    const parsedUA = LocationService.parseUserAgent(userAgent);
+    const deviceData = {
+      deviceId: deviceInfo?.deviceId || "unknown",
+      deviceName: deviceInfo?.deviceName,
+      deviceType: deviceInfo?.deviceType || parsedUA.deviceType,
+      os: deviceInfo?.os || parsedUA.os,
+      browser: deviceInfo?.browser || parsedUA.browser,
+      fingerprint: deviceInfo?.fingerprint,
+      batteryLevel: batteryLevel,
+    };
+
+    // Get location information
+    const locationInfo = await LocationService.getLocationFromIP(clientIP);
+
+    const loginContext: LoginContext = {
+      deviceInfo: deviceData,
+      locationInfo,
+      userAgent,
+    };
+
+    // Find the OTP record first to get the purpose
     const otpRecord = await prisma.oTP.findFirst({
       where: {
         phoneNumber,
@@ -26,6 +57,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (!otpRecord) {
+      return NextResponse.json(
+        { success: false, message: "Invalid or expired OTP" },
+        { status: 400 },
+      );
+    }
+
+    // Verify OTP using the new service (this will mark it as used)
+    const isValidOTP = await OTPService.verifyOTP(phoneNumber, otp);
+
+    if (!isValidOTP) {
       return NextResponse.json(
         { success: false, message: "Invalid or expired OTP" },
         { status: 400 },
@@ -58,14 +99,47 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Activate the user and verify phone
+      // Activate the user and verify phone, store registration location
       await prisma.user.update({
         where: { id: user.id },
         data: {
           phoneVerified: true,
           isActive: true,
+          registrationIP: loginContext.locationInfo.ip,
+          registrationLocation: {
+            country: loginContext.locationInfo.country,
+            city: loginContext.locationInfo.city,
+            region: loginContext.locationInfo.region,
+            lat: loginContext.locationInfo.lat,
+            lng: loginContext.locationInfo.lng,
+          },
         },
       });
+
+      // Get or create device record for new user
+      const device = await DeviceManager.getOrCreateDevice(
+        user.id,
+        loginContext.deviceInfo,
+        loginContext.locationInfo,
+      );
+
+      // Log registration/login
+      await DeviceManager.logDeviceLogin(
+        user.id,
+        loginContext.deviceInfo.deviceId,
+        "LOGIN",
+        loginContext,
+        "LOW",
+        ["First login after registration"],
+      );
+
+      // Send welcome notification
+      await DeviceManager.sendLoginNotification(
+        user.id,
+        loginContext.deviceInfo,
+        loginContext.locationInfo,
+        "LOGIN",
+      );
 
       isNewUser = true;
     } else if (otpRecord.purpose === "LOGIN") {
@@ -81,6 +155,8 @@ export async function POST(request: NextRequest) {
           activeRole: true,
           phoneVerified: true,
           isActive: true,
+          registrationIP: true,
+          registrationLocation: true,
         },
       });
 
@@ -100,13 +176,110 @@ export async function POST(request: NextRequest) {
           { status: 403 },
         );
       }
+
+      // Validate location if user has registration location
+      const locationValidation = await DeviceManager.validateLocation(
+        user.id,
+        loginContext.locationInfo,
+      );
+      if (!locationValidation.valid) {
+        // Log suspicious login attempt
+        await DeviceManager.logDeviceLogin(
+          user.id,
+          loginContext.deviceInfo.deviceId,
+          "LOGIN",
+          loginContext,
+          "HIGH",
+          [
+            `Login from different location: ${locationValidation.distance?.toFixed(1)}km away from registration location`,
+          ],
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Login blocked: You are trying to login from a location ${locationValidation.distance?.toFixed(1)}km away from your registration location. Please contact support if this is not you.`,
+          },
+          { status: 403 },
+        );
+      }
+
+      // Check device login restrictions
+      const deviceCheck = await DeviceManager.canLoginFromDevice(
+        user.id,
+        user.activeRole,
+        loginContext.deviceInfo.deviceId,
+      );
+
+      if (!deviceCheck.allowed) {
+        // Log failed login attempt
+        await DeviceManager.logDeviceLogin(
+          user.id,
+          loginContext.deviceInfo.deviceId,
+          "LOGIN",
+          loginContext,
+          "HIGH",
+          ["Multiple device login attempt blocked"],
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message: deviceCheck.reason,
+            existingDevices: deviceCheck.existingDevices,
+          },
+          { status: 403 },
+        );
+      }
+
+      // Force logout other devices for restricted roles
+      await DeviceManager.forceLogoutOtherDevices(
+        user.id,
+        loginContext.deviceInfo.deviceId,
+        user.activeRole,
+      );
+
+      // Get or create device record
+      const device = await DeviceManager.getOrCreateDevice(
+        user.id,
+        loginContext.deviceInfo,
+        loginContext.locationInfo,
+      );
+
+      // Log successful login
+      await DeviceManager.logDeviceLogin(
+        user.id,
+        loginContext.deviceInfo.deviceId,
+        "LOGIN",
+        loginContext,
+        locationValidation.distance && locationValidation.distance > 10
+          ? "MEDIUM"
+          : "LOW",
+      );
+
+      // Send login notifications
+      await DeviceManager.sendLoginNotification(
+        user.id,
+        loginContext.deviceInfo,
+        loginContext.locationInfo,
+        "LOGIN",
+      );
+
+      // Send admin notification if admin logs in
+      if (user.activeRole === "ADMIN") {
+        await DeviceManager.sendAdminLoginNotification(
+          user.id,
+          user.fullName || user.phoneNumber,
+        );
+      }
     }
 
-    // Mark OTP as used
-    await prisma.oTP.update({
-      where: { id: otpRecord.id },
-      data: { isUsed: true },
-    });
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: "User not found. Please register first." },
+        { status: 404 },
+      );
+    }
 
     // Generate tokens
     const accessToken = generateAccessToken({
@@ -118,6 +291,37 @@ export async function POST(request: NextRequest) {
     const refreshToken = generateRefreshToken({
       userId: user.id,
       phoneNumber: user.phoneNumber,
+    });
+
+    // Update user login info
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastLoginAt: new Date(),
+        lastLoginIP: loginContext.locationInfo.ip,
+        lastLoginDevice: loginContext.deviceInfo.deviceId,
+      },
+    });
+
+    // Create session with device tracking
+    const session = await prisma.session.create({
+      data: {
+        userId: user.id,
+        sessionToken: accessToken,
+        accessToken,
+        refreshToken,
+        deviceId: loginContext.deviceInfo.deviceId,
+        ipAddress: loginContext.locationInfo.ip,
+        userAgent: loginContext.userAgent,
+        location: {
+          country: loginContext.locationInfo.country,
+          city: loginContext.locationInfo.city,
+          region: loginContext.locationInfo.region,
+          lat: loginContext.locationInfo.lat,
+          lng: loginContext.locationInfo.lng,
+        },
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+      },
     });
 
     // Clean up expired OTPs for this phone number

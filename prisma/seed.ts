@@ -1,1088 +1,1085 @@
-import {
-  PrismaClient,
-  UserRole,
-  OrderStatus,
-  PaymentStatus,
-  PaymentMethod,
-  DeliveryStatus,
-  AddressType,
-  NotificationType,
-  TransactionType,
-} from "@prisma/client";
+// prisma/seed.ts
+import { prisma } from "@/lib/prisma";
+import { hashPassword } from "@/lib/auth";
 
-const prisma = new PrismaClient();
-
-async function main() {
-  console.log("🌱 Starting comprehensive database seeding...");
-
-  // Create admin user
-  const adminUser = await prisma.user.upsert({
-    where: { phoneNumber: "+919876543210" },
-    update: {},
-    create: {
-      phoneNumber: "+919876543210",
-      fullName: "TownKart Admin",
-      email: "admin@townkart.com",
-      userRoles: [UserRole.ADMIN],
-      activeRole: UserRole.ADMIN,
-      emailVerified: true,
-      phoneVerified: true,
-    },
-  });
-
-  // Create multiple merchants with diverse categories
-  const merchants = await Promise.all([
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543211" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543211",
-        fullName: "Rajesh Kumar",
-        email: "rajesh.kumar@townkart.com",
-        userRoles: [UserRole.MERCHANT],
-        activeRole: UserRole.MERCHANT,
-        emailVerified: true,
-        phoneVerified: true,
-        merchantProfile: {
-          create: {
-            businessName: "Fresh Mart Grocery",
-            description:
-              "Your neighborhood grocery store with fresh produce and daily essentials. We source directly from local farmers to ensure quality and freshness.",
-            address: "123 MG Road, Bangalore, Karnataka 560001",
-            latitude: 12.9716,
-            longitude: 77.5946,
-            category: "Grocery",
-            subcategory: "Supermarket",
-            openingHours: "09:00",
-            closingHours: "21:00",
-            isVerified: true,
-            averageRating: 4.5,
-            totalOrders: 1250,
-          },
-        },
-      },
-    }),
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543212" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543212",
-        fullName: "Priya Sharma",
-        email: "priya.sharma@townkart.com",
-        userRoles: [UserRole.MERCHANT],
-        activeRole: UserRole.MERCHANT,
-        emailVerified: true,
-        phoneVerified: true,
-        merchantProfile: {
-          create: {
-            businessName: "Healthy Bites Cafe",
-            description:
-              "Healthy and delicious meals prepared with fresh ingredients. Specializing in salads, smoothies, and nutritious meals.",
-            address: "456 Brigade Road, Bangalore, Karnataka 560025",
-            latitude: 12.9719,
-            longitude: 77.6123,
-            category: "Food",
-            subcategory: "Cafe",
-            openingHours: "08:00",
-            closingHours: "22:00",
-            isVerified: true,
-            averageRating: 4.7,
-            totalOrders: 890,
-          },
-        },
-      },
-    }),
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543216" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543216",
-        fullName: "Dr. Meera Pharmacy",
-        email: "meera.pharmacy@townkart.com",
-        userRoles: [UserRole.MERCHANT],
-        activeRole: UserRole.MERCHANT,
-        emailVerified: true,
-        phoneVerified: true,
-        merchantProfile: {
-          create: {
-            businessName: "City Pharmacy",
-            description:
-              "Licensed pharmacy with 24/7 emergency services. All medicines available with prescription upload facility.",
-            address: "789 Residency Road, Bangalore, Karnataka 560025",
-            latitude: 12.9724,
-            longitude: 77.6131,
-            category: "Medicine",
-            subcategory: "Pharmacy",
-            openingHours: "00:00",
-            closingHours: "23:59",
-            isVerified: true,
-            averageRating: 4.8,
-            totalOrders: 650,
-          },
-        },
-      },
-    }),
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543217" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543217",
-        fullName: "Rahul Electronics",
-        email: "rahul.electronics@townkart.com",
-        userRoles: [UserRole.MERCHANT],
-        activeRole: UserRole.MERCHANT,
-        emailVerified: true,
-        phoneVerified: true,
-        merchantProfile: {
-          create: {
-            businessName: "TechHub Electronics",
-            description:
-              "Latest electronics, smartphones, and gadgets with warranty and free installation services.",
-            address: "321 Commercial Street, Bangalore, Karnataka 560001",
-            latitude: 12.9709,
-            longitude: 77.5933,
-            category: "Electronics",
-            subcategory: "Gadgets",
-            openingHours: "10:00",
-            closingHours: "20:00",
-            isVerified: true,
-            averageRating: 4.6,
-            totalOrders: 420,
-          },
-        },
-      },
-    }),
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543218" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543218",
-        fullName: "Sneha Fashion",
-        email: "sneha.fashion@townkart.com",
-        userRoles: [UserRole.MERCHANT],
-        activeRole: UserRole.MERCHANT,
-        emailVerified: true,
-        phoneVerified: true,
-        merchantProfile: {
-          create: {
-            businessName: "StyleHub Fashion",
-            description:
-              "Trendy fashion and lifestyle products. Free shipping on orders above ₹999.",
-            address: "654 Mall Road, Bangalore, Karnataka 560001",
-            latitude: 12.9721,
-            longitude: 77.5942,
-            category: "Fashion",
-            subcategory: "Clothing",
-            openingHours: "11:00",
-            closingHours: "21:00",
-            isVerified: true,
-            averageRating: 4.4,
-            totalOrders: 780,
-          },
-        },
-      },
-    }),
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543219" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543219",
-        fullName: "Vikram Home",
-        email: "vikram.home@townkart.com",
-        userRoles: [UserRole.MERCHANT],
-        activeRole: UserRole.MERCHANT,
-        emailVerified: true,
-        phoneVerified: true,
-        merchantProfile: {
-          create: {
-            businessName: "Home Essentials",
-            description:
-              "Home and kitchen essentials, furniture, and decor items for modern living.",
-            address: "987 Industrial Area, Bangalore, Karnataka 560001",
-            latitude: 12.9711,
-            longitude: 77.5955,
-            category: "Household",
-            subcategory: "Home Decor",
-            openingHours: "09:00",
-            closingHours: "19:00",
-            isVerified: true,
-            averageRating: 4.3,
-            totalOrders: 320,
-          },
-        },
-      },
-    }),
-  ]);
-
-  // Create multiple riders
-  const riders = await Promise.all([
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543213" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543213",
-        fullName: "Amit Singh",
-        email: "amit.singh@townkart.com",
-        userRoles: [UserRole.RIDER],
-        activeRole: UserRole.RIDER,
-        emailVerified: true,
-        phoneVerified: true,
-        riderProfile: {
-          create: {
-            vehicleType: "bike",
-            vehicleNumber: "KA01AB1234",
-            licenseNumber: "DL123456789",
-            isAvailable: true,
-            currentLat: 12.9716,
-            currentLng: 77.5946,
-            rating: 4.8,
-            totalDeliveries: 150,
-          },
-        },
-      },
-    }),
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543214" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543214",
-        fullName: "Sneha Patel",
-        email: "sneha.patel@townkart.com",
-        userRoles: [UserRole.RIDER],
-        activeRole: UserRole.RIDER,
-        emailVerified: true,
-        phoneVerified: true,
-        riderProfile: {
-          create: {
-            vehicleType: "scooter",
-            vehicleNumber: "KA02CD5678",
-            licenseNumber: "DL987654321",
-            isAvailable: true,
-            currentLat: 12.9719,
-            currentLng: 77.6123,
-            rating: 4.9,
-            totalDeliveries: 200,
-          },
-        },
-      },
-    }),
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543220" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543220",
-        fullName: "Karan Joshi",
-        email: "karan.joshi@townkart.com",
-        userRoles: [UserRole.RIDER],
-        activeRole: UserRole.RIDER,
-        emailVerified: true,
-        phoneVerified: true,
-        riderProfile: {
-          create: {
-            vehicleType: "bike",
-            vehicleNumber: "KA03EF9012",
-            licenseNumber: "DL456789123",
-            isAvailable: true,
-            currentLat: 12.9724,
-            currentLng: 77.6131,
-            rating: 4.7,
-            totalDeliveries: 180,
-          },
-        },
-      },
-    }),
-  ]);
-
-  // Create multiple customers with addresses
-  const customers = await Promise.all([
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543215" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543215",
-        fullName: "Arun Kumar",
-        email: "arun.kumar@email.com",
-        userRoles: [UserRole.CUSTOMER],
-        activeRole: UserRole.CUSTOMER,
-        emailVerified: true,
-        phoneVerified: true,
-        customerProfile: {
-          create: {},
-        },
-        addresses: {
-          create: [
-            {
-              line1: "789 Park Street, Richmond Town",
-              city: "Bangalore",
-              state: "Karnataka",
-              pincode: "560025",
-              latitude: 12.9716,
-              longitude: 77.5946,
-              addressType: AddressType.HOME,
-              isDefault: true,
-            },
-            {
-              line1: "456 Brigade Towers, Brigade Road",
-              city: "Bangalore",
-              state: "Karnataka",
-              pincode: "560025",
-              latitude: 12.9719,
-              longitude: 77.6123,
-              addressType: AddressType.WORK,
-              isDefault: false,
-            },
-          ],
-        },
-      },
-    }),
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543221" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543221",
-        fullName: "Priya Singh",
-        email: "priya.singh@email.com",
-        userRoles: [UserRole.CUSTOMER],
-        activeRole: UserRole.CUSTOMER,
-        emailVerified: true,
-        phoneVerified: true,
-        customerProfile: {
-          create: {},
-        },
-        addresses: {
-          create: [
-            {
-              line1: "321 MG Road, Near Trinity Circle",
-              city: "Bangalore",
-              state: "Karnataka",
-              pincode: "560001",
-              latitude: 12.9721,
-              longitude: 77.5942,
-              addressType: AddressType.HOME,
-              isDefault: true,
-            },
-          ],
-        },
-      },
-    }),
-    prisma.user.upsert({
-      where: { phoneNumber: "+919876543222" },
-      update: {},
-      create: {
-        phoneNumber: "+919876543222",
-        fullName: "Rohit Sharma",
-        email: "rohit.sharma@email.com",
-        userRoles: [UserRole.CUSTOMER],
-        activeRole: UserRole.CUSTOMER,
-        emailVerified: true,
-        phoneVerified: true,
-        customerProfile: {
-          create: {},
-        },
-        addresses: {
-          create: [
-            {
-              line1: "654 Residency Road, Opposite Bowring Hospital",
-              city: "Bangalore",
-              state: "Karnataka",
-              pincode: "560025",
-              latitude: 12.9724,
-              longitude: 77.6131,
-              addressType: AddressType.HOME,
-              isDefault: true,
-            },
-          ],
-        },
-      },
-    }),
-  ]);
-
-  // Create comprehensive products for each merchant
-  const products = [];
-
-  // Grocery products
-  const groceryProducts = await Promise.all([
-    prisma.product.upsert({
-      where: { id: "prod-grocery-1" },
-      update: {},
-      create: {
-        id: "prod-grocery-1",
-        merchantId: merchants[0].merchantProfile!.id,
-        name: "Fresh Organic Tomatoes",
-        description:
-          "Premium organic red tomatoes, 1kg pack. Grown without pesticides.",
-        price: 40.0,
-        discountedPrice: 35.0,
-        stockQuantity: 50,
-        category: "Vegetables",
-        subcategory: "Fresh Produce",
-        images: [
-          "https://images.unsplash.com/photo-1546470427-e9e826abd807?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-    prisma.product.upsert({
-      where: { id: "prod-grocery-2" },
-      update: {},
-      create: {
-        id: "prod-grocery-2",
-        merchantId: merchants[0].merchantProfile!.id,
-        name: "Whole Wheat Bread",
-        description: "Freshly baked whole wheat bread, 400g. No preservatives.",
-        price: 35.0,
-        stockQuantity: 30,
-        category: "Bakery",
-        subcategory: "Bread",
-        images: [
-          "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-    prisma.product.upsert({
-      where: { id: "prod-grocery-3" },
-      update: {},
-      create: {
-        id: "prod-grocery-3",
-        merchantId: merchants[0].merchantProfile!.id,
-        name: "Organic Milk 1L",
-        description: "Fresh organic cow milk, pasteurized and homogenized.",
-        price: 65.0,
-        stockQuantity: 25,
-        category: "Dairy",
-        subcategory: "Milk",
-        images: [
-          "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-    prisma.product.upsert({
-      where: { id: "prod-grocery-4" },
-      update: {},
-      create: {
-        id: "prod-grocery-4",
-        merchantId: merchants[0].merchantProfile!.id,
-        name: "Premium Basmati Rice 5kg",
-        description: "Long grain basmati rice, aged for perfect cooking.",
-        price: 450.0,
-        discountedPrice: 420.0,
-        stockQuantity: 15,
-        category: "Grains",
-        subcategory: "Rice",
-        images: [
-          "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-  ]);
-
-  // Food products
-  const foodProducts = await Promise.all([
-    prisma.product.upsert({
-      where: { id: "prod-food-1" },
-      update: {},
-      create: {
-        id: "prod-food-1",
-        merchantId: merchants[1].merchantProfile!.id,
-        name: "Grilled Chicken Salad",
-        description:
-          "Healthy grilled chicken salad with mixed greens, cherry tomatoes, and balsamic dressing.",
-        price: 180.0,
-        stockQuantity: 20,
-        category: "Food",
-        subcategory: "Salads",
-        images: [
-          "https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-    prisma.product.upsert({
-      where: { id: "prod-food-2" },
-      update: {},
-      create: {
-        id: "prod-food-2",
-        merchantId: merchants[1].merchantProfile!.id,
-        name: "Quinoa Buddha Bowl",
-        description:
-          "Nutritious bowl with quinoa, roasted vegetables, avocado, and tahini dressing.",
-        price: 220.0,
-        stockQuantity: 15,
-        category: "Food",
-        subcategory: "Healthy Bowls",
-        images: [
-          "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-    prisma.product.upsert({
-      where: { id: "prod-food-3" },
-      update: {},
-      create: {
-        id: "prod-food-3",
-        merchantId: merchants[1].merchantProfile!.id,
-        name: "Green Smoothie Bowl",
-        description:
-          "Refreshing smoothie bowl with spinach, banana, almond milk, and topped with granola.",
-        price: 150.0,
-        stockQuantity: 18,
-        category: "Food",
-        subcategory: "Smoothies",
-        images: [
-          "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-  ]);
-
-  // Medicine products
-  const medicineProducts = await Promise.all([
-    prisma.product.upsert({
-      where: { id: "prod-medicine-1" },
-      update: {},
-      create: {
-        id: "prod-medicine-1",
-        merchantId: merchants[2].merchantProfile!.id,
-        name: "Paracetamol Tablets 500mg",
-        description: "Pain relief and fever reducer. 10 tablets per strip.",
-        price: 25.0,
-        stockQuantity: 100,
-        category: "Medicine",
-        subcategory: "Pain Relief",
-        images: [
-          "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-    prisma.product.upsert({
-      where: { id: "prod-medicine-2" },
-      update: {},
-      create: {
-        id: "prod-medicine-2",
-        merchantId: merchants[2].merchantProfile!.id,
-        name: "Vitamin D3 Supplements",
-        description:
-          "60 capsules, 1000 IU each. Supports bone health and immunity.",
-        price: 450.0,
-        discountedPrice: 400.0,
-        stockQuantity: 30,
-        category: "Medicine",
-        subcategory: "Supplements",
-        images: [
-          "https://images.unsplash.com/photo-1550572017-edd951aa8ca9?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-  ]);
-
-  // Electronics products
-  const electronicsProducts = await Promise.all([
-    prisma.product.upsert({
-      where: { id: "prod-electronics-1" },
-      update: {},
-      create: {
-        id: "prod-electronics-1",
-        merchantId: merchants[3].merchantProfile!.id,
-        name: "Wireless Bluetooth Headphones",
-        description:
-          "Premium wireless headphones with noise cancellation and 30-hour battery life.",
-        price: 2499.0,
-        discountedPrice: 2199.0,
-        stockQuantity: 12,
-        category: "Electronics",
-        subcategory: "Audio",
-        images: [
-          "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-    prisma.product.upsert({
-      where: { id: "prod-electronics-2" },
-      update: {},
-      create: {
-        id: "prod-electronics-2",
-        merchantId: merchants[3].merchantProfile!.id,
-        name: "Smart Fitness Watch",
-        description:
-          "Track your fitness with heart rate monitoring, GPS, and 7-day battery life.",
-        price: 5999.0,
-        discountedPrice: 5499.0,
-        stockQuantity: 8,
-        category: "Electronics",
-        subcategory: "Wearables",
-        images: [
-          "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-  ]);
-
-  // Fashion products
-  const fashionProducts = await Promise.all([
-    prisma.product.upsert({
-      where: { id: "prod-fashion-1" },
-      update: {},
-      create: {
-        id: "prod-fashion-1",
-        merchantId: merchants[4].merchantProfile!.id,
-        name: "Cotton Summer Dress",
-        description:
-          "Light and comfortable cotton dress, perfect for summer. Available in multiple colors.",
-        price: 1299.0,
-        discountedPrice: 999.0,
-        stockQuantity: 15,
-        category: "Fashion",
-        subcategory: "Dresses",
-        images: [
-          "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-    prisma.product.upsert({
-      where: { id: "prod-fashion-2" },
-      update: {},
-      create: {
-        id: "prod-fashion-2",
-        merchantId: merchants[4].merchantProfile!.id,
-        name: "Running Shoes",
-        description:
-          "Comfortable running shoes with advanced cushioning and breathable material.",
-        price: 2999.0,
-        discountedPrice: 2499.0,
-        stockQuantity: 20,
-        category: "Fashion",
-        subcategory: "Footwear",
-        images: [
-          "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-  ]);
-
-  // Household products
-  const householdProducts = await Promise.all([
-    prisma.product.upsert({
-      where: { id: "prod-household-1" },
-      update: {},
-      create: {
-        id: "prod-household-1",
-        merchantId: merchants[5].merchantProfile!.id,
-        name: "LED Desk Lamp",
-        description:
-          "Modern LED desk lamp with adjustable brightness and USB charging port.",
-        price: 1299.0,
-        discountedPrice: 1099.0,
-        stockQuantity: 25,
-        category: "Household",
-        subcategory: "Lighting",
-        images: [
-          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-    prisma.product.upsert({
-      where: { id: "prod-household-2" },
-      update: {},
-      create: {
-        id: "prod-household-2",
-        merchantId: merchants[5].merchantProfile!.id,
-        name: "Yoga Mat Premium",
-        description:
-          "Non-slip yoga mat with carrying strap, perfect for home workouts.",
-        price: 899.0,
-        stockQuantity: 30,
-        category: "Household",
-        subcategory: "Fitness",
-        images: [
-          "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=400&h=300&fit=crop",
-        ],
-        isAvailable: true,
-      },
-    }),
-  ]);
-
-  // Combine all products
-  products.push(
-    ...groceryProducts,
-    ...foodProducts,
-    ...medicineProducts,
-    ...electronicsProducts,
-    ...fashionProducts,
-    ...householdProducts,
+if (process.env.FORCE_SEED !== "true") {
+  console.error(
+    "✋ Seeder refused to run. To run seeder set environment variable FORCE_SEED=true"
   );
-
-  // Create sample orders with different statuses
-  const orders = await Promise.all([
-    // Order 1: Delivered
-    prisma.order.upsert({
-      where: { id: "order-1" },
-      update: {},
-      create: {
-        id: "order-1",
-        orderNumber: "TK2024001",
-        customerId: customers[0].id,
-        merchantId: merchants[0].merchantProfile!.id,
-        totalAmount: 75.0,
-        deliveryFee: 20.0,
-        taxAmount: 7.5,
-        finalAmount: 102.5,
-        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
-        paymentStatus: PaymentStatus.COMPLETED,
-        orderStatus: OrderStatus.DELIVERED,
-        deliveryAddress: {
-          line1: "789 Park Street, Richmond Town",
-          city: "Bangalore",
-          state: "Karnataka",
-          pincode: "560025",
-        },
-        deliveredAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-        orderItems: {
-          create: [
-            {
-              productId: groceryProducts[0].id,
-              productSnapshot: {
-                name: groceryProducts[0].name,
-                price: groceryProducts[0].price,
-                description: groceryProducts[0].description,
-              },
-              quantity: 1,
-              unitPrice: 40.0,
-              subtotal: 40.0,
-            },
-            {
-              productId: groceryProducts[1].id,
-              productSnapshot: {
-                name: groceryProducts[1].name,
-                price: groceryProducts[1].price,
-                description: groceryProducts[1].description,
-              },
-              quantity: 1,
-              unitPrice: 35.0,
-              subtotal: 35.0,
-            },
-          ],
-        },
-      },
-    }),
-    // Order 2: In Progress
-    prisma.order.upsert({
-      where: { id: "order-2" },
-      update: {},
-      create: {
-        id: "order-2",
-        orderNumber: "TK2024002",
-        customerId: customers[1].id,
-        merchantId: merchants[1].merchantProfile!.id,
-        totalAmount: 180.0,
-        deliveryFee: 20.0,
-        taxAmount: 18.0,
-        finalAmount: 218.0,
-        paymentMethod: PaymentMethod.UPI,
-        paymentStatus: PaymentStatus.COMPLETED,
-        orderStatus: OrderStatus.OUT_FOR_DELIVERY,
-        deliveryAddress: {
-          line1: "321 MG Road, Near Trinity Circle",
-          city: "Bangalore",
-          state: "Karnataka",
-          pincode: "560001",
-        },
-        orderItems: {
-          create: [
-            {
-              productId: foodProducts[0].id,
-              productSnapshot: {
-                name: foodProducts[0].name,
-                price: foodProducts[0].price,
-                description: foodProducts[0].description,
-              },
-              quantity: 1,
-              unitPrice: 180.0,
-              subtotal: 180.0,
-            },
-          ],
-        },
-      },
-    }),
-    // Order 3: Preparing
-    prisma.order.upsert({
-      where: { id: "order-3" },
-      update: {},
-      create: {
-        id: "order-3",
-        orderNumber: "TK2024003",
-        customerId: customers[2].id,
-        merchantId: merchants[2].merchantProfile!.id,
-        totalAmount: 25.0,
-        deliveryFee: 20.0,
-        taxAmount: 2.5,
-        finalAmount: 47.5,
-        paymentMethod: PaymentMethod.CARD,
-        paymentStatus: PaymentStatus.COMPLETED,
-        orderStatus: OrderStatus.PREPARING,
-        deliveryAddress: {
-          line1: "654 Residency Road, Opposite Bowring Hospital",
-          city: "Bangalore",
-          state: "Karnataka",
-          pincode: "560025",
-        },
-        orderItems: {
-          create: [
-            {
-              productId: medicineProducts[0].id,
-              productSnapshot: {
-                name: medicineProducts[0].name,
-                price: medicineProducts[0].price,
-                description: medicineProducts[0].description,
-              },
-              quantity: 1,
-              unitPrice: 25.0,
-              subtotal: 25.0,
-            },
-          ],
-        },
-      },
-    }),
-  ]);
-
-  // Create deliveries for orders
-  await Promise.all([
-    prisma.delivery.upsert({
-      where: { orderId: orders[0].id },
-      update: {},
-      create: {
-        orderId: orders[0].id,
-        riderId: riders[0].riderProfile!.id,
-        pickupTime: new Date(Date.now() - 3 * 60 * 60 * 1000),
-        deliveryTime: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        pickupOtp: "1234",
-        deliveryOtp: "5678",
-        deliveryStatus: DeliveryStatus.DELIVERED,
-        distanceKm: 2.5,
-        deliveryFee: 20.0,
-      },
-    }),
-    prisma.delivery.upsert({
-      where: { orderId: orders[1].id },
-      update: {},
-      create: {
-        orderId: orders[1].id,
-        riderId: riders[1].riderProfile!.id,
-        pickupTime: new Date(Date.now() - 30 * 60 * 1000),
-        pickupOtp: "9876",
-        deliveryOtp: "5432",
-        deliveryStatus: DeliveryStatus.OUT_FOR_DELIVERY,
-        distanceKm: 1.8,
-        deliveryFee: 20.0,
-      },
-    }),
-    prisma.delivery.upsert({
-      where: { orderId: orders[2].id },
-      update: {},
-      create: {
-        orderId: orders[2].id,
-        riderId: riders[2].riderProfile!.id,
-        pickupOtp: "2468",
-        deliveryOtp: "1357",
-        deliveryStatus: DeliveryStatus.ASSIGNED,
-        distanceKm: 3.2,
-        deliveryFee: 20.0,
-      },
-    }),
-  ]);
-
-  // Create payments for orders
-  await Promise.all([
-    prisma.payment.upsert({
-      where: { orderId: orders[0].id },
-      update: {},
-      create: {
-        orderId: orders[0].id,
-        amount: 102.5,
-        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
-        paymentStatus: PaymentStatus.COMPLETED,
-        completedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-      },
-    }),
-    prisma.payment.upsert({
-      where: { orderId: orders[1].id },
-      update: {},
-      create: {
-        orderId: orders[1].id,
-        amount: 218.0,
-        paymentMethod: PaymentMethod.UPI,
-        transactionId: "UPI123456789",
-        paymentStatus: PaymentStatus.COMPLETED,
-        completedAt: new Date(Date.now() - 1 * 60 * 60 * 1000),
-      },
-    }),
-    prisma.payment.upsert({
-      where: { orderId: orders[2].id },
-      update: {},
-      create: {
-        orderId: orders[2].id,
-        amount: 47.5,
-        paymentMethod: PaymentMethod.CARD,
-        transactionId: "CARD987654321",
-        paymentStatus: PaymentStatus.COMPLETED,
-        completedAt: new Date(Date.now() - 30 * 60 * 1000),
-      },
-    }),
-  ]);
-
-  // Create reviews for completed orders
-  await prisma.review.upsert({
-    where: { orderId: orders[0].id },
-    update: {},
-    create: {
-      orderId: orders[0].id,
-      customerId: customers[0].id,
-      merchantId: merchants[0].merchantProfile!.id,
-      riderId: riders[0].riderProfile!.id,
-      merchantRating: 5,
-      riderRating: 5,
-      comment: "Excellent service! Fresh products and quick delivery.",
-    },
-  });
-
-  // Create wallets for merchants and riders
-  await Promise.all([
-    prisma.wallet.upsert({
-      where: { userId: merchants[0].id },
-      update: {},
-      create: {
-        userId: merchants[0].id,
-        userType: "merchant",
-        currentBalance: 5000.0,
-        totalEarned: 5000.0,
-      },
-    }),
-    prisma.wallet.upsert({
-      where: { userId: merchants[1].id },
-      update: {},
-      create: {
-        userId: merchants[1].id,
-        userType: "merchant",
-        currentBalance: 3200.0,
-        totalEarned: 3200.0,
-      },
-    }),
-    prisma.wallet.upsert({
-      where: { userId: riders[0].id },
-      update: {},
-      create: {
-        userId: riders[0].id,
-        userType: "rider",
-        currentBalance: 2500.0,
-        totalEarned: 2500.0,
-      },
-    }),
-    prisma.wallet.upsert({
-      where: { userId: riders[1].id },
-      update: {},
-      create: {
-        userId: riders[1].id,
-        userType: "rider",
-        currentBalance: 1800.0,
-        totalEarned: 1800.0,
-      },
-    }),
-  ]);
-
-  // Create wallet transactions
-  await Promise.all([
-    prisma.walletTransaction.create({
-      data: {
-        walletId: merchants[0].wallet!.id,
-        orderId: orders[0].id,
-        amount: 75.0,
-        transactionType: TransactionType.CREDIT,
-        description: "Commission from order TK2024001",
-        balanceAfter: 5000.0,
-      },
-    }),
-    prisma.walletTransaction.create({
-      data: {
-        walletId: riders[0].wallet!.id,
-        orderId: orders[0].id,
-        amount: 20.0,
-        transactionType: TransactionType.CREDIT,
-        description: "Delivery fee from order TK2024001",
-        balanceAfter: 2500.0,
-      },
-    }),
-  ]);
-
-  // Create notifications
-  await Promise.all([
-    prisma.notification.create({
-      data: {
-        userId: customers[0].id,
-        title: "Order Delivered",
-        message: "Your order TK2024001 has been delivered successfully!",
-        notificationType: NotificationType.ORDER_DELIVERED,
-        referenceId: orders[0].id,
-        priority: "high",
-      },
-    }),
-    prisma.notification.create({
-      data: {
-        userId: customers[1].id,
-        title: "Order Out for Delivery",
-        message: "Your order TK2024002 is out for delivery. Track it live!",
-        notificationType: NotificationType.DELIVERY_OUT,
-        referenceId: orders[1].id,
-        priority: "medium",
-      },
-    }),
-    prisma.notification.create({
-      data: {
-        userId: merchants[0].merchantProfile!.id,
-        title: "New Order",
-        message: "You have received a new order TK2024001",
-        notificationType: NotificationType.ORDER_CREATED,
-        referenceId: orders[0].id,
-        priority: "high",
-      },
-    }),
-  ]);
-
-  console.log("✅ Comprehensive database seeding completed successfully!");
-  console.log("📊 Created sample data:");
-  console.log(`   - ${adminUser.fullName} (Admin)`);
-  console.log(
-    `   - ${merchants.length} merchants across ${new Set(merchants.map((m) => m.merchantProfile?.category)).size} categories`,
-  );
-  console.log(`   - ${riders.length} delivery riders`);
-  console.log(`   - ${customers.length} customers with addresses`);
-  console.log(`   - ${products.length} products across all categories`);
-  console.log(`   - ${orders.length} orders with different statuses`);
-  console.log(`   - Complete delivery, payment, and review data`);
-  console.log(`   - Wallet transactions and notifications`);
-  console.log("");
-  console.log("🎯 Ready for testing all features!");
-  console.log("   - Customer: +919876543215 (Arun Kumar)");
-  console.log("   - Merchant: +919876543211 (Rajesh Kumar)");
-  console.log("   - Rider: +919876543213 (Amit Singh)");
-  console.log("   - Admin: +919876543210 (TownKart Admin)");
+  process.exit(1);
 }
 
-main()
-  .catch((e) => {
-    console.error("❌ Error during seeding:", e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
+// Retry/utility helpers (same ideas as your original)
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delay: number = 1000
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error as Error;
+      console.warn(
+        `Attempt ${attempt}/${maxRetries} failed:`,
+        error instanceof Error ? error.message : String(error)
+      );
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, delay));
+        delay *= 2;
+      }
+    }
+  }
+  throw lastError!;
+}
+
+async function checkDatabaseConnection() {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    console.log("✅ Database connection OK");
+    return true;
+  } catch (err) {
+    console.error("❌ DB connection failed:", err);
+    return false;
+  }
+}
+
+async function safeTruncate(table: string) {
+  try {
+    await prisma.$executeRawUnsafe(
+      `DO $$
+       BEGIN
+          IF EXISTS (SELECT 1 FROM pg_class WHERE relname='${table}') THEN
+             EXECUTE 'TRUNCATE TABLE "${table}" CASCADE';
+          END IF;
+       END $$;`
+    );
+    console.log(`✔️ Truncated: ${table}`);
+  } catch (err) {
+    console.log(`⚠️ Skip (not exist): ${table}`);
+  }
+}
+
+async function resetDatabase() {
+  const tables = [
+    "location_audit_logs",
+    "location_data_records",
+    "location_consents",
+    "order_status_history",
+    "store_staff",
+    "store_inventory",
+    "rider_cash_balances",
+    "cash_settlements",
+    "cash_transactions",
+    "disputes",
+    "delivery_logs",
+    "rider_locations",
+    "rider_earnings",
+    "rider_logs",
+    "product_sales",
+    "coupon_usages",
+    "coupons",
+    "offers",
+    "product_reviews",
+    "reviews",
+    "payments",
+    "deliveries",
+    "order_items",
+    "orders",
+    "wishlist_items",
+    "product_images",
+    "product_variants",
+    "products",
+    "product_categories",
+    "collections",
+    "banners",
+    "advertisements",
+    "special_offers",
+    "service_areas",
+    "delivery_zones",
+    "rider_zone_assignments",
+    "rider_profiles",
+    "stores",
+    "customer_profiles",
+    "addresses",
+    "wallet_transactions",
+    "wallets",
+    "notifications",
+    "sessions",
+    "devices",
+    "login_attempts",
+    "email_verifications",
+    "phone_verifications",
+    "users",
+  ];
+
+  for (const table of tables) {
+    await safeTruncate(table);
+  }
+}
+
+/**
+ * Batch create helper that uses createMany for products.
+ * Returns created product IDs for later use.
+ */
+async function batchCreateProducts(
+  createDataArray: any[],
+  batchSize = 200
+): Promise<any[]> {
+  const created: any[] = [];
+  for (let i = 0; i < createDataArray.length; i += batchSize) {
+    const slice = createDataArray.slice(i, i + batchSize);
+    // Remove images from product data before creating
+    const productDataForCreate = slice.map(({ images, ...rest }) => rest);
+    // Use createMany for bulk insert
+    await withRetry(
+      () => prisma.product.createMany({ data: productDataForCreate }),
+      3,
+      2000
+    );
+
+    // Get the created products by querying with similar criteria
+    // This is a simplified approach - in production you'd want better tracking
+    const lastBatchProducts = await prisma.product.findMany({
+      where: {
+        slug: {
+          in: slice.map((p: any) => p.slug),
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        stockQuantity: true,
+        price: true,
+        discountedPrice: true,
+        isAvailable: true,
+        imageUrls: true, // Keep for image creation
+      },
+    });
+
+    console.log(`    Queried ${lastBatchProducts.length} products for batch`);
+    created.push(...lastBatchProducts);
+    console.log(
+      `  ➕ Created batch ${Math.floor(i / batchSize) + 1} (${slice.length} items)`
+    );
+  }
+  return created;
+}
+
+async function createProductBatchesForStore(
+  store: any,
+  productCount: number,
+  startIndex = 0,
+  categories: any[]
+) {
+  const productDatas: any[] = [];
+
+  // distribution
+  const groceryCount = Math.floor(productCount * 0.4);
+  const electronicsCount = Math.floor(productCount * 0.25);
+  const fashionCount = Math.floor(productCount * 0.2);
+  const householdCount =
+    productCount - groceryCount - electronicsCount - fashionCount;
+
+  const now = Date.now();
+
+  // helper to push product object
+  const pushProduct = (
+    template: any,
+    i: number,
+    categoryIndex: number,
+    offset = 0
+  ) => {
+    const slugBase = `${template.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    const slug = `${slugBase}-${startIndex + offset + i + 1}-${now}`;
+    productDatas.push({
+      name: `${template.name} ${startIndex + offset + i + 1}`,
+      description: template.description,
+      shortDescription: template.shortDescription,
+      price:
+        template.basePrice +
+        Math.floor(Math.random() * (template.priceVariance || 50)),
+      discountedPrice:
+        Math.random() > 0.7
+          ? template.basePrice - 5 + Math.floor(Math.random() * 10)
+          : null,
+      stockQuantity:
+        (template.minStock || 5) +
+        Math.floor(Math.random() * (template.maxStockVariance || 50)),
+      categoryName: categories[categoryIndex].name,
+      subcategory: template.subcategory,
+      brand:
+        template.brands[Math.floor(Math.random() * template.brands.length)],
+      weight: template.weight || 0.2 + Math.random(),
+      specifications: template.specifications,
+      features: template.features,
+      tags: template.tags,
+      keywords: template.keywords,
+      isAvailable: true,
+      isFeatured: Math.random() > 0.9,
+      isNew: Math.random() > 0.95,
+      isOnSale: Math.random() > 0.8,
+      averageRating: 4 + Math.random(),
+      totalReviews: Math.floor(Math.random() * 100),
+      totalSales: Math.floor(Math.random() * 300),
+      categoryId: categories[categoryIndex].id,
+      slug,
+      images: template.images, // Add images for later use
+      publishedAt: new Date(
+        Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
+      ),
+    });
+  };
+
+  // templates (reuse from your original templates but smaller and consistent)
+  const groceryTemplates = [
+    {
+      name: "Fresh Organic Tomatoes",
+      description: "Premium organic red tomatoes, grown without pesticides.",
+      shortDescription: "Fresh organic tomatoes",
+      basePrice: 35,
+      subcategory: "Vegetables",
+      brands: ["FarmFresh", "Organic Valley", "Green Harvest"],
+      specifications: {
+        Type: "Organic",
+        Origin: "Local Farm",
+        "Shelf Life": "7 days",
+      },
+      features: ["Pesticide-free", "Locally sourced"],
+      tags: ["organic", "fresh"],
+      keywords: ["tomatoes", "organic"],
+      images: [
+        "https://images.unsplash.com/photo-1546470427-e9e826abd807?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1582284540020-8acbe03f4924?w=400&h=300&fit=crop",
+      ],
+      minStock: 10,
+      maxStockVariance: 50,
+    },
+    {
+      name: "Whole Wheat Bread",
+      description: "Freshly baked whole wheat bread with no preservatives.",
+      shortDescription: "Whole wheat bread",
+      basePrice: 30,
+      subcategory: "Bakery",
+      brands: ["Baker's Delight", "Whole Grain Co"],
+      specifications: {
+        Ingredients: "Whole wheat flour, water",
+        "Shelf Life": "3 days",
+      },
+      features: ["Whole grain", "High fiber"],
+      tags: ["bread", "bakery"],
+      keywords: ["bread", "whole wheat"],
+      images: [
+        "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&h=300&fit=crop",
+      ],
+      minStock: 8,
+      maxStockVariance: 40,
+    },
+    {
+      name: "Fresh Milk",
+      description: "Fresh cow milk, pasteurized and homogenized.",
+      shortDescription: "Fresh cow milk",
+      basePrice: 25,
+      subcategory: "Dairy",
+      brands: ["Dairy Fresh", "Milk Masters"],
+      specifications: {
+        Type: "Cow Milk",
+        Fat: "3.5%",
+        "Shelf Life": "5 days",
+      },
+      features: ["Pasteurized", "Homogenized"],
+      tags: ["milk", "dairy"],
+      keywords: ["fresh milk", "cow milk"],
+      images: [
+        "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&h=300&fit=crop",
+      ],
+      minStock: 12,
+      maxStockVariance: 30,
+    },
+    {
+      name: "Organic Bananas",
+      description: "Sweet and ripe organic bananas.",
+      shortDescription: "Organic bananas",
+      basePrice: 40,
+      subcategory: "Fruits",
+      brands: ["Fruit Farm", "Organic Fruits"],
+      specifications: {
+        Type: "Organic",
+        Origin: "Local Farm",
+        "Shelf Life": "7 days",
+      },
+      features: ["Organic", "Ripe"],
+      tags: ["banana", "organic"],
+      keywords: ["bananas", "organic fruit"],
+      images: [
+        "https://images.unsplash.com/photo-1571771019784-3ff35f4f4277?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1603833665858-e61e17a86224?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1528825871115-3581a5387919?w=400&h=300&fit=crop",
+      ],
+      minStock: 15,
+      maxStockVariance: 45,
+    },
+  ];
+
+  const electronicsTemplates = [
+    {
+      name: "Wireless Bluetooth Headphones",
+      description: "Wireless headphones with ANC and long battery life.",
+      shortDescription: "Bluetooth Headphones with ANC",
+      basePrice: 2000,
+      subcategory: "Audio",
+      brands: ["SoundMax", "AudioTech"],
+      specifications: {
+        "Battery Life": "20-30 hours",
+        Connectivity: "Bluetooth 5.0",
+      },
+      features: ["Noise Cancellation", "Long battery life"],
+      tags: ["headphones", "wireless"],
+      keywords: ["wireless headphones", "bluetooth"],
+      images: [
+        "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1484704849700-f032a568e944?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1583394838336-acd977736f90?w=400&h=300&fit=crop",
+      ],
+      minStock: 2,
+      maxStockVariance: 10,
+      priceVariance: 1500,
+    },
+    {
+      name: "Smartphone Charger",
+      description: "Fast charging USB-C charger for smartphones.",
+      shortDescription: "Fast USB-C charger",
+      basePrice: 500,
+      subcategory: "Accessories",
+      brands: ["TechCharge", "PowerMax"],
+      specifications: {
+        Output: "18W",
+        "Connector Type": "USB-C",
+        Compatibility: "Universal",
+      },
+      features: ["Fast charging", "Compact design"],
+      tags: ["charger", "usb-c"],
+      keywords: ["smartphone charger", "fast charger"],
+      images: [
+        "https://images.unsplash.com/photo-1586953208448-b95a79798f07?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1609594040430-23b4deaf9c83?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1625842268584-8f3296236761?w=400&h=300&fit=crop",
+      ],
+      minStock: 5,
+      maxStockVariance: 20,
+      priceVariance: 300,
+    },
+  ];
+
+  const fashionTemplates = [
+    {
+      name: "Cotton Summer Dress",
+      description: "Light and comfortable cotton dress.",
+      shortDescription: "Breathable cotton dress",
+      basePrice: 1000,
+      subcategory: "Dresses",
+      brands: ["Cotton Comfort", "Summer Style"],
+      specifications: { Material: "100% Cotton", Fit: "Regular" },
+      features: ["Breathable", "Comfortable fit"],
+      tags: ["dress", "cotton"],
+      keywords: ["summer dress"],
+      images: [
+        "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1581044777550-4cfa60707c03?w=400&h=300&fit=crop",
+      ],
+      minStock: 5,
+      maxStockVariance: 40,
+      priceVariance: 800,
+    },
+    {
+      name: "Casual T-Shirt",
+      description: "Comfortable cotton t-shirt for everyday wear.",
+      shortDescription: "Cotton t-shirt",
+      basePrice: 300,
+      subcategory: "T-Shirts",
+      brands: ["Comfort Wear", "Casual Style"],
+      specifications: { Material: "100% Cotton", Fit: "Regular" },
+      features: ["Soft fabric", "Easy care"],
+      tags: ["t-shirt", "cotton"],
+      keywords: ["casual t-shirt"],
+      images: [
+        "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1586790170083-2f9ceadc732d?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=400&h=300&fit=crop",
+      ],
+      minStock: 10,
+      maxStockVariance: 50,
+      priceVariance: 200,
+    },
+  ];
+
+  const householdTemplates = [
+    {
+      name: "LED Desk Lamp",
+      description: "Modern LED desk lamp with adjustable brightness.",
+      shortDescription: "Adjustable LED lamp",
+      basePrice: 1000,
+      subcategory: "Lighting",
+      brands: ["LightTech", "HomeBright"],
+      specifications: { Power: "5W LED", "Brightness Levels": "5" },
+      features: ["USB charging", "Touch control"],
+      tags: ["desk lamp", "led"],
+      keywords: ["desk lamp", "usb lamp"],
+      images: [
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&h=300&fit=crop",
+      ],
+      minStock: 6,
+      maxStockVariance: 30,
+      priceVariance: 700,
+    },
+    {
+      name: "Kitchen Towel Set",
+      description: "Absorbent cotton kitchen towels, set of 5.",
+      shortDescription: "Cotton kitchen towels",
+      basePrice: 150,
+      subcategory: "Kitchen",
+      brands: ["Home Essentials", "Kitchen Comfort"],
+      specifications: { Material: "Cotton", Quantity: "5 pieces" },
+      features: ["Absorbent", "Machine washable"],
+      tags: ["towel", "kitchen"],
+      keywords: ["kitchen towels", "cotton towels"],
+      images: [
+        "https://images.unsplash.com/photo-1583944583579-928d1ba7dc9a?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&h=300&fit=crop",
+      ],
+      minStock: 8,
+      maxStockVariance: 25,
+      priceVariance: 100,
+    },
+  ];
+
+  // push grocery
+  for (let i = 0; i < groceryCount; i++) {
+    const template = groceryTemplates[i % groceryTemplates.length];
+    pushProduct(template, i, 0, 0);
+  }
+
+  // electronics
+  for (let i = 0; i < electronicsCount; i++) {
+    const template = electronicsTemplates[i % electronicsTemplates.length];
+    pushProduct(template, i, 3, groceryCount);
+  }
+
+  // fashion
+  for (let i = 0; i < fashionCount; i++) {
+    const template = fashionTemplates[i % fashionTemplates.length];
+    pushProduct(template, i, 4, groceryCount + electronicsCount);
+  }
+
+  // household
+  for (let i = 0; i < householdCount; i++) {
+    const template = householdTemplates[i % householdTemplates.length];
+    pushProduct(template, i, 5, groceryCount + electronicsCount + fashionCount);
+  }
+
+  // Create products in batches (transactions)
+  console.log(
+    `  Creating ${productDatas.length} products for store ${store.name} in batches...`
+  );
+  const createdProducts = await batchCreateProducts(productDatas, 200);
+
+  // Create product images for each product
+  console.log(
+    `  Creating product images for ${createdProducts.length} products...`
+  );
+  console.log(
+    `    Sample created product names: ${createdProducts
+      .slice(0, 3)
+      .map((p) => p.name)
+      .join(", ")}`
+  );
+  const imageRows: any[] = [];
+  let matchedCount = 0;
+  let totalImages = 0;
+  productDatas.forEach((originalProduct: any, index: number) => {
+    if (originalProduct.images && originalProduct.images.length > 0) {
+      totalImages += originalProduct.images.length;
+      // Find the corresponding created product
+      const createdProduct = createdProducts.find(
+        (cp) => cp.name === originalProduct.name
+      );
+      // Alternative: match by slug if name doesn't work
+      // const createdProduct = createdProducts.find(
+      //   (cp) => cp.slug === originalProduct.slug
+      // );
+      if (createdProduct) {
+        matchedCount++;
+        originalProduct.images.forEach((url: string, imgIndex: number) => {
+          imageRows.push({
+            productId: createdProduct.id,
+            url: url,
+            alt: `${originalProduct.name} image ${imgIndex + 1}`,
+            isPrimary: imgIndex === 0,
+            sortOrder: imgIndex,
+          });
+        });
+      } else {
+        console.log(`    No match found for product: ${originalProduct.name}`);
+      }
+    }
   });
+  console.log(
+    `    Found ${totalImages} total images in templates, matched ${matchedCount} products`
+  );
+
+  console.log(`    Prepared ${imageRows.length} product images to create`);
+
+  // Create images individually to catch any errors
+  console.log(`    Creating ${imageRows.length} product images...`);
+  for (const imageRow of imageRows) {
+    await withRetry(
+      () => prisma.productImage.create({ data: imageRow }),
+      3,
+      2000
+    );
+  }
+  console.log(`    ✅ Created all product images`);
+
+  // Create storeInventory entries in batches using createMany (fast)
+  console.log(
+    `  Creating store inventory entries for ${createdProducts.length} products...`
+  );
+  const inventoryRows: any[] = createdProducts.map((p: any) => ({
+    storeId: store.id,
+    productId: p.id,
+    stockQuantity: p.stockQuantity,
+    minStockLevel: Math.max(1, Math.floor(p.stockQuantity * 0.1)),
+    maxStockLevel: Math.max(p.stockQuantity, Math.floor(p.stockQuantity * 2)),
+    price: p.price,
+    discountedPrice: p.discountedPrice,
+    isAvailable: p.isAvailable,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }));
+
+  // Create inventory in batches (createMany supports many rows)
+  for (let i = 0; i < inventoryRows.length; i += 500) {
+    const slice = inventoryRows.slice(i, i + 500);
+    await withRetry(
+      () => prisma.storeInventory.createMany({ data: slice }),
+      3,
+      2000
+    );
+    console.log(
+      `    ➕ Created storeInventory batch ${Math.floor(i / 500) + 1}`
+    );
+  }
+
+  return createdProducts;
+}
+
+async function main() {
+  console.log("🌱 Seeder start");
+
+  if (!(await checkDatabaseConnection())) {
+    console.error("DB not available — aborting seeding.");
+    process.exit(1);
+  }
+
+  try {
+    // Clear DB
+    await withRetry(() => resetDatabase(), 3, 2000);
+
+    // Create service area
+    console.log("📍 Creating ServiceArea");
+    const serviceArea = await prisma.serviceArea.create({
+      data: {
+        name: "Hanumangarh Junction & Town",
+        city: "Hanumangarh",
+        state: "Rajasthan",
+        centerLat: 29.5818,
+        centerLng: 74.3294,
+        radiusKm: 15.0,
+        bounds: { north: 29.7, south: 29.5, east: 74.4, west: 74.2 },
+        isActive: true,
+      },
+    });
+
+    // Create admin users
+    console.log("👑 Creating admin users");
+    const adminUsers = await Promise.all([
+      prisma.user.create({
+        data: {
+          phoneNumber: "+919876543210",
+          fullName: "TownKart Admin 1",
+          email: "admin1@townkart.com",
+          password: await hashPassword("admin123"),
+          userRoles: ["ADMIN"],
+          activeRole: "ADMIN",
+          emailVerified: true,
+          phoneVerified: true,
+          isActive: true,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          phoneNumber: "+919876543211",
+          fullName: "TownKart Admin 2",
+          email: "admin2@townkart.com",
+          password: await hashPassword("admin123"),
+          userRoles: ["ADMIN"],
+          activeRole: "ADMIN",
+          emailVerified: true,
+          phoneVerified: true,
+          isActive: true,
+        },
+      }),
+    ]);
+
+    // Create store managers
+    console.log("🏪 Creating store managers");
+    const storeManagers = await Promise.all([
+      prisma.user.create({
+        data: {
+          phoneNumber: "+919876543212",
+          fullName: "Rajesh Kumar",
+          email: "rajesh.manager@townkart.com",
+          password: await hashPassword("manager123"),
+          userRoles: ["STORE_MANAGER"],
+          activeRole: "STORE_MANAGER",
+          emailVerified: true,
+          phoneVerified: true,
+          isActive: true,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          phoneNumber: "+919876543213",
+          fullName: "Priya Sharma",
+          email: "priya.manager@townkart.com",
+          password: await hashPassword("manager123"),
+          userRoles: ["STORE_MANAGER"],
+          activeRole: "STORE_MANAGER",
+          emailVerified: true,
+          phoneVerified: true,
+          isActive: true,
+        },
+      }),
+    ]);
+
+    // Create stores
+    console.log("🏬 Creating stores");
+    const stores = await Promise.all([
+      prisma.store.create({
+        data: {
+          name: "Fresh Mart Hanumangarh Junction",
+          code: "FMHJ001",
+          description: "Neighborhood grocery store",
+          address: "123 Station Road, Hanumangarh Junction, Rajasthan 335512",
+          city: "Hanumangarh",
+          state: "Rajasthan",
+          pincode: "335512",
+          latitude: 29.5818,
+          longitude: 74.3294,
+          category: "Grocery",
+          subcategory: "Supermarket",
+          managerId: storeManagers[0].id,
+          isActive: true,
+          isVerified: true,
+          averageRating: 4.5,
+          totalOrders: 1250,
+          totalRevenue: 250000,
+          phoneNumber: "+919876543216",
+          email: "junction@freshmart.com",
+          operatingHours: {
+            monday: { open: "09:00", close: "21:00" },
+            tuesday: { open: "09:00", close: "21:00" },
+          },
+          serviceAreaId: serviceArea.id,
+        },
+      }),
+      prisma.store.create({
+        data: {
+          name: "Mega Mall Hanumangarh Town",
+          code: "MMHT001",
+          description: "Premium shopping destination",
+          address: "456 Main Market, Hanumangarh Town, Rajasthan 335513",
+          city: "Hanumangarh",
+          state: "Rajasthan",
+          pincode: "335513",
+          latitude: 29.5918,
+          longitude: 74.3194,
+          category: "Retail",
+          subcategory: "Departmental Store",
+          managerId: storeManagers[1].id,
+          isActive: true,
+          isVerified: true,
+          averageRating: 4.3,
+          totalOrders: 890,
+          totalRevenue: 180000,
+          phoneNumber: "+919876543217",
+          email: "town@megamall.com",
+          operatingHours: {
+            monday: { open: "10:00", close: "20:00" },
+          },
+          serviceAreaId: serviceArea.id,
+        },
+      }),
+    ]);
+
+    // Create riders (small batch for demo)
+    console.log("🚴 Creating riders");
+    const riders: any[] = [];
+    for (let i = 0; i < 6; i++) {
+      const r = await prisma.user.create({
+        data: {
+          phoneNumber: `+9198765432${18 + i}`,
+          fullName: `Rider ${i + 1}`,
+          email: `rider${i + 1}@townkart.com`,
+          password: await hashPassword("rider123"),
+          userRoles: ["RIDER"],
+          activeRole: "RIDER",
+          emailVerified: true,
+          phoneVerified: true,
+          isActive: true,
+          riderProfile: {
+            create: {
+              city: "Hanumangarh",
+              vehicleType: i % 2 === 0 ? "bike" : "scooter",
+              isAvailable: true,
+              currentLat: 29.5818 + (Math.random() - 0.5) * 0.02,
+              currentLng: 74.3294 + (Math.random() - 0.5) * 0.02,
+              rating: 4.0 + Math.random() * 1.0,
+              totalDeliveries: Math.floor(Math.random() * 200) + 50,
+              totalEarnings: Math.floor(Math.random() * 50000) + 10000,
+              isVerified: true,
+              isActive: true,
+              maxDailyDeliveries: 20,
+            },
+          },
+        },
+        include: { riderProfile: true },
+      });
+      riders.push(r);
+    }
+
+    // Create customers
+    console.log("👥 Creating customers (10)");
+    const customers: any[] = [];
+    for (let i = 0; i < 10; i++) {
+      const c = await prisma.user.create({
+        data: {
+          phoneNumber: `+9198765433${i}`,
+          fullName: `Customer ${i + 1}`,
+          email: `customer${i + 1}@email.com`,
+          password: await hashPassword("customer123"),
+          userRoles: ["CUSTOMER"],
+          activeRole: "CUSTOMER",
+          emailVerified: true,
+          phoneVerified: true,
+          isActive: true,
+          customerProfile: {
+            create: {
+              preferences: {
+                notifications: true,
+                language: "en",
+                currency: "INR",
+              },
+            },
+          },
+          addresses: {
+            create: [
+              {
+                line1: `${100 + i * 10} Main Street, Hanumangarh`,
+                city: "Hanumangarh",
+                state: "Rajasthan",
+                pincode: i % 2 === 0 ? "335512" : "335513",
+                latitude: 29.5818 + (Math.random() - 0.5) * 0.01,
+                longitude: 74.3294 + (Math.random() - 0.5) * 0.01,
+                addressType: "HOME",
+                isDefault: true,
+              },
+            ],
+          },
+        },
+      });
+      customers.push(c);
+    }
+
+    // Create categories (re-using your categories)
+    console.log("📚 Creating product categories");
+    const categories = await Promise.all([
+      prisma.productCategory.create({
+        data: {
+          name: "Grocery",
+          slug: "grocery",
+          description: "Fresh groceries",
+          image:
+            "https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&h=300&fit=crop",
+          isActive: true,
+          sortOrder: 1,
+        },
+      }),
+      prisma.productCategory.create({
+        data: {
+          name: "Food",
+          slug: "food",
+          description: "Ready-to-eat",
+          image:
+            "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=300&fit=crop",
+          isActive: true,
+          sortOrder: 2,
+        },
+      }),
+      prisma.productCategory.create({
+        data: {
+          name: "Medicine",
+          slug: "medicine",
+          description: "Healthcare",
+          image:
+            "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=400&h=300&fit=crop",
+          isActive: true,
+          sortOrder: 3,
+        },
+      }),
+      prisma.productCategory.create({
+        data: {
+          name: "Electronics",
+          slug: "electronics",
+          description: "Gadgets",
+          image:
+            "https://images.unsplash.com/photo-1498049794561-7780e7231661?w=400&h=300&fit=crop",
+          isActive: true,
+          sortOrder: 4,
+        },
+      }),
+      prisma.productCategory.create({
+        data: {
+          name: "Fashion",
+          slug: "fashion",
+          description: "Clothing",
+          image:
+            "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&h=300&fit=crop",
+          isActive: true,
+          sortOrder: 5,
+        },
+      }),
+      prisma.productCategory.create({
+        data: {
+          name: "Household",
+          slug: "household",
+          description: "Home essentials",
+          image:
+            "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&h=300&fit=crop",
+          isActive: true,
+          sortOrder: 6,
+        },
+      }),
+    ]);
+
+    // Create collections, banners, ads, special offers
+    console.log("🏷️ Creating collections, banners, ads, offers (small sample)");
+    const [trending, newArrivals] = await Promise.all([
+      prisma.collection.create({
+        data: {
+          name: "Trending Products",
+          slug: "trending-products",
+          description: "Trending",
+          products: [],
+          type: "FEATURED_PRODUCTS",
+          image: "",
+          isActive: true,
+          isFeatured: true,
+          sortOrder: 1,
+        },
+      }),
+      prisma.collection.create({
+        data: {
+          name: "New Arrivals",
+          slug: "new-arrivals",
+          description: "New",
+          products: [],
+          type: "NEW_ARRIVALS",
+          image: "",
+          isActive: true,
+          isFeatured: true,
+          sortOrder: 2,
+        },
+      }),
+    ]);
+
+    await prisma.banner.createMany({
+      data: [
+        {
+          title: "Fresh Groceries",
+          imageUrl:
+            "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1920&h=1080&fit=crop",
+          linkUrl: "/categories/grocery",
+          sortOrder: 1,
+        },
+        {
+          title: "Electronics & Gadgets",
+          imageUrl:
+            "https://images.unsplash.com/photo-1498049794561-7780e7231661?w=1920&h=1080&fit=crop",
+          linkUrl: "/categories/electronics",
+          sortOrder: 2,
+        },
+      ],
+    });
+
+    await prisma.advertisement.createMany({
+      data: [
+        {
+          title: "Flash Sale",
+          description: "Up to 50% off",
+          imageUrl:
+            "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=400&h=300&fit=crop",
+          linkUrl: "/offers",
+          position: "sidebar",
+          isActive: true,
+          sortOrder: 1,
+        },
+      ],
+    });
+
+    await prisma.specialOffer.createMany({
+      data: [
+        {
+          title: "Weekend Special",
+          description: "30% off groceries",
+          imageUrl: "",
+          discountType: "percentage",
+          discountValue: 30,
+          linkUrl: "/categories/grocery",
+          isActive: true,
+          sortOrder: 1,
+        },
+      ],
+    });
+
+    // Create products for store1 and store2 using our robust batch creator
+    console.log("📦 Creating products for stores (batched)");
+    const store1Products = await createProductBatchesForStore(
+      stores[0],
+      400,
+      0,
+      categories
+    ); // reduced count for demo: 400
+    const store2Products = await createProductBatchesForStore(
+      stores[1],
+      200,
+      400,
+      categories
+    ); // 200
+
+    console.log(
+      `✅ Products created: ${store1Products.length + store2Products.length}`
+    );
+
+    // Create sample orders/payments/deliveries for a few items (keeps things small & consistent)
+    console.log("📦 Creating a few sample orders/deliveries/payments...");
+    const sampleOrders = [];
+    const p0 = store1Products[0];
+    const p1 = store1Products[1];
+    const p2 = store2Products[0];
+
+    const order1 = await prisma.order.create({
+      data: {
+        orderNumber: `TK${Date.now()}1`,
+        customerId: customers[0].id,
+        storeId: stores[0].id,
+        totalAmount: 100,
+        deliveryFee: 20,
+        taxAmount: 5,
+        finalAmount: 125,
+        paymentMethod: "CASH_ON_DELIVERY",
+        paymentStatus: "COMPLETED",
+        orderStatus: "DELIVERED",
+        deliveryAddress: {
+          line1: "789 Park Street",
+          city: "Hanumangarh",
+          state: "Rajasthan",
+          pincode: "335512",
+        },
+        deliveredAt: new Date(),
+        orderItems: {
+          create: [
+            {
+              productId: p0.id,
+              productSnapshot: { name: p0.name, price: p0.price },
+              quantity: 1,
+              unitPrice: p0.price,
+              subtotal: p0.price,
+            },
+            {
+              productId: p1.id,
+              productSnapshot: { name: p1.name, price: p1.price },
+              quantity: 1,
+              unitPrice: p1.price,
+              subtotal: p1.price,
+            },
+          ],
+        },
+      },
+    });
+    sampleOrders.push(order1);
+
+    const delivery1 = await prisma.delivery.create({
+      data: {
+        orderId: order1.id,
+        riderId: riders[0].riderProfile!.id,
+        pickupOtp: "1111",
+        deliveryOtp: "2222",
+        deliveryStatus: "DELIVERED",
+        distanceKm: 2.5,
+        deliveryFee: 20,
+        riderEarnings: 20,
+      },
+    });
+
+    await prisma.payment.create({
+      data: {
+        orderId: order1.id,
+        amount: order1.finalAmount,
+        paymentMethod: "CASH_ON_DELIVERY",
+        paymentStatus: "COMPLETED",
+        completedAt: new Date(),
+      },
+    });
+
+    await prisma.review.create({
+      data: {
+        orderId: order1.id,
+        customerId: customers[0].id,
+        storeId: stores[0].id,
+        riderId: riders[0].riderProfile!.id,
+        storeRating: 5,
+        riderRating: 5,
+        comment: "Great!",
+      },
+    });
+
+    console.log("✅ Seeder finished successfully!");
+    console.log(
+      "  Admin credentials: +919876543210 / +919876543211 (admin123)"
+    );
+    console.log(
+      "  Manager credentials: +919876543212 / +919876543213 (manager123)"
+    );
+    console.log("  Sample customer: +91987654330 (customer123)");
+  } catch (err) {
+    console.error("❌ Seeder error:", err);
+    process.exitCode = 1;
+  } finally {
+    await prisma.$disconnect();
+    console.log("🔌 Prisma disconnected.");
+  }
+}
+
+main();

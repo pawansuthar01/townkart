@@ -1,203 +1,286 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient, OrderStatus } from '@prisma/client'
-import { createOrderSchema } from '@/lib/validation'
-
-const prisma = new PrismaClient()
+import { NextRequest, NextResponse } from "next/server";
+import { PrismaClient } from "@prisma/client";
+import {
+  generateOrderNumber,
+  calculateOrderSummary,
+} from "@/lib/orderManagement";
+import { prisma } from "@/lib/prisma";
+import { findStoreForOrder } from "@/lib/storeAssignment";
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const customerId = searchParams.get('customerId')
-    const merchantId = searchParams.get('merchantId')
-    const riderId = searchParams.get('riderId')
-    const status = searchParams.get('status') as OrderStatus
-    const paymentStatus = searchParams.get('paymentStatus')
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '20')
+    const { searchParams } = new URL(request.url);
+    const customerId = searchParams.get("customerId");
+    const status = searchParams.get("status");
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "10");
 
-    const where: any = {}
+    const where: any = {};
 
-    if (customerId) where.customerId = customerId
-    if (merchantId) where.merchantId = merchantId
-    if (riderId) {
-      where.delivery = {
-        riderId: riderId,
-      }
+    if (customerId) {
+      where.customerId = customerId;
     }
-    if (status) where.orderStatus = status
-    if (paymentStatus) where.paymentStatus = paymentStatus
+
+    if (status) {
+      where.orderStatus = status;
+    }
 
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
         where,
         include: {
           customer: {
-            select: { id: true, fullName: true, phoneNumber: true },
+            select: {
+              id: true,
+              fullName: true,
+              phoneNumber: true,
+              email: true,
+            },
           },
-          merchant: {
-            select: { id: true, businessName: true, address: true },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+            },
           },
           orderItems: {
             include: {
               product: {
-                select: { id: true, name: true, price: true },
-              },
-            },
-          },
-          delivery: {
-            include: {
-              rider: {
-                select: { id: true, fullName: true, phoneNumber: true },
+                select: {
+                  id: true,
+                  name: true,
+                  imageUrls: true,
+                },
               },
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: {
+          createdAt: "desc",
+        },
         skip: (page - 1) * limit,
         take: limit,
       }),
       prisma.order.count({ where }),
-    ])
+    ]);
 
     return NextResponse.json({
-      success: true,
-      data: orders,
+      orders,
       pagination: {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit),
+        pages: Math.ceil(total / limit),
       },
-    })
-  } catch (error: any) {
-    console.error('Get orders error:', error)
+    });
+  } catch (error) {
+    console.error("Error fetching orders:", error);
     return NextResponse.json(
-      { success: false, message: 'Internal server error' },
+      { error: "Failed to fetch orders" },
       { status: 500 }
-    )
+    );
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const validatedData = createOrderSchema.parse(body)
+    const body = await request.json();
+    const {
+      customerId,
+      items,
+      address,
+      paymentMethod,
+      deliveryCharge = 0,
+      discount = 0,
+      specialInstructions,
+    } = body;
 
-    const { merchantId, items, deliveryAddress, paymentMethod, specialInstructions } = validatedData
-
-    // Get merchant and products
-    const merchant = await prisma.merchantProfile.findUnique({
-      where: { id: merchantId },
-    })
-
-    if (!merchant) {
+    // Basic validation
+    if (!customerId) {
       return NextResponse.json(
-        { success: false, message: 'Merchant not found' },
-        { status: 404 }
-      )
+        { error: "Customer ID is required" },
+        { status: 400 }
+      );
     }
 
-    // Calculate order total
-    let totalAmount = 0
-    const orderItems = []
+    if (!items || items.length === 0) {
+      return NextResponse.json(
+        { error: "At least one item is required" },
+        { status: 400 }
+      );
+    }
 
-    for (const item of items) {
-      const product = await prisma.product.findUnique({
-        where: { id: item.productId },
-      })
+    if (!address) {
+      return NextResponse.json(
+        { error: "Delivery address is required" },
+        { status: 400 }
+      );
+    }
 
-      if (!product || !product.isAvailable || product.stockQuantity < item.quantity) {
-        return NextResponse.json(
-          { success: false, message: `Product ${product?.name || 'Unknown'} is not available` },
-          { status: 400 }
-        )
-      }
+    if (
+      !address.fullName ||
+      !address.phoneNumber ||
+      !address.addressLine1 ||
+      !address.city ||
+      !address.state ||
+      !address.pincode
+    ) {
+      return NextResponse.json(
+        { error: "Complete delivery address is required" },
+        { status: 400 }
+      );
+    }
 
-      const subtotal = product.price * item.quantity
-      totalAmount += subtotal
+    if (!paymentMethod) {
+      return NextResponse.json(
+        { error: "Payment method is required" },
+        { status: 400 }
+      );
+    }
 
-      orderItems.push({
-        productId: item.productId,
-        productSnapshot: {
-          name: product.name,
-          price: product.price,
-          description: product.description,
+    // Validate that all products exist
+    const productIds = items.map((item: any) => item.productId);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true },
+    });
+
+    if (products.length !== productIds.length) {
+      return NextResponse.json(
+        { error: "One or more products not found" },
+        { status: 400 }
+      );
+    }
+
+    // Calculate order summary
+    const summary = calculateOrderSummary(
+      items,
+      deliveryCharge,
+      0.05, // 5% tax rate
+      discount
+    );
+
+    // Validate customer location and find nearest store first
+    const customerLocation = {
+      latitude: address.latitude || 0,
+      longitude: address.longitude || 0,
+    };
+
+    const assignmentResult = await findStoreForOrder(customerLocation);
+
+    if (!assignmentResult) {
+      return NextResponse.json(
+        {
+          error: "Service not available in your area",
+          message:
+            "We're currently expanding our services. Service will be available in your location soon!",
+          type: "SERVICE_AREA_UNAVAILABLE",
         },
-        quantity: item.quantity,
-        unitPrice: product.price,
-        subtotal,
-      })
+        { status: 400 }
+      );
     }
 
-    // Calculate delivery fee and taxes
-    const deliveryFee = 20 // Fixed delivery fee
-    const taxAmount = Math.round(totalAmount * 0.05 * 100) / 100 // 5% tax
-    const discountAmount = 0 // No discount for now
-    const finalAmount = totalAmount + deliveryFee + taxAmount - discountAmount
+    // Generate order number
+    const orderNumber = generateOrderNumber();
 
-    // Create order
+    // Create order with valid store assignment
     const order = await prisma.order.create({
       data: {
-        customerId: 'customer-id', // This should come from auth
-        merchantId,
-        totalAmount,
-        deliveryFee,
-        taxAmount,
-        discountAmount,
-        finalAmount,
+        orderNumber,
+        customerId,
+        storeId: assignmentResult.storeId, // Use valid store ID
+        totalAmount: summary.total,
+        deliveryFee: summary.deliveryCharge,
+        taxAmount: summary.tax,
+        discountAmount: summary.discount,
+        finalAmount: summary.total,
         paymentMethod,
-        orderStatus: 'PENDING_CONFIRMATION',
-        deliveryAddress,
+        paymentStatus:
+          paymentMethod === "CASH_ON_DELIVERY" ? "PENDING" : "COMPLETED",
+        orderStatus: "STORE_ASSIGNED", // Start with STORE_ASSIGNED status
+        deliveryAddress: address, // Store address as JSON
         specialInstructions,
+        storeAssignedAt: new Date(), // Set assignment timestamp
         orderItems: {
-          create: orderItems,
+          create: items.map((item: any) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discountAmount: 0,
+            taxAmount: item.unitPrice * item.quantity * 0.05, // 5% tax
+            subtotal: item.totalPrice,
+            productSnapshot: {
+              id: item.productId,
+              name: item.productName || "Product",
+              price: item.unitPrice,
+              description: item.description || "",
+            },
+          })),
         },
       },
       include: {
-        orderItems: true,
         customer: {
-          select: { id: true, fullName: true, phoneNumber: true },
-        },
-        merchant: {
-          select: { id: true, businessName: true, address: true },
-        },
-      },
-    })
-
-    // Update product stock
-    for (const item of items) {
-      await prisma.product.update({
-        where: { id: item.productId },
-        data: {
-          stockQuantity: {
-            decrement: item.quantity,
+          select: {
+            id: true,
+            fullName: true,
+            phoneNumber: true,
+            email: true,
           },
         },
-      })
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Order created successfully',
-      data: order,
-    })
-  } catch (error: any) {
-    console.error('Create order error:', error)
-
-    if (error.name === 'ZodError') {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Invalid input data',
-          errors: error.errors,
+        store: {
+          select: {
+            id: true,
+            name: true,
+          },
         },
-        { status: 400 }
-      )
-    }
+        orderItems: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                imageUrls: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
+    // Update store order count
+    await prisma.store.update({
+      where: { id: assignmentResult.storeId },
+      data: {
+        totalOrders: {
+          increment: 1,
+        },
+      },
+    });
+
+    // Create order status history entry
+    await prisma.orderStatusHistory.create({
+      data: {
+        orderId: order.id,
+        oldStatus: null,
+        newStatus: "STORE_ASSIGNED",
+        changedBy: null, // System
+        changeType: "system",
+        notes: `Order automatically assigned to store: ${assignmentResult.storeName}`,
+        metadata: {
+          storeId: assignmentResult.storeId,
+          distance: assignmentResult.distance,
+          estimatedDeliveryTime: assignmentResult.estimatedDeliveryTime,
+        },
+      },
+    });
+
+    return NextResponse.json(order, { status: 201 });
+  } catch (error) {
+    console.error("Error creating order:", error);
     return NextResponse.json(
-      { success: false, message: 'Internal server error' },
+      { error: "Failed to create order" },
       { status: 500 }
-    )
+    );
   }
 }

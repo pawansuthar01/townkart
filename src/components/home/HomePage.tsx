@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
 import {
   ShoppingCart,
   Store,
@@ -36,70 +35,226 @@ import {
   Zap,
   Gift,
   Home,
+  Loader2,
 } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useAuth } from "@/hooks/useAuth";
+import { useProducts } from "@/hooks/useProducts";
 import SpecialOffer from "./SpecialOffer";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchBanners } from "@/store/slices/bannerSlice";
+import { fetchAds } from "@/store/slices/adSlice";
+import { fetchSpecialOffers } from "@/store/slices/specialOfferSlice";
+import { fetchCollections } from "@/store/slices/collectionSlice";
+import { RootState, AppDispatch } from "@/store";
+import {
+  ImageWithFallback,
+  getDefaultImage,
+} from "@/components/shared/ImageWithFallback";
+import { useWishlist } from "@/hooks/useWishlist";
+
+// Location and caching utilities
+interface LocationData {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  timestamp: number;
+}
+
+interface CachedData {
+  banners?: any[];
+  ads?: any[];
+  categories?: any[];
+  lastFetch: number;
+  location?: LocationData;
+}
+
+const CACHE_KEY = "townkart_home_data";
+const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes in milliseconds
+
+const useLocationAndCache = () => {
+  const [location, setLocation] = useState<LocationData | null>(null);
+  const [cachedData, setCachedData] = useState<CachedData | null>(null);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(true);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Load cached data on mount
+  useEffect(() => {
+    const loadCachedData = () => {
+      try {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          const parsedData: CachedData = JSON.parse(cached);
+          const now = Date.now();
+
+          // Check if cache is still valid
+          if (now - parsedData.lastFetch < CACHE_DURATION) {
+            setCachedData(parsedData);
+            if (parsedData.location) {
+              setLocation(parsedData.location);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error loading cached data:", error);
+      }
+    };
+
+    loadCachedData();
+  }, []);
+
+  // Detect user location
+  const detectLocation = useCallback((): Promise<LocationData> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation is not supported"));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const locationData: LocationData = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: Date.now(),
+          };
+          resolve(locationData);
+        },
+        (error) => {
+          reject(error);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000, // 5 minutes
+        }
+      );
+    });
+  }, []);
+
+  // Update location and cache
+  const updateLocation = useCallback(async () => {
+    try {
+      const locationData = await detectLocation();
+      setLocation(locationData);
+
+      // Update cache with new location
+      setCachedData((prev) => {
+        const updated = {
+          ...prev,
+          location: locationData,
+          lastFetch: Date.now(),
+        };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(updated));
+        return updated;
+      });
+    } catch (error) {
+      console.error("Error detecting location:", error);
+      // Set location to null if detection fails - app will work without location
+      setLocation(null);
+
+      // Update cache without location
+      setCachedData((prev) => {
+        const updated = {
+          ...prev,
+          location: undefined,
+          lastFetch: Date.now(),
+        };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(updated));
+        return updated;
+      });
+    } finally {
+      setIsLoadingLocation(false);
+    }
+  }, [detectLocation]);
+
+  // Cache data
+  const cacheData = useCallback((key: keyof CachedData, data: any) => {
+    setCachedData((prev) => {
+      const updated = {
+        ...prev,
+        [key]: data,
+        lastFetch: Date.now(),
+      };
+      localStorage.setItem(CACHE_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  // Get cached data
+  const getCachedData = useCallback(
+    (key: keyof CachedData) => {
+      return cachedData?.[key];
+    },
+    [cachedData]
+  );
+
+  // Check if data needs refresh
+  const shouldRefreshData = useCallback(() => {
+    if (!cachedData) return true;
+    const now = Date.now();
+    return now - cachedData.lastFetch > CACHE_DURATION;
+  }, [cachedData]);
+
+  // Start periodic location updates
+  useEffect(() => {
+    // Initial location detection
+    updateLocation();
+
+    // Set up interval for location updates every 15 minutes
+    intervalRef.current = setInterval(() => {
+      updateLocation();
+    }, CACHE_DURATION);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [updateLocation]);
+
+  return {
+    location,
+    cachedData,
+    isLoadingLocation,
+    cacheData,
+    getCachedData,
+    shouldRefreshData,
+  };
+};
+
 // Hero Banner Component
 function HeroBanner() {
+  const dispatch = useDispatch<AppDispatch>();
+  const { banners, loading } = useSelector((state: RootState) => state.banners);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const carouselRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const slides = [
-    {
-      id: "ss",
-      title: "Fresh Groceries Delivered Fast",
-      subtitle:
-        "Get fresh produce and daily essentials delivered to your doorstep in under 30 minutes with our lightning-fast delivery service",
-      image:
-        "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1920&h=1080&fit=crop",
-      cta: "Shop Groceries Now",
-      link: "/categories/grocery",
-    },
-    {
-      id: "ss4",
-      title: "Medicines & Healthcare at Your Doorstep",
-      subtitle:
-        "Order medicines and health products with free prescription upload and doorstep delivery within 60 minutes",
-      image:
-        "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=1920&h=1080&fit=crop",
-      cta: "Order Medicines",
-      link: "/categories/medicine",
-    },
-    {
-      id: "sss",
-      title: "Restaurant Food Delivery Made Easy",
-      subtitle:
-        "Order from your favorite restaurants with live GPS tracking and contactless delivery for complete safety",
-      image:
-        "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=1920&h=1080&fit=crop",
-      cta: "Order Food Online",
-      link: "/categories/food",
-    },
-    {
-      id: "ssss",
-      title: "Fashion & Lifestyle Shopping",
-      subtitle:
-        "Discover trendy fashion, accessories, and lifestyle products from top brands with free shipping on orders above ₹999",
-      image:
-        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1920&h=1080&fit=crop",
-      cta: "Shop Fashion",
-      link: "/categories/fashion",
-    },
-    {
-      id: "ssss",
-      title: "Electronics & Gadgets Store",
-      subtitle:
-        "Latest electronics, smartphones, and gadgets with warranty, free installation, and doorstep delivery",
-      image:
-        "https://images.unsplash.com/photo-1498049794561-7780e7231661?w=1920&h=1080&fit=crop",
-      cta: "Shop Electronics",
-      link: "/categories/electronics",
-    },
-  ];
+  // Use cached banners if available
+  const displayBanners = banners.length > 0 ? banners : [];
+
+  useEffect(() => {
+    if (banners.length === 0) {
+      dispatch(fetchBanners())
+        .unwrap()
+        .catch(() => {});
+    }
+  }, [dispatch, banners.length]);
+
+  // Transform banner data to match the expected slide format
+  const slides = banners.map((banner: any) => ({
+    id: banner.id,
+    title: banner.title,
+    subtitle: banner.subtitle || "",
+    image: banner.imageUrl,
+    cta: "Shop Now",
+    link: banner.linkUrl || "/products",
+  }));
 
   const startTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -204,11 +359,17 @@ function HeroBanner() {
               {/* Full-screen background image */}
               <motion.div
                 className="absolute inset-0 w-full h-full"
-                style={{ backgroundImage: `url(${slide.image})` }}
                 animate={{ scale: index === currentSlide ? 1.1 : 1 }}
                 transition={{ duration: 8, ease: "easeOut" }}
               >
-                <div className="absolute inset-0 bg-cover bg-center" />
+                <ImageWithFallback
+                  src={slide.image}
+                  fallbackSrc={getDefaultImage("banner")}
+                  alt={slide.title}
+                  fill
+                  className="object-cover"
+                  priority={index === 0}
+                />
               </motion.div>
 
               {/* Overlay gradients */}
@@ -301,47 +462,151 @@ function HeroBanner() {
   );
 }
 
-// Stats Section Component
+// Stats Section Component with real data
 function StatsSection() {
-  const stats = [
-    { number: "10,000+", label: "Happy Customers", icon: Users },
-    { number: "500+", label: "Partner Shops", icon: Store },
-    { number: "50,000+", label: "Orders Delivered", icon: Truck },
-    { number: "4.8", label: "Average Rating", icon: Star },
-  ];
+  const [stats, setStats] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await fetch("/api/stats");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setStats(data.data);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch stats:", error);
+        // Fallback to default stats if API fails
+        setStats([
+          {
+            number: "50K+",
+            label: "Happy Customers",
+            icon: Users,
+          },
+          {
+            number: "1000+",
+            label: "Partner Stores",
+            icon: Store,
+          },
+          {
+            number: "500K+",
+            label: "Orders Delivered",
+            icon: Truck,
+          },
+          {
+            number: "4.8",
+            label: "Average Rating",
+            icon: Star,
+          },
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  if (loading) {
+    return (
+      <section className="py-16 px-4 bg-gradient-to-br from-gray-50 to-white">
+        <div className="w-full">
+          <div className="text-center mb-12">
+            <motion.h2
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              viewport={{ once: true }}
+              className="text-3xl md:text-4xl font-bold text-gray-900 mb-4"
+            >
+              Our Impact in Numbers
+            </motion.h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+            {[...Array(4)].map((_, index) => (
+              <Card
+                key={index}
+                className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-white/80 backdrop-blur-sm"
+              >
+                <CardContent className="p-6">
+                  <div className="animate-pulse">
+                    <div className="h-8 bg-gray-200 rounded mb-2"></div>
+                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="py-16 px-4 bg-gradient-to-br from-gray-50 to-white">
       <div className="w-full">
         <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+          <motion.h2
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+            className="text-3xl md:text-4xl font-bold text-gray-900 mb-4"
+          >
             Our Impact in Numbers
-          </h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+          </motion.h2>
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            viewport={{ once: true }}
+            className="text-lg text-gray-600 max-w-2xl mx-auto"
+          >
             Trusted by thousands of customers across the city
-          </p>
+          </motion.p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          {stats.map((stat, index) => (
-            <div key={index} className="group text-center">
-              <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-white/80 backdrop-blur-sm">
-                <CardContent className="p-6">
-                  <div className="flex justify-center mb-4">
-                    <div className="p-4 bg-gradient-to-br from-townkart-primary to-townkart-secondary rounded-full shadow-lg group-hover:scale-110 transition-transform duration-300">
-                      <stat.icon className="h-8 w-8 text-white" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+          {stats.map((stat, index) => {
+            const IconComponent =
+              stat.icon === "Users"
+                ? Users
+                : stat.icon === "Store"
+                  ? Store
+                  : stat.icon === "Truck"
+                    ? Truck
+                    : Star;
+
+            return (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.1 }}
+                viewport={{ once: true }}
+                className="group text-center"
+              >
+                <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-white/80 backdrop-blur-sm">
+                  <CardContent className="p-6">
+                    <div className="flex justify-center mb-4">
+                      <div className="p-4 bg-gradient-to-br from-townkart-primary to-townkart-secondary rounded-full shadow-lg group-hover:scale-110 transition-transform duration-300">
+                        <IconComponent className="h-8 w-8 text-white" />
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-4xl md:text-5xl font-bold mb-2 bg-gradient-to-r from-townkart-primary to-townkart-secondary bg-clip-text text-transparent">
-                    {stat.number}
-                  </div>
-                  <div className="text-lg font-semibold text-gray-700">
-                    {stat.label}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          ))}
+                    <div className="text-4xl md:text-5xl font-bold mb-2 bg-gradient-to-r from-townkart-primary to-townkart-secondary bg-clip-text text-transparent">
+                      {stat.number}
+                    </div>
+                    <div className="text-lg font-semibold text-gray-700">
+                      {stat.label}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
         </div>
       </div>
     </section>
@@ -408,7 +673,7 @@ function WhyChooseUsSection() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {features.map((feature, index) => (
             <motion.div
               key={index}
@@ -450,65 +715,49 @@ function WhyChooseUsSection() {
 
 // Ads Banner Component
 function AdsBanner() {
-  const ads = [
-    {
-      image:
-        "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400&h=300&fit=crop",
-      title: "Fresh Produce Sale",
-      discount: "50% OFF",
-      validTill: "Dec 31",
-    },
-    {
-      image:
-        "https://images.unsplash.com/photo-1587854680352-936b22b91030?w=400&h=300&fit=crop",
-      title: "Medicine Special",
-      discount: "30% OFF",
-      validTill: "Dec 25",
-    },
-    {
-      image:
-        "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=300&fit=crop",
-      title: "Food Festival",
-      discount: "Buy 1 Get 1",
-      validTill: "Dec 20",
-    },
-    {
-      image:
-        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&h=300&fit=crop",
-      title: "Fashion Week",
-      discount: "40% OFF",
-      validTill: "Dec 28",
-    },
-  ];
+  const dispatch = useDispatch<AppDispatch>();
+  const { ads, loading } = useSelector((state: RootState) => state.ads);
+
+  // Use cached ads if available
+  const displayAds = ads.length > 0 ? ads : [];
+
+  useEffect(() => {
+    if (ads.length === 0) {
+      dispatch(fetchAds())
+        .unwrap()
+        .catch(() => {});
+    }
+  }, [dispatch, ads.length]);
 
   return (
     <section className="py-6 px-4">
-      <div className="w-full">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {ads.map((ad, index) => (
+      <div className="container-max mobile-first">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          {displayAds.map((ad, index) => (
             <Card
               key={index}
               className="group hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden border-0"
             >
               <div className="relative h-24 md:h-32">
-                <div
-                  className="absolute inset-0 bg-cover bg-center"
-                  style={{ backgroundImage: `url(${ad.image})` }}
+                <ImageWithFallback
+                  src={ad.imageUrl || undefined}
+                  fallbackSrc={getDefaultImage("ad")}
+                  alt={ad.title}
+                  fill
+                  className="object-cover"
                 />
                 <div className="absolute inset-0 bg-black bg-opacity-40 group-hover:bg-opacity-30 transition-all" />
                 <div className="absolute inset-0 p-3 flex flex-col justify-between text-white">
                   <div>
                     <Badge className="bg-red-500 hover:bg-red-600 text-white font-bold text-xs">
-                      {ad.discount}
+                      {ad.title}
                     </Badge>
                   </div>
                   <div>
                     <h3 className="font-bold text-xs md:text-sm mb-1">
-                      {ad.title}
+                      {ad.description || ad.title}
                     </h3>
-                    <p className="text-xs opacity-90">
-                      Valid till {ad.validTill}
-                    </p>
+                    <p className="text-xs opacity-90">{ad.position}</p>
                   </div>
                 </div>
               </div>
@@ -521,488 +770,454 @@ function AdsBanner() {
 }
 
 // Categories Section Component
-function CategoriesSection() {
-  const categories = [
-    {
-      id: "grocery",
-      name: "Grocery",
-      icon: ShoppingCart,
-      count: 245,
-      image:
-        "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=300&h=200&fit=crop",
-      color: "from-green-500 to-green-600",
-      description: "Fresh produce & daily essentials",
-    },
-    {
-      id: "food",
-      name: "Food",
-      icon: Store,
-      count: 189,
-      image:
-        "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=300&h=200&fit=crop",
-      color: "from-orange-500 to-red-500",
-      description: "Restaurants & food delivery",
-    },
-    {
-      id: "medicine",
-      name: "Medicine",
-      icon: Shield,
-      count: 67,
-      image:
-        "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=300&h=200&fit=crop",
-      color: "from-blue-500 to-blue-600",
-      description: "Pharmacy & healthcare",
-    },
-    {
-      id: "fashion",
-      name: "Fashion",
-      icon: Users,
-      count: 134,
-      image:
-        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=300&h=200&fit=crop",
-      color: "from-purple-500 to-pink-500",
-      description: "Clothing & accessories",
-    },
-    {
-      id: "electronics",
-      name: "Electronics",
-      icon: Smartphone,
-      count: 89,
-      image:
-        "https://images.unsplash.com/photo-1498049794561-7780e7231661?w=300&h=200&fit=crop",
-      color: "from-gray-700 to-gray-800",
-      description: "Gadgets & electronics",
-    },
-    {
-      id: "household",
-      name: "Household",
-      icon: Home,
-      count: 156,
-      image:
-        "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=300&h=200&fit=crop",
-      color: "from-teal-500 to-cyan-500",
-      description: "Home & kitchen essentials",
-    },
-  ];
+const CategoriesSection = React.memo(
+  ({ cachedCategories }: { cachedCategories?: any[] }) => {
+    const [categories, setCategories] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [hasFetched, setHasFetched] = useState(false);
 
-  return (
-    <section className="py-8 px-4">
-      <div className="w-full">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Shop by Category
-          </h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Discover products from your favorite categories with fast delivery
-          </p>
-        </div>
+    useEffect(() => {
+      // Use cached categories if available
+      if (cachedCategories && cachedCategories.length > 0) {
+        const mappedCategories = cachedCategories.map((category: any) => ({
+          id: category.id,
+          name: category.name,
+          icon: getIconComponent(category.icon || "ShoppingCart"),
+          count: category.count || 0,
+          image: category.image,
+          color: category.color || "from-green-500 to-green-600",
+          description: category.description || category.name,
+        }));
+        setCategories(mappedCategories);
+        setHasFetched(true);
+        return;
+      }
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {categories.map((category) => (
-            <Link key={category.id} href={`/categories/${category.id}`}>
-              <Card className="group hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden h-full border-0">
-                <div className="relative h-40 md:h-48">
-                  <div
-                    className="absolute inset-0 bg-cover bg-center"
-                    style={{ backgroundImage: `url(${category.image})` }}
-                  />
-                  <div
-                    className={`absolute inset-0 bg-gradient-to-t ${category.color} opacity-90 group-hover:opacity-80 transition-opacity`}
-                  />
-                  <div className="absolute inset-0 p-4 flex flex-col justify-between text-white">
-                    <div className="flex justify-between items-start">
-                      <div
-                        className={`p-2 rounded-full bg-white/20 backdrop-blur-sm`}
-                      >
-                        <category.icon className="h-5 w-5" />
-                      </div>
-                      <Badge className="bg-white/20 text-white border-white/30 text-xs">
-                        {category.count}
-                      </Badge>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold mb-1">
-                        {category.name}
-                      </h3>
-                      <p className="text-xs text-white/90 mb-2">
-                        {category.description}
-                      </p>
-                      <Button className="bg-white text-gray-900 hover:bg-gray-100 font-medium text-xs px-3 py-1 h-7">
-                        Explore
-                        <ArrowRight className="ml-1 h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
+      // Only fetch once when component mounts and no cached data
+      if (!hasFetched && !cachedCategories) {
+        fetchCategories();
+      }
+    }, [cachedCategories, hasFetched]);
 
-// Collections Section Component
-function CollectionsSection() {
-  const collections = [
-    {
-      id: "trending",
-      title: "Trending Now",
-      subtitle: "Most popular products this week",
-      image:
-        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=600&h=400&fit=crop",
-      itemCount: 25,
-      link: "/products/trending",
-    },
-    {
-      id: "offers",
-      title: "Special Offers",
-      subtitle: "Up to 50% off on selected items",
-      image:
-        "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=600&h=400&fit=crop",
-      itemCount: 18,
-      link: "/offers",
-    },
-    {
-      id: "new",
-      title: "New Arrivals",
-      subtitle: "Latest products from top brands",
-      image:
-        "https://images.unsplash.com/photo-1498049794561-7780e7231661?w=600&h=400&fit=crop",
-      itemCount: 32,
-      link: "/products",
-    },
-  ];
+    const getIconComponent = (iconName: string) => {
+      const icons: Record<string, any> = {
+        ShoppingCart,
+        Store,
+        Shield,
+        Users,
+        Smartphone,
+        Home,
+      };
+      return icons[iconName] || ShoppingCart;
+    };
 
-  return (
-    <section className="py-8 px-4 bg-gray-50">
-      <div className="w-full">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Featured Collections
-          </h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Explore curated collections of the best products
-          </p>
-        </div>
+    const fetchCategories = async () => {
+      // Prevent multiple calls
+      if (hasFetched || loading) return;
+      try {
+        setLoading(true);
+        // Use direct fetch instead of useProducts hook for categories
+        const response = await fetch("/api/categories");
+        const data = await response.json();
+        const categoriesData = data.success ? data.categories : [];
 
-        <div className="grid md:grid-cols-3 gap-6">
-          {collections.map((collection) => (
-            <Link key={collection.id} href={`${collection.link}`}>
-              <Card className="group hover:shadow-2xl transition-all duration-500 cursor-pointer overflow-hidden border-0">
-                <div className="relative h-64">
-                  <div
-                    className="absolute inset-0 bg-cover bg-center"
-                    style={{ backgroundImage: `url(${collection.image})` }}
-                  />
-                  <div className="absolute inset-0 bg-black bg-opacity-50 group-hover:bg-opacity-40 transition-all" />
-                  <div className="absolute inset-0 p-6 flex flex-col justify-between text-white">
-                    <div className="flex justify-between items-start">
-                      <Badge className="bg-white/20 text-white border-white/30">
-                        {collection.itemCount} items
-                      </Badge>
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold mb-2">
-                        {collection.title}
-                      </h3>
-                      <p className="text-white/90 mb-4 text-sm">
-                        {collection.subtitle}
-                      </p>
-                      <Button className="bg-white text-gray-900 hover:bg-gray-100 font-medium px-4 py-2">
-                        View Collection
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
+        if (categoriesData && categoriesData.length > 0) {
+          const mappedCategories = categoriesData.map((category: any) => ({
+            id: category.id,
+            name: category.name,
+            icon: getIconComponent(category.icon || "ShoppingCart"),
+            count: category.count || 0,
+            image: category.image,
+            color: category.color || "from-green-500 to-green-600",
+            description: category.description || category.name,
+          }));
+          setCategories(mappedCategories);
+        } else {
+          // No categories available from API
+          setCategories([]);
+        }
+      } catch (error) {
+        console.error("Error fetching categories:", error);
+        // No fallback categories - show empty state
+        setCategories([]);
+      } finally {
+        setLoading(false);
+        setHasFetched(true);
+      }
+    };
 
-// Trending Products Section Component
-function TrendingProductsSection() {
-  const { addItem } = useCart();
-
-  const products = [
-    {
-      id: 1,
-      name: "Fresh Organic Tomatoes",
-      price: 40,
-      originalPrice: 50,
-      discount: 20,
-      rating: 4.5,
-      reviews: 128,
-      image:
-        "https://images.unsplash.com/photo-1546470427-e9e826abd807?w=300&h=200&fit=crop",
-      shop: "Fresh Mart",
-      distance: "0.8 km",
-      stock: 25,
-    },
-    {
-      id: 2,
-      name: "Grilled Chicken Salad",
-      price: 180,
-      rating: 4.8,
-      reviews: 95,
-      image:
-        "https://images.unsplash.com/photo-1546793665-c74683f339c1?w=300&h=200&fit=crop",
-      shop: "Healthy Bites Cafe",
-      distance: "1.2 km",
-      stock: 15,
-    },
-    {
-      id: 3,
-      name: "Wireless Headphones",
-      price: 2499,
-      originalPrice: 2999,
-      discount: 17,
-      rating: 4.6,
-      reviews: 203,
-      image:
-        "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300&h=200&fit=crop",
-      shop: "TechHub Electronics",
-      distance: "2.1 km",
-      stock: 8,
-    },
-    {
-      id: 4,
-      name: "Paracetamol Tablets",
-      price: 25,
-      rating: 4.9,
-      reviews: 67,
-      image:
-        "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=300&h=200&fit=crop",
-      shop: "City Pharmacy",
-      distance: "0.5 km",
-      stock: 50,
-    },
-    {
-      id: 5,
-      name: "Premium Coffee Beans",
-      price: 450,
-      rating: 4.7,
-      reviews: 156,
-      image:
-        "https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=300&h=200&fit=crop",
-      shop: "Brew Masters",
-      distance: "1.5 km",
-      stock: 20,
-    },
-    {
-      id: 6,
-      name: "Running Shoes",
-      price: 2999,
-      originalPrice: 3999,
-      discount: 25,
-      rating: 4.4,
-      reviews: 89,
-      image:
-        "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300&h=200&fit=crop",
-      shop: "SportZone",
-      distance: "3.2 km",
-      stock: 12,
-    },
-    {
-      id: 7,
-      name: "Smart Watch",
-      price: 5999,
-      originalPrice: 7999,
-      discount: 25,
-      rating: 4.6,
-      reviews: 234,
-      image:
-        "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300&h=200&fit=crop",
-      shop: "Gadget World",
-      distance: "1.8 km",
-      stock: 15,
-    },
-    {
-      id: 8,
-      name: "Yoga Mat",
-      price: 899,
-      rating: 4.8,
-      reviews: 145,
-      image:
-        "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=300&h=200&fit=crop",
-      shop: "Fitness First",
-      distance: "2.5 km",
-      stock: 30,
-    },
-    {
-      id: 9,
-      name: "LED Desk Lamp",
-      price: 1299,
-      originalPrice: 1599,
-      discount: 19,
-      rating: 4.5,
-      reviews: 98,
-      image:
-        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=200&fit=crop",
-      shop: "Home Essentials",
-      distance: "1.3 km",
-      stock: 22,
-    },
-    {
-      id: 10,
-      name: "Face Moisturizer",
-      price: 499,
-      rating: 4.7,
-      reviews: 167,
-      image:
-        "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=300&h=200&fit=crop",
-      shop: "Beauty Hub",
-      distance: "0.9 km",
-      stock: 18,
-    },
-    {
-      id: 11,
-      name: "Notebook Set",
-      price: 199,
-      rating: 4.6,
-      reviews: 89,
-      image:
-        "https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=300&h=200&fit=crop",
-      shop: "Stationery Plus",
-      distance: "1.7 km",
-      stock: 45,
-    },
-    {
-      id: 12,
-      name: "Wall Clock",
-      price: 799,
-      originalPrice: 999,
-      discount: 20,
-      rating: 4.4,
-      reviews: 76,
-      image:
-        "https://images.unsplash.com/photo-1563861826100-9cb868fdbe1c?w=300&h=200&fit=crop",
-      shop: "Decor World",
-      distance: "2.8 km",
-      stock: 14,
-    },
-  ];
-
-  const handleAddToCart = (product: any) => {
-    addItem({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      image: product.image,
-      quantity: 1,
-      shop: product.shop,
-      stock: product.stock,
-    });
-  };
-
-  return (
-    <section className="py-8 px-4">
-      <div className="w-full">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-              Trending Products
+    return (
+      <section className="py-8 px-4">
+        <div className="w-full">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+              Shop by Category
             </h2>
-            <p className="text-lg text-gray-600">
-              Most popular items loved by our customers
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Discover products from your favorite categories with fast delivery
             </p>
           </div>
-          <Link href="/products">
-            <Button variant="outline" size="lg" className="font-medium">
-              View All Products
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </Link>
+
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <Card key={i} className="overflow-hidden border-0">
+                  <CardContent className="p-0">
+                    <div className="h-40 md:h-48 bg-gray-200 animate-pulse" />
+                    <div className="p-4 space-y-2">
+                      <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                      <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4" />
+                      <div className="h-6 bg-gray-200 rounded animate-pulse w-1/2" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : categories.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-gray-400 mb-4">
+                <ShoppingCart className="h-16 w-16 mx-auto" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                No categories available
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Categories will be available once stores are added to the
+                platform.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {categories.map((category) => (
+                <Link key={category.id} href={`/categories/${category.id}`}>
+                  <Card className="group hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden h-full border-0">
+                    <div className="relative h-40 md:h-48">
+                      <ImageWithFallback
+                        src={category.image || undefined}
+                        fallbackSrc={getDefaultImage("banner")}
+                        alt={category.name}
+                        fill
+                        className="object-cover"
+                      />
+                      <div
+                        className={`absolute inset-0 bg-gradient-to-t ${category.color || "from-gray-500 to-gray-600"} opacity-90 group-hover:opacity-80 transition-opacity`}
+                      />
+                      <div className="absolute inset-0 p-4 flex flex-col justify-between text-white">
+                        <div className="flex justify-between items-start">
+                          <div
+                            className={`p-2 rounded-full bg-white/20 backdrop-blur-sm`}
+                          >
+                            <category.icon className="h-5 w-5" />
+                          </div>
+                          <Badge className="bg-white/20 text-white border-white/30 text-xs">
+                            {category.count}
+                          </Badge>
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold mb-1">
+                            {category.name}
+                          </h3>
+                          <p className="text-xs text-white/90 mb-2">
+                            {category.description}
+                          </p>
+                          <Button className="bg-white text-gray-900 hover:bg-gray-100 font-medium text-xs px-3 py-1 h-7">
+                            Explore
+                            <ArrowRight className="ml-1 h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
+      </section>
+    );
+  }
+);
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-          {products.map((product) => (
-            <Link key={product.id} href={`/products/${product.id}`}>
-              <Card className="group hover:shadow-xl transition-all duration-300 overflow-hidden border-0 cursor-pointer">
-                <CardContent className="p-0">
-                  <div className="relative">
-                    <div
-                      className="h-36 md:h-40 bg-cover bg-center"
-                      style={{ backgroundImage: `url(${product.image})` }}
-                    />
+// Trending Products Section Component
+const TrendingProductsSection = React.memo(
+  ({ userLocation }: { userLocation?: any }) => {
+    const { addItem, isAnimating: cartAnimating } = useCart();
+    const {
+      toggleWishlist,
+      isInWishlist,
+      isAnimating: wishlistAnimating,
+    } = useWishlist();
+    const { user, isAuthenticated } = useAuth();
+    const { getTrendingProducts } = useProducts();
+    const [products, setProducts] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [seeding, setSeeding] = useState(false);
+    const [hasFetched, setHasFetched] = useState(false);
+    useEffect(() => {
+      if (!hasFetched) {
+        fetchTrendingProducts();
+        setHasFetched(true);
+      }
+    }, []);
 
-                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button size="sm" variant="secondary" className="p-2">
-                        <Eye className="h-3 w-3" />
-                      </Button>
+    const fetchTrendingProducts = async () => {
+      // Prevent multiple calls
+      if (hasFetched) {
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const isMobile =
+          typeof window !== "undefined" && window.innerWidth < 768;
+        const limit = isMobile ? 20 : 40;
+
+        const data = await getTrendingProducts(limit);
+        console.log("Trending products data:", data);
+        if (data && data.data && data.data.length > 0) {
+          const sortedProducts = data.data.sort((a: any, b: any) => {
+            const ratingA = a.averageRating || 0;
+            const ratingB = b.averageRating || 0;
+            return ratingB - ratingA;
+          });
+          setProducts(sortedProducts);
+        } else {
+        }
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const handleAddToCart = (product: any) => {
+      addItem({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.primaryImage || product.images?.[0] || product.image,
+        quantity: 1,
+        shop: product.store?.name || "Unknown Shop",
+        stock: product.stockQuantity,
+      });
+    };
+
+    const handleToggleWishlist = (product: any) => {
+      toggleWishlist({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.primaryImage || product.images?.[0] || product.image,
+        shop: product.store?.name || "Unknown Shop",
+        category: product.categoryName,
+        description: product.description,
+      });
+    };
+
+    if (loading || seeding) {
+      return (
+        <section className="py-8 px-4">
+          <div className="w-full">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+                  Trending Products
+                </h2>
+                <p className="text-lg text-gray-600">
+                  {seeding ? "Initializing database..." : "Loading products..."}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+              {[...Array(40)].map((_, i) => (
+                <Card key={i} className="overflow-hidden border-0">
+                  <CardContent className="p-0">
+                    <div className="h-36 md:h-40 bg-gray-200 animate-pulse" />
+                    <div className="p-4 space-y-2">
+                      <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                      <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4" />
+                      <div className="h-6 bg-gray-200 rounded animate-pulse w-1/2" />
                     </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+      );
+    }
 
-                    <div className="p-4">
-                      <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-townkart-primary transition-colors">
-                        {product.name}
-                      </h3>
+    if (error) {
+      return (
+        <section className="py-8 px-4">
+          <div className="w-full">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+                  Trending Products
+                </h2>
+                <p className="text-lg text-gray-600">Failed to load products</p>
+              </div>
+            </div>
+            <div className="text-center py-12">
+              <p className="text-gray-600 mb-4">{error}</p>
+              <Button onClick={fetchTrendingProducts} variant="outline">
+                Try Again
+              </Button>
+            </div>
+          </div>
+        </section>
+      );
+    }
 
-                      <div className="flex items-center space-x-1 mb-2">
-                        <div className="flex items-center">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`h-3 w-3 ${
-                                i < Math.floor(product.rating)
-                                  ? "fill-yellow-400 text-yellow-400"
-                                  : "text-gray-300"
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <span className="text-xs text-gray-600">
-                          ({product.reviews})
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-lg font-bold text-gray-900">
-                            ₹{product.price}
-                          </span>
-                          {product.originalPrice && (
-                            <span className="text-sm text-gray-500 line-through">
-                              ₹{product.originalPrice}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <Button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          handleAddToCart(product);
-                        }}
-                        className="w-full townkart-gradient hover:opacity-90 font-medium text-sm py-2"
-                        size="sm"
-                      >
-                        Add to Cart
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+    return (
+      <section className="py-8 px-4">
+        <div className="w-full">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+                Trending Products
+              </h2>
+              <p className="text-lg text-gray-600">
+                Most popular items loved by our customers
+              </p>
+            </div>
+            <Link href="/products">
+              <Button variant="outline" size="lg" className="font-medium">
+                View All Products
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             </Link>
-          ))}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {products.map((product) => (
+              <Link key={product.id} href={`/products/${product.slug}`}>
+                <Card className="group hover:shadow-xl transition-all duration-300 overflow-hidden border-0 cursor-pointer">
+                  <CardContent className="p-0">
+                    <div className="relative">
+                      <ImageWithFallback
+                        src={
+                          product.primaryImage ||
+                          product.images?.[0] ||
+                          undefined
+                        }
+                        fallbackSrc={getDefaultImage("product")}
+                        alt={product.name}
+                        width={200}
+                        height={150}
+                        className="object-cover rounded-t-lg w-full h-32"
+                      />
+
+                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className={`p-2 relative ${wishlistAnimating ? "animate-pulse" : ""}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleToggleWishlist(product);
+                          }}
+                        >
+                          <Heart
+                            className={`h-3 w-3 ${isInWishlist(product.id) ? "fill-red-500 text-red-500" : ""}`}
+                          />
+                          {wishlistAnimating && (
+                            <div className="absolute inset-0 bg-red-500 bg-opacity-20 rounded animate-ping"></div>
+                          )}
+                        </Button>
+                        <Button size="sm" variant="secondary" className="p-2">
+                          <Eye className="h-3 w-3" />
+                        </Button>
+                      </div>
+
+                      {product.discountedPrice && (
+                        <div className="absolute top-3 left-3">
+                          <Badge className="bg-red-500 hover:bg-red-600 text-white">
+                            {Math.round(
+                              ((product.price - product.discountedPrice) /
+                                product.price) *
+                                100
+                            )}
+                            % OFF
+                          </Badge>
+                        </div>
+                      )}
+
+                      <div className="p-4">
+                        <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-townkart-primary transition-colors">
+                          {product.name}
+                        </h3>
+
+                        <div className="flex items-center space-x-1 mb-2">
+                          <div className="flex items-center">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`h-3 w-3 ${
+                                  i < Math.floor(product.averageRating || 0)
+                                    ? "fill-yellow-400 text-yellow-400"
+                                    : "text-gray-300"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-xs text-gray-600">
+                            ({product.totalReviews || 0})
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-lg font-bold text-gray-900">
+                              ₹{product.discountedPrice || product.price}
+                            </span>
+                            {product.discountedPrice && (
+                              <span className="text-sm text-gray-500 line-through">
+                                ₹{product.price}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <Button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleAddToCart(product);
+                          }}
+                          className={`w-full townkart-gradient hover:opacity-90 font-medium text-sm py-2 relative ${cartAnimating ? "animate-pulse" : ""}`}
+                          size="sm"
+                          disabled={product.stockQuantity <= 0}
+                        >
+                          {product.stockQuantity <= 0
+                            ? "Out of Stock"
+                            : "Add to Cart"}
+                          {cartAnimating && (
+                            <div className="absolute inset-0 bg-green-500 bg-opacity-20 rounded animate-ping"></div>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
         </div>
-      </div>
-    </section>
-  );
-}
+      </section>
+    );
+  }
+);
 
 // Newsletter Section Component
-function NewsletterSection() {
+const NewsletterSection = React.memo(() => {
   const [email, setEmail] = useState("");
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Subscribed with:", email);
     setEmail("");
   };
 
@@ -1041,22 +1256,163 @@ function NewsletterSection() {
       </div>
     </section>
   );
-}
+});
 
 export function HomePage() {
+  const { user, isAuthenticated } = useAuth();
+  const router = useRouter();
+  const dispatch = useDispatch<AppDispatch>();
+
+  // Location and caching hooks
+  const {
+    location,
+    cachedData,
+    isLoadingLocation,
+    cacheData,
+    getCachedData,
+    shouldRefreshData,
+  } = useLocationAndCache();
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  // If authenticated and not customer, redirect to dashboard
+  useEffect(() => {
+    if (isAuthenticated && user?.activeRole && user.activeRole !== "CUSTOMER") {
+      switch (user.activeRole) {
+        case "ADMIN":
+          router.push("/admin");
+          break;
+        case "RIDER":
+          router.push("/rider/rider-dashboard");
+          break;
+        case "MERCHANT":
+          router.push("/merchant/merchant-dashboard");
+          break;
+        default:
+          break;
+      }
+    }
+  }, [isAuthenticated, user?.activeRole, router]);
+
+  // Fetch home page data with caching
+  const fetchHomePageData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+
+      // Check if we need to refresh data
+      if (!shouldRefreshData() && cachedData) {
+        setDataLoaded(true);
+        setIsLoading(false);
+        return;
+      }
+
+      // Fetch banners
+      if (!getCachedData("banners")) {
+        try {
+          const bannersResult = await dispatch(fetchBanners()).unwrap();
+          cacheData("banners", bannersResult);
+        } catch (error) {
+          console.error("Error fetching banners:", error);
+        }
+      }
+
+      // Fetch ads
+      if (!getCachedData("ads")) {
+        try {
+          const adsResult = await dispatch(fetchAds()).unwrap();
+          cacheData("ads", adsResult);
+        } catch (error) {
+          console.error("Error fetching ads:", error);
+        }
+      }
+
+      // Fetch categories
+      if (!getCachedData("categories")) {
+        try {
+          const categoriesResponse = await fetch("/api/categories");
+          if (categoriesResponse.ok) {
+            const categoriesData = await categoriesResponse.json();
+            if (categoriesData.success) {
+              cacheData("categories", categoriesData.categories);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching categories:", error);
+        }
+      }
+
+      setDataLoaded(true);
+    } catch (error) {
+      console.error("Error fetching home page data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [dispatch, shouldRefreshData, cachedData, cacheData, getCachedData]);
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchHomePageData();
+  }, [fetchHomePageData]);
+
+  // Handle page visibility change (when user returns to tab)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && shouldRefreshData()) {
+        fetchHomePageData();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [shouldRefreshData, fetchHomePageData]);
+
+  // Loading state
+  if (isLoading || isLoadingLocation) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center space-y-4">
+            <Loader2 className="h-8 w-8 animate-spin text-townkart-primary mx-auto" />
+            <div className="space-y-2">
+              <p className="text-gray-600">
+                Loading your personalized experience...
+              </p>
+              {isLoadingLocation && (
+                <p className="text-sm text-gray-500">
+                  Detecting your location for better recommendations
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // For customers or unauthenticated users, show home page
   return (
-    <div className="min-h-screen bg-white">
-      <Header />
-      <HeroBanner />
-      <AdsBanner />
-      <CategoriesSection />
-      <SpecialOffer />
-      <CollectionsSection />
-      <TrendingProductsSection />
-      <NewsletterSection />
-      <StatsSection />
-      <WhyChooseUsSection />
-      <Footer />
-    </div>
+    <AnimatePresence mode="wait">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+        className="min-h-screen bg-white"
+      >
+        <HeroBanner />
+        <AdsBanner />
+        <CategoriesSection
+          cachedCategories={getCachedData("categories") as any[] | undefined}
+        />
+        <SpecialOffer />
+        <TrendingProductsSection userLocation={location} />
+
+        <NewsletterSection />
+        <StatsSection />
+        <WhyChooseUsSection />
+      </motion.div>
+    </AnimatePresence>
   );
 }

@@ -8,21 +8,23 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+ 
 }
 
 enum UserRole {
   CUSTOMER
-  MERCHANT
+  STORE_MANAGER
   RIDER
   ADMIN
 }
 
 enum OrderStatus {
-  PENDING_CONFIRMATION
-  CONFIRMED
-  PREPARING
+  ORDER_PLACED
+  STORE_ASSIGNED
+  BEING_PREPARED
   READY_FOR_PICKUP
-  OUT_FOR_DELIVERY
+  RIDER_ASSIGNED
+  EN_ROUTE
   DELIVERED
   CANCELLED
   REFUNDED
@@ -69,6 +71,10 @@ enum NotificationType {
   PAYMENT_SUCCESS
   PAYMENT_FAILED
   GENERAL
+  SYSTEM_NOTIFICATION
+  LOGIN_ALERT
+  DEVICE_CHANGE
+  SECURITY_ALERT
 }
 
 enum TransactionType {
@@ -81,24 +87,55 @@ model User {
   phoneNumber       String   @unique
   fullName          String?
   email             String?  @unique
+  password          String?
   userRoles         UserRole[]
   activeRole        UserRole @default(CUSTOMER)
   profileImageUrl   String?
   emailVerified     Boolean  @default(false)
-  phoneVerified     Boolean  @default(true)
+  phoneVerified     Boolean  @default(false)
   isActive          Boolean  @default(true)
+  lastLoginAt       DateTime?
+  lastLoginIP       String?
+  lastLoginDevice   String?
+
+  // Registration location for validation
+  registrationIP    String?
+  registrationLocation Json? // {country, city, region, lat, lng}
+
+  // Notification preferences (global)
+  emailNotifications Boolean @default(true)
+  pushNotifications  Boolean @default(true)
+  smsNotifications   Boolean @default(false)
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   // Relations
   customerProfile   CustomerProfile?
-  merchantProfile   MerchantProfile?
   riderProfile      RiderProfile?
+  managedStores     Store[]          @relation("StoreManager")
+  storeStaff        StoreStaff[]
   addresses         Address[]
   orders            Order[]
   reviews           Review[]
+  productReviews    ProductReview[]
   notifications     Notification[]
   wallet            Wallet?
+  couponUsages      CouponUsage[]
+  productSales      ProductSales[]
+  sessions          Session[]
+  devices           Device[]
+  deviceLoginLogs   DeviceLoginLog[]
+  loginAttempts     LoginAttempt[]
+  emailVerifications EmailVerification[]
+  phoneVerifications PhoneVerification[]
+  wishlistItems     WishlistItem[]
+  customerDisputes  Dispute[]        @relation("CustomerDisputes")
+  riderDisputes     Dispute[]        @relation("RiderDisputes")
+  locationConsents  LocationConsent[]
+  locationDataRecords LocationDataRecord[]
+  locationAuditLogs LocationAuditLog[]
+  supportTickets    SupportTicket[]
 
   @@map("users")
 }
@@ -106,7 +143,7 @@ model User {
 model CustomerProfile {
   id          String   @id @default(cuid())
   userId      String   @unique
-  user        User     @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   preferences Json?    // Store user preferences as JSON
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -114,51 +151,113 @@ model CustomerProfile {
   @@map("customer_profiles")
 }
 
-model MerchantProfile {
+model Store {
   id                String   @id @default(cuid())
-  userId            String   @unique
-  user              User     @references([id]) @relation(fields: [userId], onDelete: Cascade)
-  businessName      String
+  name              String
+  code              String   @unique // Store code for identification
   description       String?
   address           String
+  city              String   // City for multi-city support
+  state             String
+  pincode           String
   latitude          Float
   longitude         Float
   category          String
   subcategory       String?
-  averageRating     Float    @default(0)
-  totalOrders       Int      @default(0)
-  openingHours      String?  // JSON string for flexible hours
-  closingHours      String?  // JSON string for flexible hours
+
+  // Store Management
+  managerId         String?  // Store manager user ID
+  manager           User?    @relation("StoreManager", fields: [managerId], references: [id])
+
+  // Operating Hours (JSON)
+  operatingHours    Json?    // {monday: {open: "09:00", close: "21:00"}, ...}
+
+  // Status & Verification
   isActive          Boolean  @default(true)
   isVerified        Boolean  @default(false)
-  commissionRate    Float    @default(0.10) // 10% default
+
+  // Performance Metrics
+  averageRating     Float    @default(0)
+  totalOrders       Int      @default(0)
+  totalRevenue      Float    @default(0)
+
+  // Contact
+  phoneNumber       String?
+  email             String?
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   // Relations
-  products          Product[]
   orders            Order[]
+  inventory         StoreInventory[]
+  staff             StoreStaff[]
+  disputes          Dispute[]
+  cashTransactions  CashTransaction[]
+  cashSettlements   CashSettlement[]
+  reviews           Review[]
+  productSales      ProductSales[]
+  serviceArea       ServiceArea @relation(fields: [serviceAreaId], references: [id])
+  serviceAreaId     String
+  riderAssignments  RiderStoreAssignment[]
+  collections       StoreCollection[]
+  supportTickets    SupportTicket[]
 
-  @@map("merchant_profiles")
+  @@map("stores")
 }
 
 model RiderProfile {
   id              String   @id @default(cuid())
   userId          String   @unique
-  user            User     @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Basic Info
   vehicleType     String   @default("bike")
   vehicleNumber   String?
   licenseNumber   String?
+  emergencyContact String?
+  emergencyPhone  String?
+
+  // Availability & Location
+  city            String   // Rider's operating city
   isAvailable     Boolean  @default(false)
   currentLat      Float?
   currentLng      Float?
+  lastLocationUpdate DateTime?
+  availabilitySchedule Json? // Weekly schedule for availability
+
+  // Performance Metrics
   rating          Float    @default(0)
   totalDeliveries Int      @default(0)
+  totalEarnings   Float    @default(0)
+  onTimeDeliveryRate Float @default(0)
+  averageDeliveryTime Int? // in minutes
+
+  // Status & Verification
+  isVerified      Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  suspensionReason String?
+  suspendedUntil  DateTime?
+
+  // Admin Controls
+  maxDailyDeliveries Int   @default(20)
+  preferredZones   Json?   // Array of zone IDs
+  skills           Json?   // Special skills (heavy items, etc.)
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   // Relations
   deliveries      Delivery[]
+  reviews         Review[]
+  riderLogs       RiderLog[]
+  earningsHistory RiderEarnings[]
+  locationHistory RiderLocation[]
+  cashTransactions CashTransaction[]
+  cashSettlements CashSettlement[]
+  cashBalance     RiderCashBalance?
+  zoneAssignment  RiderZoneAssignment?
+  storeAssignments RiderStoreAssignment[]
 
   @@map("rider_profiles")
 }
@@ -166,7 +265,7 @@ model RiderProfile {
 model Address {
   id          String      @id @default(cuid())
   userId      String
-  user        User        @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   line1       String
   line2       String?
   landmark    String?
@@ -184,23 +283,86 @@ model Address {
 }
 
 model Product {
-  id            String   @id @default(cuid())
-  merchantId    String
-  merchant      MerchantProfile @references([id]) @relation(fields: [merchantId], onDelete: Cascade)
-  name          String
-  description   String?
-  price         Float
-  discountedPrice Float?
-  stockQuantity Int      @default(0)
-  category      String
-  subcategory   String?
-  images        Json?    // Array of image URLs
-  isAvailable   Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                String   @id @default(cuid())
+
+  // Basic Information
+  name              String
+  slug              String?  @unique // URL-friendly name
+  description       String?
+  shortDescription  String?  // Brief description for listings
+  sku               String?  @unique // Stock Keeping Unit
+  barcode           String?  @unique // Product barcode
+  brand             String?
+
+  // Pricing
+  price             Float
+  discountedPrice   Float?
+  costPrice         Float?   // Merchant's cost price
+  taxRate           Float    @default(0) // Tax percentage
+  taxAmount         Float    @default(0)
+
+  // Inventory
+  stockQuantity     Int      @default(0)
+  minStockLevel     Int      @default(0) // Reorder point
+  maxStockLevel     Int?     // Maximum stock to hold
+  stockStatus       String   @default("IN_STOCK") // IN_STOCK, OUT_OF_STOCK, LOW_STOCK
+
+  // Categories & Classification
+  categoryName      String
+  subcategory       String?
+  tags              Json?    // Array of tags for filtering
+  keywords          Json?    // SEO keywords
+
+  // Product Details
+  weight            Float?   // In grams
+  dimensions        Json?    // {length, width, height} in cm
+  packageWeight     Float?   // Shipping weight
+  packageDimensions Json?    // Shipping dimensions
+
+  // Specifications & Attributes
+  specifications    Json?    // Key-value pairs of specs
+  attributes        Json?    // Product variants/attributes
+  features          Json?    // Array of product features
+
+  // Media
+  imageUrls         Json?    // Array of image URLs (legacy)
+  videos            Json?    // Array of video URLs
+  documents         Json?    // Manuals, certificates, etc.
+
+  // SEO & Marketing
+  metaTitle         String?
+  metaDescription   String?
+  seoUrl            String?
+
+  // Status & Visibility
+  isAvailable       Boolean  @default(true)
+  isFeatured        Boolean  @default(false)
+  isNew             Boolean  @default(false)
+  isOnSale          Boolean  @default(false)
+  isDigital         Boolean  @default(false) // Digital product
+  requiresShipping  Boolean  @default(true)
+
+  // Sales & Analytics
+  totalSales        Int      @default(0)
+  totalViews        Int      @default(0)
+  averageRating     Float    @default(0)
+  totalReviews      Int      @default(0)
+
+  // Timestamps
+  publishedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   // Relations
-  orderItems    OrderItem[]
+  orderItems        OrderItem[]
+  reviews           ProductReview[]
+  variants          ProductVariant[]
+  images            ProductImage[]
+  category          ProductCategory? @relation(fields: [categoryId], references: [id])
+  categoryId        String?
+  sales             ProductSales[]
+  wishlistItems     WishlistItem[]
+  storeInventory    StoreInventory[]
 
   @@map("products")
 }
@@ -209,43 +371,92 @@ model Order {
   id              String      @id @default(cuid())
   orderNumber     String      @unique @default(cuid())
   customerId      String
-  customer        User        @references([id]) @relation(fields: [customerId], onDelete: Cascade)
-  merchantId      String
-  merchant        MerchantProfile @references([id]) @relation(fields: [merchantId], onDelete: Cascade)
+  customer        User        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  // Changed: storeId instead of merchantId
+  storeId         String
+  store           Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  // Customer location for assignment
+  customerLat     Float?
+  customerLng     Float?
+
+  // Financial
   totalAmount     Float
   deliveryFee     Float       @default(0)
   taxAmount       Float       @default(0)
   discountAmount  Float       @default(0)
   finalAmount     Float
+  refundAmount    Float       @default(0)
+
+  // Status & Flow (updated)
   paymentMethod   PaymentMethod
   paymentStatus   PaymentStatus @default(PENDING)
-  orderStatus     OrderStatus @default(PENDING_CONFIRMATION)
+  orderStatus     OrderStatus @default(ORDER_PLACED)
+  cancellationReason String?
+  cancelledBy     String?
+  cancellationFee Float       @default(0)
+
+  // Delivery
   deliveryAddress Json        // Store address as JSON for flexibility
+  deliveryInstructions String?
+  deliveryPriority String     @default("normal") // normal, urgent, scheduled
+  scheduledDeliveryTime DateTime?
+
+  // Timing (updated)
   specialInstructions String?
+  storeAssignedAt DateTime?
+  readyAt         DateTime?
+  riderAssignedAt DateTime?
+  enRouteAt       DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   deliveredAt     DateTime?
 
-  // Relations
+  // Relations (updated)
   orderItems      OrderItem[]
   delivery        Delivery?
   payment         Payment?
   review          Review?
+  productReviews  ProductReview[]
+  walletTransactions WalletTransaction[]
+  offers          Offer[]
+  couponUsages    CouponUsage[]
+  productSales    ProductSales[]
+  orderLogs       OrderLog[]
+  statusHistory   OrderStatusHistory[] // New
+  disputes        Dispute[]
+  cashTransactions CashTransaction[]
+  supportTickets  SupportTicket[]
 
   @@map("orders")
 }
 
 model OrderItem {
-  id          String  @id @default(cuid())
-  orderId     String
-  order       Order   @references([id]) @relation(fields: [orderId], onDelete: Cascade)
-  productId   String
-  product     Product @references([id]) @relation(fields: [productId], onDelete: Cascade)
-  productSnapshot Json    // Store product data at time of order
-  quantity    Int
-  unitPrice   Float
-  subtotal    Float
-  createdAt   DateTime @default(now())
+  id                String   @id @default(cuid())
+  orderId           String
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Variant support
+  variantId         String?
+  variant           ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  // Order details
+  productSnapshot   Json     // Store product data at time of order
+  variantSnapshot   Json?    // Store variant data at time of order
+  quantity          Int
+  unitPrice         Float
+  discountAmount    Float    @default(0)
+  taxAmount         Float    @default(0)
+  subtotal          Float
+
+  // Item status
+  status            String   @default("PENDING") // PENDING, CONFIRMED, PREPARING, READY, DELIVERED, CANCELLED
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@map("order_items")
 }
@@ -253,27 +464,66 @@ model OrderItem {
 model Delivery {
   id              String        @id @default(cuid())
   orderId         String        @unique
-  order           Order         @references([id]) @relation(fields: [orderId], onDelete: Cascade)
-  riderId         String
-  rider           RiderProfile  @references([id]) @relation(fields: [riderId], onDelete: Cascade)
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  riderId         String?
+  rider           RiderProfile? @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  // Timing
   pickupTime      DateTime?
   deliveryTime    DateTime?
+  estimatedPickupTime DateTime?
+  estimatedDeliveryTime DateTime?
+
+  // OTP & Verification
   pickupOtp       String        // 4-digit OTP
   deliveryOtp     String        // 4-digit OTP
+  pickupOtpVerified Boolean     @default(false)
+  deliveryOtpVerified Boolean   @default(false)
+
+  // Status & Assignment
   deliveryStatus  DeliveryStatus @default(ASSIGNED)
-  proofPhotoUrl   String?
+  assignmentType  String        @default("auto") // auto, manual, preferred
+  reassignedCount Int           @default(0)
+  assignmentLocked Boolean      @default(false)
+  assignmentLockExpiresAt DateTime?
+
+  // Location & Distance
+  pickupLat       Float?
+  pickupLng       Float?
+  deliveryLat     Float?
+  deliveryLng     Float?
   distanceKm      Float?
+  actualDistanceKm Float?
+
+  // Financial
   deliveryFee     Float         @default(0)
+  riderEarnings   Float         @default(0)
+  commissionFee   Float         @default(0)
+
+  // Media & Proof
+  proofPhotoUrl   String?
+  signatureUrl    String?
+  customerFeedback String?
+
+  // Quality Control
+  qualityRating   Int?          // 1-5 stars from admin
+  qualityNotes    String?
+
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
+  // Relations
+  deliveryLogs    DeliveryLog[]
+  riderLocations  RiderLocation[]
+  riderEarningsRecords RiderEarnings[]
+  disputes        Dispute[]
   @@map("deliveries")
 }
 
 model Payment {
   id                String        @id @default(cuid())
   orderId           String        @unique
-  order             Order         @references([id]) @relation(fields: [orderId], onDelete: Cascade)
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   amount            Float
   paymentMethod     PaymentMethod
   transactionId     String?       @unique
@@ -290,14 +540,14 @@ model Payment {
 model Review {
   id            String   @id @default(cuid())
   orderId       String   @unique
-  order         Order    @references([id]) @relation(fields: [orderId], onDelete: Cascade)
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   customerId    String
-  customer      User     @references([id]) @relation(fields: [customerId], onDelete: Cascade)
-  merchantId    String
-  merchant      MerchantProfile @references([id]) @relation(fields: [merchantId], onDelete: Cascade)
+  customer      User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  storeId       String
+  store         Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
   riderId       String?
-  rider         RiderProfile? @references([id]) @relation(fields: [riderId], onDelete: Cascade)
-  merchantRating Int?    // 1-5 stars
+  rider         RiderProfile? @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  storeRating   Int?    // 1-5 stars
   riderRating   Int?     // 1-5 stars
   comment       String?
   createdAt     DateTime @default(now())
@@ -308,7 +558,7 @@ model Review {
 model Wallet {
   id            String   @id @default(cuid())
   userId        String   @unique
-  user          User     @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userType      String   // 'merchant' or 'rider'
   currentBalance Float    @default(0)
   totalEarned   Float    @default(0)
@@ -324,9 +574,9 @@ model Wallet {
 model WalletTransaction {
   id            String          @id @default(cuid())
   walletId      String
-  wallet        Wallet          @references([id]) @relation(fields: [walletId], onDelete: Cascade)
+  wallet        Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
   orderId       String?
-  order         Order?          @references([id]) @relation(fields: [orderId], onDelete: Cascade)
+  order         Order?          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   amount        Float
   transactionType TransactionType
   description   String
@@ -339,7 +589,7 @@ model WalletTransaction {
 model Notification {
   id               String           @id @default(cuid())
   userId           String
-  user             User             @references([id]) @relation(fields: [userId], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   title            String
   message          String
   notificationType NotificationType
@@ -361,4 +611,1220 @@ model OTP {
   createdAt   DateTime @default(now())
 
   @@map("otps")
+}
+
+model Session {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Session details
+  sessionToken  String   @unique
+  accessToken   String?  @unique
+  refreshToken  String?  @unique
+
+  // Device tracking
+  deviceId      String?
+  device        Device?  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  // Session metadata
+  ipAddress     String?
+  userAgent     String?
+  location      Json?    // {country, city, region}
+  isActive      Boolean  @default(true)
+
+  // Timestamps
+  expiresAt     DateTime
+  lastActivity  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("sessions")
+}
+
+model Device {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Device identification
+  deviceId      String   // Unique device identifier
+  deviceName    String?  // User-friendly name
+  deviceType    String   // 'mobile', 'desktop', 'tablet'
+  os            String?  // Operating system
+  browser       String?  // Browser name
+  fingerprint   String?  // Device fingerprint
+
+  // Location tracking
+  lastIP        String?
+  lastLocation  Json?    // {country, city, region, lat, lng}
+  registrationLocation Json? // Location where user registered
+
+  // Trust status
+  isTrusted     Boolean  @default(false)
+  trustExpiresAt DateTime?
+
+  // Activity
+  lastLoginAt   DateTime?
+  loginCount    Int      @default(0)
+  isActive      Boolean  @default(true) // For device management
+
+  // Battery & Status tracking
+  batteryLevel  Int?     // Battery percentage (0-100)
+  lastBatteryUpdate DateTime?
+
+  // Notification preferences per device
+  pushNotifications Boolean @default(true)
+  emailNotifications Boolean @default(true)
+  inAppNotifications Boolean @default(true)
+
+  // Relations
+  sessions      Session[]
+  loginLogs     DeviceLoginLog[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, deviceId])
+  @@map("devices")
+}
+
+model DeviceLoginLog {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId      String
+  device        Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  // Login details
+  loginType     String   // 'LOGIN', 'LOGOUT', 'SESSION_EXPIRED', 'FORCED_LOGOUT'
+  ipAddress     String
+  userAgent     String?
+  location      Json?    // {country, city, region, lat, lng}
+
+  // Device status
+  batteryLevel  Int?
+  deviceType    String
+
+  // Security flags
+  isSuspicious  Boolean  @default(false)
+  riskLevel     String   @default("LOW") // LOW, MEDIUM, HIGH
+  riskReasons   Json?    // Array of risk factors
+
+  // Location validation
+  locationMatch Boolean  @default(true) // Whether login location matches registration
+  distanceKm    Float?   // Distance from registration location
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([deviceId, createdAt])
+  @@map("device_login_logs")
+}
+
+model LoginAttempt {
+  id            String   @id @default(cuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Attempt details
+  identifier    String   // phone/email used for login
+  ipAddress     String
+  userAgent     String?
+  location      Json?    // {country, city, region}
+
+  // Result
+  success       Boolean  @default(false)
+  failureReason String?
+
+  // Device info
+  deviceId      String?
+  deviceType    String?
+
+  createdAt     DateTime @default(now())
+
+  @@map("login_attempts")
+}
+
+model EmailVerification {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  email         String
+  token         String   @unique
+  expiresAt     DateTime
+  isUsed        Boolean  @default(false)
+
+  // Verification purpose
+  purpose       String   @default("EMAIL_VERIFICATION") // EMAIL_VERIFICATION, PASSWORD_RESET
+
+  createdAt     DateTime @default(now())
+
+  @@map("email_verifications")
+}
+
+model PhoneVerification {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  phoneNumber   String
+  otp           String
+  expiresAt     DateTime
+  isUsed        Boolean  @default(false)
+
+  // Verification purpose
+  purpose       String   @default("PHONE_VERIFICATION") // PHONE_VERIFICATION, PASSWORD_RESET
+
+  createdAt     DateTime @default(now())
+
+  @@map("phone_verifications")
+}
+
+model ProductReview {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderId       String?  // Link to order for verification
+  order         Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  rating        Int      // 1-5 stars
+  title         String?
+  comment       String?
+  pros          Json?    // Array of positive points
+  cons          Json?    // Array of negative points
+
+  // Review metadata
+  isVerified    Boolean  @default(false) // Purchased product
+  isHelpful     Int      @default(0)     // Helpful votes
+  isReported    Boolean  @default(false)
+  reportReason  String?
+
+  // Media
+  images        Json?    // Review images
+  videos        Json?    // Review videos
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("product_reviews")
+}
+
+model ProductCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  image       String?
+  parentId    String?
+  parent      ProductCategory? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    ProductCategory[] @relation("CategoryHierarchy")
+  products    Product[]
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("product_categories")
+}
+
+model ProductVariant {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Variant details
+  name          String   // e.g., "Size: Large", "Color: Red"
+  sku           String?  @unique
+  barcode       String?  @unique
+
+  // Pricing (can override base product price)
+  price         Float?
+  discountedPrice Float?
+
+  // Inventory
+  stockQuantity Int      @default(0)
+  isAvailable   Boolean  @default(true)
+
+  // Attributes
+  attributes    Json     // {size: "L", color: "Red"}
+
+  // Media (variant-specific images)
+  images        Json?
+
+  // Relations
+  orderItems    OrderItem[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  url         String
+  alt         String?
+  caption     String?
+  sortOrder   Int      @default(0)
+  isPrimary   Boolean  @default(false)
+  width       Int?
+  height      Int?
+  fileSize    Int?     // in bytes
+  createdAt   DateTime @default(now())
+
+  @@map("product_images")
+}
+
+model ProductAttribute {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "Color", "Size", "Material"
+  values      Json     // Array of possible values
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("product_attributes")
+}
+
+model Offer {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  type          OfferType @default(PERCENTAGE_DISCOUNT)
+
+  // Discount details
+  discountValue Float    // Percentage (0-100) or fixed amount
+  maxDiscount   Float?   // Maximum discount amount for percentage offers
+  minOrderValue Float    @default(0) // Minimum order value to apply offer
+
+  // Validity
+  startDate     DateTime
+  endDate       DateTime
+  isActive      Boolean  @default(true)
+
+  // Applicability
+  applicableTo  OfferApplicability @default(ALL_PRODUCTS)
+  productIds    Json?    // Array of specific product IDs
+  categoryIds   Json?    // Array of specific category IDs
+  merchantIds   Json?    // Array of specific merchant IDs
+
+  // User targeting
+  targetUsers   OfferTarget @default(ALL_USERS)
+  userIds       Json?    // Array of specific user IDs for personalized offers
+  userSegments  Json?    // User segments (new_users, loyal_customers, etc.)
+
+  // Usage limits
+  usageLimit    Int?     // Total usage limit
+  perUserLimit  Int      @default(1) // Usage limit per user
+  usedCount     Int      @default(0)
+
+  // Coupon code (optional)
+  couponCode    String?  @unique
+  isAutoApply   Boolean  @default(false)
+
+  // Metadata
+  createdBy     String   // Admin/Merchant ID who created
+  priority      Int      @default(0) // For multiple offers on same product
+  terms         String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  orders        Order[]
+
+  @@map("offers")
+}
+
+model Collection {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+
+  // Content
+  products    Json     // Array of product IDs with sort order
+  type        CollectionType @default(MANUAL)
+
+  // Filtering rules (for dynamic collections)
+  filters     Json?    // Category, price range, tags, etc.
+
+  // Display
+  image       String?
+  bannerImage String?
+  isActive    Boolean  @default(true)
+  isFeatured  Boolean  @default(false)
+  sortOrder   Int      @default(0)
+
+  // SEO
+  metaTitle   String?
+  metaDescription String?
+
+  // Targeting
+  targetUsers CollectionTarget @default(ALL_USERS)
+  userSegments Json?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("collections")
+}
+
+model StoreCollection {
+  id          String   @id @default(cuid())
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  name        String
+  slug        String
+  description String?
+
+  // Content
+  products    Json     // Array of product IDs with sort order
+  type        CollectionType @default(MANUAL)
+
+  // Filtering rules (for dynamic collections)
+  filters     Json?    // Category, price range, tags, etc.
+
+  // Display
+  image       String?
+  bannerImage String?
+  isActive    Boolean  @default(true)
+  isFeatured  Boolean  @default(false)
+  sortOrder   Int      @default(0)
+
+  // SEO
+  metaTitle   String?
+  metaDescription String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([storeId, slug])
+  @@map("store_collections")
+}
+
+model ProductSales {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Sales tracking
+  date          DateTime // Date of sale
+  quantity      Int
+  revenue       Float
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Analytics
+  customerId    String
+  customer      User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  storeId       String
+  store         Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+
+  @@unique([productId, date])
+  @@map("product_sales")
+}
+
+model Coupon {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  title         String
+  description   String?
+
+  // Discount details
+  type          CouponType @default(PERCENTAGE)
+  value         Float     // Percentage or fixed amount
+  maxDiscount   Float?
+
+  // Conditions
+  minOrderValue Float     @default(0)
+  maxUses       Int?      // Total usage limit
+  perUserLimit  Int       @default(1)
+
+  // Validity
+  startDate     DateTime
+  endDate       DateTime
+  isActive      Boolean   @default(true)
+
+  // Usage tracking
+  usedCount     Int       @default(0)
+  createdBy     String    // Admin ID
+
+  // Relations
+  couponUsages  CouponUsage[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("coupons")
+}
+
+model CouponUsage {
+  id         String   @id @default(cuid())
+  couponId   String
+  coupon     Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  orderId    String   @unique
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  discount   Float
+  usedAt     DateTime @default(now())
+
+  @@unique([couponId, userId, orderId])
+  @@map("coupon_usages")
+}
+
+// Enums for Offers
+enum OfferType {
+  PERCENTAGE_DISCOUNT
+  FIXED_DISCOUNT
+  FREE_SHIPPING
+  BUY_ONE_GET_ONE
+  BUNDLE_DISCOUNT
+}
+
+enum OfferApplicability {
+  ALL_PRODUCTS
+  SPECIFIC_PRODUCTS
+  SPECIFIC_CATEGORIES
+  SPECIFIC_MERCHANTS
+}
+
+enum OfferTarget {
+  ALL_USERS
+  SPECIFIC_USERS
+  NEW_USERS
+  RETURNING_USERS
+  LOYAL_CUSTOMERS
+  FIRST_TIME_USERS
+}
+
+// Enums for Collections
+enum CollectionType {
+  MANUAL
+  DYNAMIC
+  FEATURED_PRODUCTS
+  BEST_SELLERS
+  NEW_ARRIVALS
+  ON_SALE
+}
+
+enum CollectionTarget {
+  ALL_USERS
+  SPECIFIC_USERS
+  USER_SEGMENTS
+}
+
+// Enums for Coupons
+enum CouponType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+model Banner {
+  id          String   @id @default(cuid())
+  title       String
+  subtitle    String?
+  imageUrl    String
+  linkUrl     String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("banners")
+}
+
+model Advertisement {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  imageUrl    String
+  linkUrl     String?
+  position    String   @default("sidebar") // sidebar, header, footer, popup
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("advertisements")
+}
+
+model SpecialOffer {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  imageUrl      String
+  discountType  String   @default("percentage") // percentage, fixed
+  discountValue Float
+  originalPrice Float?
+  offerPrice    Float?
+  linkUrl       String?
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  startDate     DateTime?
+  endDate       DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("special_offers")
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@map("wishlist_items")
+}
+
+// Enhanced Delivery System Models
+
+model DeliveryLog {
+  id            String        @id @default(cuid())
+  deliveryId    String
+  delivery      Delivery      @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  // Log Details
+  eventType     String        // status_change, location_update, otp_verification, etc.
+  oldStatus     DeliveryStatus?
+  newStatus     DeliveryStatus?
+  description   String
+  metadata      Json?         // Additional data (location, otp, etc.)
+
+  // Location (for tracking)
+  latitude      Float?
+  longitude     Float?
+  accuracy      Float?
+
+  // Actor
+  actorId       String?       // rider, admin, system
+  actorType     String        @default("system") // rider, admin, system
+
+  createdAt     DateTime      @default(now())
+
+  @@map("delivery_logs")
+}
+
+model RiderLocation {
+  id          String   @id @default(cuid())
+  riderId     String
+  rider       RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  deliveryId  String?
+  delivery    Delivery? @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  latitude    Float
+  longitude   Float
+  accuracy    Float?
+  speed       Float?
+  heading     Float?
+  altitude    Float?
+
+  // Context
+  activity    String   @default("moving") // moving, stopped, idle
+  batteryLevel Float?
+
+  // Enhanced tracking metadata
+  isOnline    Boolean  @default(true)  // Whether location was sent while online
+  syncedAt    DateTime? // When location was successfully synced to server
+  retryCount  Int       @default(0)    // Number of sync retries
+  spoofingDetected Boolean @default(false) // Whether spoofing was detected
+  zoneValidated Boolean @default(false) // Whether location passed zone validation
+  serviceAreaValidated Boolean @default(false) // Whether location is in service area
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([riderId, createdAt])
+  @@index([syncedAt])
+  @@index([spoofingDetected])
+  @@map("rider_locations")
+}
+
+model RiderEarnings {
+  id            String   @id @default(cuid())
+  riderId       String
+  rider         RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  deliveryId    String?
+  delivery      Delivery? @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  // Earnings Details
+  baseEarnings  Float
+  bonusEarnings Float    @default(0)
+  penaltyAmount Float    @default(0)
+  totalEarnings Float
+
+  // Period
+  earningsDate  DateTime // Date of earnings
+  weekStart     DateTime?
+  monthStart    DateTime?
+
+  // Status
+  isPaid        Boolean  @default(false)
+  paidAt        DateTime?
+  paymentReference String?
+
+  createdAt     DateTime @default(now())
+
+  @@index([riderId, earningsDate])
+  @@map("rider_earnings")
+}
+
+model OrderLog {
+  id          String      @id @default(cuid())
+  orderId     String
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  eventType   String      // status_change, payment_update, cancellation, etc.
+  oldStatus   OrderStatus?
+  newStatus   OrderStatus?
+  description String
+  metadata    Json?
+
+  actorId     String?
+  actorType   String      @default("system")
+
+  createdAt   DateTime    @default(now())
+
+  @@map("order_logs")
+}
+
+model RiderLog {
+  id          String   @id @default(cuid())
+  riderId     String
+  rider       RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  eventType   String   // availability_change, location_update, assignment, etc.
+  description String
+  metadata    Json?
+
+  latitude    Float?
+  longitude   Float?
+
+  createdAt   DateTime @default(now())
+
+  @@map("rider_logs")
+}
+
+model DeliveryZone {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  boundaries  Json     // GeoJSON polygon
+  centerLat   Float
+  centerLng   Float
+  radiusKm    Float
+
+  // Configuration
+  baseDeliveryFee Float  @default(20)
+  perKmFee    Float      @default(5)
+  maxRadius   Float      @default(10)
+
+  // Status
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("delivery_zones")
+}
+
+model ServiceArea {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "Hanumangarh Junction & Town"
+  city        String   // e.g., "Hanumangarh"
+  state       String   // e.g., "Rajasthan"
+
+  // Geographic boundaries
+  centerLat   Float    // Center latitude
+  centerLng   Float    // Center longitude
+  radiusKm    Float    // Service radius in kilometers
+  bounds      Json     // Bounding box: {north, south, east, west}
+
+  // Status
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  stores      Store[]
+  riderZoneAssignments RiderZoneAssignment[]
+
+  @@map("service_areas")
+}
+
+model Dispute {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  deliveryId  String?
+  delivery    Delivery? @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    User     @relation("CustomerDisputes", fields: [customerId], references: [id])
+  riderId     String?
+  rider       User?    @relation("RiderDisputes", fields: [riderId], references: [id])
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id])
+
+  reason      String   // Customer reported reason
+  description String?  // Additional details
+  status      DisputeStatus @default(OPEN)
+  priority    DisputePriority @default(MEDIUM)
+
+  // Resolution
+  resolution  String?
+  resolvedBy  String?  // Admin user ID
+  resolvedAt  DateTime?
+
+  // Evidence
+  customerEvidence Json?  // Photos/videos from customer
+  riderEvidence     Json?  // Photos/videos from rider
+  adminNotes       String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("disputes")
+}
+
+enum DisputeStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  CLOSED
+}
+
+enum DisputePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CashSettlementStatus {
+  PENDING
+  SUBMITTED
+  VERIFIED
+  SETTLED
+  DISPUTED
+}
+
+enum CashTransactionType {
+  COLLECTED    // Rider collected cash from customer
+  DEPOSITED    // Rider deposited cash at store/hub
+  RETURNED     // Cash returned for failed delivery
+  ADJUSTED     // Administrative adjustment
+}
+
+model CashTransaction {
+  id            String   @id @default(cuid())
+  riderId       String
+  rider         RiderProfile @relation(fields: [riderId], references: [id])
+  orderId       String?
+  order         Order?   @relation(fields: [orderId], references: [id])
+  storeId       String?  // Store where cash was deposited
+  store         Store?   @relation(fields: [storeId], references: [id])
+
+  amount        Float    // Amount in rupees
+  transactionType CashTransactionType
+  status        CashSettlementStatus @default(PENDING)
+
+  // Location & verification
+  collectedLat  Float?
+  collectedLng  Float?
+  collectedAt   DateTime?
+  depositedAt   DateTime?
+
+  // Verification
+  otpVerified   Boolean  @default(false)
+  photoProofUrl String?
+
+  // Settlement
+  settlementBatchId String?
+  settlementId String?
+  settlement CashSettlement? @relation(fields: [settlementId], references: [id])
+  settledAt     DateTime?
+
+  // Audit
+  notes         String?
+  verifiedBy    String?  // Admin/store manager ID
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("cash_transactions")
+}
+
+model CashSettlement {
+  id            String   @id @default(cuid())
+  riderId       String
+  rider         RiderProfile @relation(fields: [riderId], references: [id])
+  storeId       String   // Store/hub where settlement occurred
+  store         Store    @relation(fields: [storeId], references: [id])
+
+  // Settlement details
+  totalCollected Float   @default(0)
+  totalDeposited Float   @default(0)
+  difference     Float   @default(0) // Deposited - Collected
+  settlementDate DateTime
+
+  // Status
+  status        CashSettlementStatus @default(PENDING)
+  submittedAt   DateTime?
+  verifiedAt    DateTime?
+  settledAt     DateTime?
+
+  // Verification
+  verifiedBy    String?  // Admin/store manager ID
+  notes         String?
+
+  // Related transactions
+  transactions  CashTransaction[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("cash_settlements")
+}
+
+model RiderCashBalance {
+  id            String   @id @default(cuid())
+  riderId       String   @unique
+  rider         RiderProfile @relation(fields: [riderId], references: [id])
+
+  // Cash balances
+  totalCollected Float   @default(0) // Total cash collected
+  totalDeposited Float   @default(0) // Total cash deposited
+  outstandingAmount Float @default(0) // Collected - Deposited
+
+  // Settlement tracking
+  lastSettlementDate DateTime?
+  nextSettlementDue DateTime?
+
+  // Risk management
+  riskLevel     String  @default("LOW") // LOW, MEDIUM, HIGH
+  holdAmount    Float   @default(0) // Amount held due to issues
+  maxOutstandingLimit Float @default(5000) // Max outstanding cash allowed
+
+  updatedAt     DateTime @updatedAt
+
+  @@map("rider_cash_balances")
+}
+
+model StoreInventory {
+  id          String  @id @default(cuid())
+  storeId     String
+  store       Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Inventory
+  stockQuantity    Int     @default(0)
+  minStockLevel    Int     @default(0)
+  maxStockLevel    Int?
+  lastStockUpdate  DateTime @default(now())
+
+  // Pricing (can override global pricing)
+  price            Float?
+  discountedPrice  Float?
+
+  // Status
+  isAvailable      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, productId])
+  @@map("store_inventory")
+}
+
+model StoreStaff {
+  id        String   @id @default(cuid())
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role      String   @default("staff") // manager, staff, cashier
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, userId])
+  @@map("store_staff")
+}
+
+model OrderStatusHistory {
+  id          String      @id @default(cuid())
+  orderId     String
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  oldStatus   OrderStatus?
+  newStatus   OrderStatus
+  changedAt   DateTime    @default(now())
+
+  // Who changed it
+  changedBy   String?     // user ID
+  changeType  String      @default("system") // system, customer, store, rider
+
+  // Additional context
+  notes       String?
+  metadata    Json?       // Additional data like location, etc.
+
+  @@map("order_status_history")
+}
+
+// GDPR Compliance Models
+model LocationConsent {
+  id            String   @id @default(cuid())
+  consentId     String   @unique
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  consentGiven  Boolean  @default(true)
+  consentPurpose String   // delivery_tracking, rider_safety, customer_service
+  consentTimestamp DateTime
+  consentExpiry DateTime?
+  dataRetentionPeriod Int // days
+  dataUsage     Json     // Array of allowed uses
+  withdrawalTimestamp DateTime?
+
+  // Audit
+  ipAddress     String?
+  userAgent     String?
+  grantedBy     String?  // admin user ID if granted by admin
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  dataRecords   LocationDataRecord[]
+
+  @@index([userId, consentPurpose])
+  @@map("location_consents")
+}
+
+model LocationDataRecord {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consentId     String
+  consent       LocationConsent @relation(fields: [consentId], references: [id])
+
+  // Location data
+  latitude      Float
+  longitude     Float
+  accuracy      Float?
+  timestamp     DateTime
+
+  // Metadata
+  purpose       String
+  collectedAt   DateTime
+  retentionExpiry DateTime
+  isAnonymized  Boolean  @default(false)
+  source        String   @default("app") // app, api, admin
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId, collectedAt])
+  @@index([retentionExpiry])
+  @@map("location_data_records")
+}
+
+model LocationAuditLog {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  action        String   // LOCATION_COLLECTED, CONSENT_GRANTED, CONSENT_WITHDRAWN, DATA_DELETED
+  purpose       String
+  details       Json     // Action-specific data
+  ipAddress     String?
+  userAgent     String?
+  location      Json?    // {lat, lng} if applicable
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([action])
+  @@map("location_audit_logs")
+}
+
+// Delivery Zone Assignment
+model RiderZoneAssignment {
+  id            String   @id @default(cuid())
+  riderId       String   @unique
+  rider         RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  assignedZones Json     // Array of zone IDs with priorities
+  serviceAreaId String
+  serviceArea   ServiceArea @relation(fields: [serviceAreaId], references: [id])
+
+  lastValidation DateTime
+  isCurrentlyValid Boolean @default(true)
+  validationErrors Json?   // Array of validation errors
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("rider_zone_assignments")
+}
+
+// Rider-Store Assignment (Store-specific riders)
+model RiderStoreAssignment {
+  id          String   @id @default(cuid())
+  riderId     String
+  rider       RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  // Assignment details
+  status      String   @default("PENDING") // PENDING, APPROVED, ACTIVE, SUSPENDED, REMOVED
+  assignedBy  String   // User ID who assigned the rider
+  assignedAt  DateTime @default(now())
+
+  // Performance tracking for this store
+  totalDeliveries Int @default(0)
+  rating         Float @default(0)
+  isPreferred    Boolean @default(false) // Preferred rider for this store
+
+  // Commission rates (can override global rates)
+  commissionRate Float? // Store-specific commission rate
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([riderId, storeId])
+  @@map("rider_store_assignments")
+}
+
+// Support Ticket System
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SupportTicketCategory {
+  ORDERS
+  PAYMENT
+  DELIVERY
+  ACCOUNT
+  TECHNICAL
+  REFUND
+  OTHER
+}
+
+model SupportTicket {
+  id            String   @id @default(cuid())
+  ticketNumber  String   @unique @default(cuid()) // Human-readable ticket number
+  customerId    String
+  customer      User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  // Ticket details
+  subject       String
+  description   String
+  category      SupportTicketCategory @default(OTHER)
+  priority      SupportTicketPriority @default(MEDIUM)
+  status        SupportTicketStatus @default(OPEN)
+
+  // Related entities
+  orderId       String?
+  order         Order?   @relation(fields: [orderId], references: [id])
+  storeId       String?
+  store         Store?   @relation(fields: [storeId], references: [id])
+
+  // Assignment
+  assignedTo    String?  // Admin/Support agent ID
+  assignedAt    DateTime?
+
+  // Resolution
+  resolution    String?
+  resolvedAt    DateTime?
+  resolvedBy    String?  // Admin/Support agent ID
+
+  // Metadata
+  source        String   @default("web") // web, mobile, email, phone
+  tags          Json?    // Array of tags for categorization
+  attachments   Json?    // Array of file URLs
+
+  // Timestamps
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastReplyAt   DateTime @default(now())
+
+  // Relations
+  messages      SupportMessage[]
+
+  @@index([customerId, status])
+  @@index([status, priority])
+  @@index([assignedTo])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id            String   @id @default(cuid())
+  ticketId      String
+  ticket        SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  // Message details
+  senderId      String   // User ID who sent the message
+  senderType    String   @default("customer") // customer, admin, system
+  message       String
+  isInternal    Boolean  @default(false) // Internal notes not visible to customer
+
+  // Attachments
+  attachments   Json?    // Array of file URLs
+
+  // Metadata
+  readAt        DateTime?
+  sentAt        DateTime @default(now())
+
+  @@index([ticketId, sentAt])
+  @@map("support_messages")
+}
+
+// System Settings for Platform Management
+model SystemSetting {
+  id          String   @id @default(cuid())
+  category    String   // e.g., "platform", "payment", "delivery", "security"
+  key         String   // Setting key within category
+  value       String   // JSON string of the setting value
+  description String?  // Human-readable description
+  isPublic    Boolean  @default(false) // Whether setting is visible to non-admin users
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([category, key])
+  @@map("system_settings")
 }
