@@ -27,7 +27,6 @@ export async function GET(request: NextRequest) {
         description:
           category.description || getCategoryDescription(category.slug),
       }));
-      console.log(formattedCategories);
 
       return NextResponse.json({
         success: true,

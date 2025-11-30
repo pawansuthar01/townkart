@@ -17,6 +17,10 @@ import {
   Heart,
   MapPin,
   Bell,
+  Package,
+  CreditCard,
+  Settings,
+  HelpCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { CartSidebar } from "@/components/shared/CartSidebar";
@@ -24,6 +28,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -50,16 +55,16 @@ export function CustomerHeader({
 
   return (
     <header
-      className={`bg-white shadow-sm border-b z-50 ${isFixed ? "sticky top-0" : ""}`}
+      className={`bg-white shadow-sm border-b z-50 md:ml-64 ${isFixed ? "fixed top-0 left-0 right-0" : ""}`}
     >
       <div className="px-4 py-3">
-        {/* Mobile-first layout */}
-        <div className="flex items-center justify-between">
+        {/* Main Header Row */}
+        <div className="flex items-center justify-between gap-4">
           {/* Left: Menu button and Logo */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 flex-shrink-0">
             <button
               onClick={onMenuClick}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors md:hidden"
               aria-label="Toggle menu"
             >
               {isMenuOpen ? (
@@ -73,27 +78,45 @@ export function CustomerHeader({
               <div className="townkart-gradient p-2 rounded-lg">
                 <ShoppingCart className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-gray-900">TownKart</span>
+              <span className="text-xl font-bold text-gray-900 hidden sm:block">
+                TownKart
+              </span>
+              <span className="text-lg font-bold text-gray-900 sm:hidden">
+                TK
+              </span>
             </Link>
           </div>
 
+          {/* Center: Search Bar - Desktop */}
+          <div className="hidden md:flex flex-1 max-w-md mx-4">
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                type="text"
+                placeholder="Search products, shops..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 bg-gray-50 border-gray-200 focus:bg-white"
+              />
+            </div>
+          </div>
+
           {/* Right: Actions */}
-          <div className="flex items-center space-x-2">
-            {/* Location */}
+          <div className="flex items-center space-x-1 flex-shrink-0">
+            {/* Location - Mobile only */}
             <Link
               href="/customer/addresses"
-              className="hidden sm:flex items-center space-x-1 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Delivery Address"
             >
               <MapPin className="h-5 w-5 text-gray-600" />
-              <span className="text-sm text-gray-700 hidden md:block">
-                Location
-              </span>
             </Link>
 
             {/* Wishlist */}
             <Link
               href="/wishlist"
               className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Wishlist"
             >
               <Heart className="h-5 w-5 text-gray-600" />
               {wishlistCount > 0 && (
@@ -107,6 +130,7 @@ export function CustomerHeader({
             <button
               onClick={() => setIsCartOpen(true)}
               className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Cart"
             >
               <ShoppingCart className="h-5 w-5 text-gray-600" />
               {cartSummary.itemCount > 0 && (
@@ -120,6 +144,7 @@ export function CustomerHeader({
             <Link
               href="/notifications"
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors hidden sm:block"
+              title="Notifications"
             >
               <Bell className="h-5 w-5 text-gray-600" />
             </Link>
@@ -132,19 +157,19 @@ export function CustomerHeader({
                     <div className="w-8 h-8 bg-townkart-primary rounded-full flex items-center justify-center text-white text-sm font-semibold">
                       {user?.name?.charAt(0)?.toUpperCase() || "C"}
                     </div>
-                    <span className="text-sm font-medium text-gray-700 hidden md:block">
+                    <span className="text-sm font-medium text-gray-700 hidden lg:block">
                       {user?.name}
                     </span>
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem asChild>
                     <Link
                       href="/customer/profile"
                       className="flex items-center space-x-2"
                     >
                       <User className="h-4 w-4" />
-                      <span>Profile</span>
+                      <span>My Profile</span>
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
@@ -152,10 +177,39 @@ export function CustomerHeader({
                       href="/customer/orders"
                       className="flex items-center space-x-2"
                     >
-                      <ShoppingCart className="h-4 w-4" />
+                      <Package className="h-4 w-4" />
                       <span>My Orders</span>
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link
+                      href="/customer/addresses"
+                      className="flex items-center space-x-2"
+                    >
+                      <MapPin className="h-4 w-4" />
+                      <span>Addresses</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link
+                      href="/customer/payments"
+                      className="flex items-center space-x-2"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      <span>Payment Methods</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link
+                      href="/support"
+                      className="flex items-center space-x-2"
+                    >
+                      <HelpCircle className="h-4 w-4" />
+                      <span>Help & Support</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={handleLogout}
                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -186,8 +240,8 @@ export function CustomerHeader({
           </div>
         </div>
 
-        {/* Search Bar - Mobile first */}
-        <div className="mt-3">
+        {/* Mobile Search Bar */}
+        <div className="md:hidden mt-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <Input
@@ -201,18 +255,12 @@ export function CustomerHeader({
         </div>
 
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center justify-center space-x-8 mt-3">
+        <nav className="hidden md:flex items-center justify-center space-x-8 mt-4">
           <Link
-            href="/"
+            href="/products"
             className="text-gray-700 hover:text-townkart-primary transition-colors font-medium"
           >
-            Home
-          </Link>
-          <Link
-            href="/shops"
-            className="text-gray-700 hover:text-townkart-primary transition-colors font-medium"
-          >
-            Shops
+            Browse Products
           </Link>
           <Link
             href="/categories"
@@ -224,19 +272,13 @@ export function CustomerHeader({
             href="/offers"
             className="text-gray-700 hover:text-townkart-primary transition-colors font-medium"
           >
-            Offers
+            Deals & Offers
           </Link>
           <Link
             href="/customer/orders"
             className="text-gray-700 hover:text-townkart-primary transition-colors font-medium"
           >
-            My Orders
-          </Link>
-          <Link
-            href="/support"
-            className="text-gray-700 hover:text-townkart-primary transition-colors font-medium"
-          >
-            Support
+            Track Orders
           </Link>
         </nav>
       </div>

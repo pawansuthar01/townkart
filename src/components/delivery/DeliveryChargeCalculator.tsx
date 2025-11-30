@@ -18,10 +18,10 @@ import {
 } from "lucide-react";
 import {
   calculateOrderDeliveryCharge,
-  estimateDeliveryTime,
   DeliveryChargeConfig,
   DEFAULT_DELIVERY_CONFIG,
 } from "@/lib/deliveryCharges";
+import { estimateDeliveryTime } from "@/lib/deliveryTracking";
 
 interface DeliveryChargeCalculatorProps {
   orderValue?: number;
@@ -56,7 +56,7 @@ export function DeliveryChargeCalculator({
         distanceKm,
         selectedTier,
         merchantLocation,
-        customerLocation,
+        customerLocation
       );
 
       const timeResult = estimateDeliveryTime(distanceKm);
@@ -65,7 +65,10 @@ export function DeliveryChargeCalculator({
       setTimeEstimate(timeResult);
 
       if (onChargeCalculated) {
-        onChargeCalculated(result.totalCharge, result.breakdown);
+        onChargeCalculated(
+          result.totalCharge,
+          result.breakdown.map((item) => `${item.label}: ₹${item.amount}`)
+        );
       }
     }
   }, [
@@ -84,7 +87,7 @@ export function DeliveryChargeCalculator({
         distanceKm,
         selectedTier,
         merchantLocation,
-        customerLocation,
+        customerLocation
       );
 
       const timeResult = estimateDeliveryTime(distanceKm);
@@ -93,7 +96,10 @@ export function DeliveryChargeCalculator({
       setTimeEstimate(timeResult);
 
       if (onChargeCalculated) {
-        onChargeCalculated(result.totalCharge, result.breakdown);
+        onChargeCalculated(
+          result.totalCharge,
+          result.breakdown.map((item) => `${item.label}: ₹${item.amount}`)
+        );
       }
     }
   };
@@ -229,7 +235,7 @@ export function DeliveryChargeCalculator({
                             {item.split(":")[1]}
                           </span>
                         </div>
-                      ),
+                      )
                     )}
                   </div>
                 </div>

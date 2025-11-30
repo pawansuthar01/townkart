@@ -28,7 +28,7 @@ class DeliveryWebSocketServer {
       "connection",
       (ws: ExtendedWebSocket, request: IncomingMessage) => {
         this.handleConnection(ws, request);
-      },
+      }
     );
 
     // Heartbeat to keep connections alive
@@ -48,7 +48,7 @@ class DeliveryWebSocketServer {
 
   private async handleConnection(
     ws: ExtendedWebSocket,
-    request: IncomingMessage,
+    request: IncomingMessage
   ) {
     try {
       // Extract token from query parameters
@@ -63,7 +63,7 @@ class DeliveryWebSocketServer {
       // Verify JWT token
       const decoded = jwt.verify(
         token,
-        process.env.JWT_SECRET || "your-secret-key",
+        process.env.JWT_SECRET || "your-secret-key"
       ) as any;
       ws.userId = decoded.userId;
       ws.userRole = decoded.role;
@@ -158,7 +158,7 @@ class DeliveryWebSocketServer {
 
   private handleDisconnection(ws: ExtendedWebSocket) {
     // Remove from all delivery subscriptions
-    for (const [deliveryId, connections] of this.connections.entries()) {
+    for (const [deliveryId, connections] of this.connections.entries() as any) {
       connections.delete(ws);
       if (connections.size === 0) {
         this.connections.delete(deliveryId);

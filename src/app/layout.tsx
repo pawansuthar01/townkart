@@ -4,8 +4,7 @@ import "./global.css";
 import { Providers } from "@/components/providers";
 import { RoleBasedLayout } from "@/components/layout/RoleBasedLayout";
 import { ToastProvider, ToastViewport } from "@/components/ui/toast";
-
-const inter = Inter({ subsets: ["latin"] });
+import React from "react";
 
 export const metadata: Metadata = {
   title: "TownKart - Local Marketplace",
@@ -102,7 +101,7 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#f97316" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
       </head>
-      <body className={inter.className}>
+      <body>
         <Providers>
           <RoleBasedLayout>{children}</RoleBasedLayout>
           <ToastProvider>

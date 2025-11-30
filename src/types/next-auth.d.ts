@@ -11,6 +11,36 @@ declare module "next-auth" {
       activeRole?: string;
       roles?: string[];
       isVerified?: boolean;
+      userRoles?: string[];
+      profileImageUrl?: string;
+      emailVerified?: boolean;
+      phoneVerified?: boolean;
+      isActive?: boolean;
+      lastLoginAt?: Date;
+      lastLoginIP?: string;
+      lastLoginDevice?: string;
+      createdAt?: Date;
+      updatedAt?: Date;
+      customerProfile?: any;
+      riderProfile?: any;
+      storeStaff?: any;
+      managedStores?: any;
+      addresses?: any;
+      recentOrders?: any;
+      recentReviews?: any;
+      unreadNotifications?: any;
+      wallet?: any;
+      wishlistItems?: any;
+      recentSessions?: any;
+      devices?: any;
+      recentLoginAttempts?: any;
+      stats?: {
+        totalOrders: number;
+        totalReviews: number;
+        totalWishlistItems: number;
+        totalAddresses: number;
+      };
+      storeData?: any;
     };
   }
 
@@ -25,10 +55,13 @@ declare module "next-auth" {
   }
 
   interface JWT {
-    id: string;
+    id?: string;
+    sub?: string;
     phoneNumber?: string;
     activeRole?: string;
     roles?: string[];
     isVerified?: boolean;
+    rememberMe?: boolean;
+    exp?: number;
   }
 }

@@ -128,13 +128,13 @@ export class DeliveryTracker {
         () => {
           this.reconnectAttempts++;
           console.log(
-            `Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+            `Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`
           );
           this.connect().catch(() => {
             // Reconnection failed, will try again
           });
         },
-        this.reconnectDelay * Math.pow(2, this.reconnectAttempts),
+        this.reconnectDelay * Math.pow(2, this.reconnectAttempts)
       );
     }
   }
@@ -192,7 +192,7 @@ export function calculateDistance(
   lat1: number,
   lon1: number,
   lat2: number,
-  lon2: number,
+  lon2: number
 ): number {
   const R = 6371; // Earth's radius in kilometers
   const dLat = toRadians(lat2 - lat1);
@@ -216,7 +216,7 @@ function toRadians(degrees: number): number {
 // Estimate delivery time based on distance and average speed
 export function estimateDeliveryTime(
   distanceKm: number,
-  averageSpeedKmh: number = 25,
+  averageSpeedKmh: number = 25
 ): number {
   // Add buffer time for pickup, traffic, and delivery
   const travelTime = (distanceKm / averageSpeedKmh) * 60; // minutes
@@ -244,15 +244,88 @@ export function formatDistanceRemaining(meters: number): string {
 
 // Delivery tracking data
 export function generateMockDeliveryData(
-  orderId: string,
+  orderId: string
 ): DeliveryTrackingData {
-  // TODO: connect to DB/API
-  throw new Error("Not implemented");
+  // Mock data for development/demo purposes
+  const mockStatuses: DeliveryStatus["status"][] = [
+    "assigned",
+    "picked_up",
+    "in_transit",
+    "delivered",
+  ];
+
+  const randomStatus =
+    mockStatuses[Math.floor(Math.random() * mockStatuses.length)];
+
+  const mockDelivery: DeliveryStatus = {
+    id: `delivery_${orderId}`,
+    orderId,
+    riderId: `rider_${Math.floor(Math.random() * 100)}`,
+    status: randomStatus,
+    statusMessage: `Order is ${randomStatus.replace("_", " ")}`,
+    estimatedDeliveryTime: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes from now
+    currentLocation: {
+      latitude: 12.9716 + (Math.random() - 0.5) * 0.01,
+      longitude: 77.5946 + (Math.random() - 0.5) * 0.01,
+      timestamp: new Date(),
+      accuracy: 10,
+      speed: randomStatus === "in_transit" ? 15 : 0,
+    },
+    route: [
+      {
+        latitude: 12.9716,
+        longitude: 77.5946,
+        timestamp: new Date(Date.now() - 10 * 60 * 1000),
+      },
+      {
+        latitude: 12.9716 + 0.005,
+        longitude: 77.5946 + 0.005,
+        timestamp: new Date(Date.now() - 5 * 60 * 1000),
+      },
+    ],
+    distanceRemaining: randomStatus === "delivered" ? 0 : Math.random() * 5,
+    timeRemaining:
+      randomStatus === "delivered" ? 0 : Math.floor(Math.random() * 30),
+    lastUpdated: new Date(),
+  };
+
+  const mockData: DeliveryTrackingData = {
+    delivery: mockDelivery,
+    rider: {
+      id: mockDelivery.riderId,
+      name: `Rider ${Math.floor(Math.random() * 100)}`,
+      phone: `+91${Math.floor(Math.random() * 9000000000) + 1000000000}`,
+      vehicleType: "Bike",
+      vehicleNumber: `KA${Math.floor(Math.random() * 100)}AB${Math.floor(Math.random() * 10000)}`,
+      rating: 4.5 + Math.random() * 0.5,
+    },
+    customer: {
+      id: `customer_${orderId}`,
+      name: "John Doe",
+      phone: "+919876543210",
+      address: {
+        latitude: 12.9716,
+        longitude: 77.5946,
+        fullAddress: "123 Main St, Bangalore, Karnataka 560001",
+      },
+    },
+    shop: {
+      id: `shop_${orderId}`,
+      name: "Sample Restaurant",
+      address: {
+        latitude: 12.9716 + 0.01,
+        longitude: 77.5946 + 0.01,
+        fullAddress: "456 Food St, Bangalore, Karnataka 560002",
+      },
+    },
+  };
+
+  return mockData;
 }
 
 // API functions for delivery tracking
 export async function getDeliveryTracking(
-  orderId: string,
+  orderId: string
 ): Promise<DeliveryTrackingData> {
   const response = await fetch(`/api/deliveries/tracking/${orderId}`);
   if (!response.ok) {
@@ -263,7 +336,7 @@ export async function getDeliveryTracking(
 
 export async function updateDeliveryLocation(
   deliveryId: string,
-  location: DeliveryLocation,
+  location: DeliveryLocation
 ): Promise<void> {
   try {
     const response = await fetch(`/api/deliveries/${deliveryId}/location`, {
@@ -286,7 +359,7 @@ export async function updateDeliveryLocation(
 export async function updateDeliveryStatus(
   deliveryId: string,
   status: DeliveryStatus["status"],
-  statusMessage?: string,
+  statusMessage?: string
 ): Promise<void> {
   try {
     const response = await fetch(`/api/deliveries/${deliveryId}/status`, {

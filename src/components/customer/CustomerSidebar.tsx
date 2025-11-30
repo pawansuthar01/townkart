@@ -78,8 +78,8 @@ export function CustomerSidebar({ isOpen, onClose }: CustomerSidebarProps) {
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed top-0 left-0 h-full w-64 max-w-[280px] bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-50 md:relative md:translate-x-0 md:shadow-none md:w-64",
-          isOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed top-0 left-0 h-full w-64 max-w-[280px] bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-50 md:fixed md:top-0 md:left-0 md:translate-x-0 md:shadow-lg md:w-64",
+          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         <div className="flex flex-col h-full">
@@ -91,7 +91,7 @@ export function CustomerSidebar({ isOpen, onClose }: CustomerSidebarProps) {
                   <ShoppingBag className="h-5 w-5 text-white" />
                 </div>
                 <span className="text-lg font-bold text-gray-900">
-                  Customer
+                  TownKart
                 </span>
               </div>
               <button
@@ -113,7 +113,7 @@ export function CustomerSidebar({ isOpen, onClose }: CustomerSidebarProps) {
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {user.name}
                     </p>
-                    <p className="text-xs text-gray-500">Customer</p>
+                    <p className="text-xs text-gray-500"> {user.phoneNumber}</p>
                   </div>
                 </div>
               </div>

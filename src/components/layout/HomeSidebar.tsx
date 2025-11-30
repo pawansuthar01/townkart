@@ -17,6 +17,8 @@ import {
   Menu,
   X,
   ShoppingCart,
+  Gift,
+  HelpCircle,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -38,10 +40,11 @@ export function HomeSidebar({ isOpen, onClose }: HomeSidebarProps) {
 
   const navigationItems = [
     { href: "/", icon: Home, label: "Home" },
-    { href: "/search", icon: Search, label: "Search" },
-    { href: "/shops", icon: Store, label: "Shops" },
+    { href: "/shops", icon: Store, label: "Browse Shops" },
     { href: "/categories", icon: Menu, label: "Categories" },
-    { href: "/offers", icon: ShoppingBag, label: "Offers" },
+    { href: "/offers", icon: ShoppingBag, label: "Deals & Offers" },
+    { href: "/special-offers", icon: Gift, label: "Special Offers" },
+    { href: "/support", icon: HelpCircle, label: "Help & Support" },
   ];
 
   return (

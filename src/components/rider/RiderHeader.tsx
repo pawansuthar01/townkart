@@ -62,7 +62,7 @@ export function RiderHeader({ onMenuClick, isMenuOpen }: RiderHeaderProps) {
 
   return (
     <header
-      className={`bg-white shadow-sm border-b z-50 ${isFixed ? "sticky top-0" : ""}`}
+      className={`bg-white shadow-sm border-b z-50 md:ml-64 ${isFixed ? "fixed top-0 left-0 right-0 md:left-64" : ""}`}
     >
       <div className="px-4 py-3">
         {/* Mobile-first layout */}

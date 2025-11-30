@@ -10,6 +10,45 @@ import { UserRole } from "@prisma/client";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+
+    // Check if this is a send OTP request
+    if (body.action === "send") {
+      const { phoneNumber, purpose = "LOGIN" } = body;
+
+      if (!phoneNumber) {
+        return NextResponse.json(
+          { success: false, message: "Phone number is required" },
+          { status: 400 }
+        );
+      }
+
+      // Find user to get email for OTP delivery
+      const user = await prisma.user.findUnique({
+        where: { phoneNumber },
+        select: { email: true },
+      });
+
+      const result = await OTPService.sendOTP(
+        phoneNumber,
+        user?.email || null,
+        purpose as any
+      );
+
+      if (result.success) {
+        return NextResponse.json({
+          success: true,
+          message: result.message,
+          channels: result.channels,
+        });
+      } else {
+        return NextResponse.json(
+          { success: false, message: result.message },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Handle OTP verification
     const { phoneNumber, otp, deviceInfo, batteryLevel } =
       verifyOtpSchema.parse(body);
 
@@ -21,7 +60,7 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get("user-agent") || "";
 
     // Parse device info from request
-    const parsedUA = LocationService.parseUserAgent(userAgent);
+    const parsedUA = (LocationService as any).parseUserAgent(userAgent);
     const deviceData = {
       deviceId: deviceInfo?.deviceId || "unknown",
       deviceName: deviceInfo?.deviceName,
@@ -33,7 +72,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Get location information
-    const locationInfo = await LocationService.getLocationFromIP(clientIP);
+    const locationInfo = await LocationService.getLocationInfoFromIP(clientIP);
 
     const loginContext: LoginContext = {
       deviceInfo: deviceData,
@@ -59,7 +98,7 @@ export async function POST(request: NextRequest) {
     if (!otpRecord) {
       return NextResponse.json(
         { success: false, message: "Invalid or expired OTP" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -69,14 +108,112 @@ export async function POST(request: NextRequest) {
     if (!isValidOTP) {
       return NextResponse.json(
         { success: false, message: "Invalid or expired OTP" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     let user;
     let isNewUser = false;
 
-    if (otpRecord.purpose === "REGISTER") {
+    if (otpRecord.purpose === "PHONE_VERIFICATION") {
+      // Handle phone verification for authenticated users
+      user = await prisma.user.findUnique({
+        where: { phoneNumber },
+        select: {
+          id: true,
+          phoneNumber: true,
+          fullName: true,
+          email: true,
+          userRoles: true,
+          activeRole: true,
+          phoneVerified: true,
+          isActive: true,
+        },
+      });
+
+      if (!user) {
+        return NextResponse.json(
+          { success: false, message: "User not found" },
+          { status: 404 }
+        );
+      }
+
+      // Update phone verification status
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          phoneVerified: true,
+        },
+      });
+
+      user.phoneVerified = true;
+
+      return NextResponse.json({
+        success: true,
+        message: "Phone number verified successfully",
+        data: {
+          user: {
+            id: user.id,
+            phoneNumber: user.phoneNumber,
+            fullName: user.fullName,
+            email: user.email,
+            userRoles: user.userRoles,
+            activeRole: user.activeRole,
+            phoneVerified: user.phoneVerified,
+            isActive: user.isActive,
+          },
+        },
+      });
+    } else if (otpRecord.purpose === "ACCOUNT_REACTIVATION") {
+      // Handle account reactivation for inactive users
+      user = await prisma.user.findUnique({
+        where: { phoneNumber },
+        select: {
+          id: true,
+          phoneNumber: true,
+          fullName: true,
+          email: true,
+          userRoles: true,
+          activeRole: true,
+          phoneVerified: true,
+          isActive: true,
+        },
+      });
+
+      if (!user) {
+        return NextResponse.json(
+          { success: false, message: "User not found" },
+          { status: 404 }
+        );
+      }
+
+      // Reactivate the account
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          isActive: true,
+        },
+      });
+
+      user.isActive = true;
+
+      return NextResponse.json({
+        success: true,
+        message: "Account reactivated successfully",
+        data: {
+          user: {
+            id: user.id,
+            phoneNumber: user.phoneNumber,
+            fullName: user.fullName,
+            email: user.email,
+            userRoles: user.userRoles,
+            activeRole: user.activeRole,
+            phoneVerified: user.phoneVerified,
+            isActive: user.isActive,
+          },
+        },
+      });
+    } else if (otpRecord.purpose === "REGISTER") {
       // Find the user created during registration
       user = await prisma.user.findUnique({
         where: { phoneNumber },
@@ -95,7 +232,7 @@ export async function POST(request: NextRequest) {
       if (!user) {
         return NextResponse.json(
           { success: false, message: "User not found. Please register again." },
-          { status: 404 },
+          { status: 404 }
         );
       }
 
@@ -120,7 +257,7 @@ export async function POST(request: NextRequest) {
       const device = await DeviceManager.getOrCreateDevice(
         user.id,
         loginContext.deviceInfo,
-        loginContext.locationInfo,
+        loginContext.locationInfo
       );
 
       // Log registration/login
@@ -130,7 +267,7 @@ export async function POST(request: NextRequest) {
         "LOGIN",
         loginContext,
         "LOW",
-        ["First login after registration"],
+        ["First login after registration"]
       );
 
       // Send welcome notification
@@ -138,7 +275,7 @@ export async function POST(request: NextRequest) {
         user.id,
         loginContext.deviceInfo,
         loginContext.locationInfo,
-        "LOGIN",
+        "LOGIN"
       );
 
       isNewUser = true;
@@ -163,24 +300,14 @@ export async function POST(request: NextRequest) {
       if (!user) {
         return NextResponse.json(
           { success: false, message: "User not found. Please register first." },
-          { status: 404 },
-        );
-      }
-
-      if (!user.isActive) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Account is deactivated. Please contact support.",
-          },
-          { status: 403 },
+          { status: 404 }
         );
       }
 
       // Validate location if user has registration location
       const locationValidation = await DeviceManager.validateLocation(
         user.id,
-        loginContext.locationInfo,
+        loginContext.locationInfo
       );
       if (!locationValidation.valid) {
         // Log suspicious login attempt
@@ -192,7 +319,7 @@ export async function POST(request: NextRequest) {
           "HIGH",
           [
             `Login from different location: ${locationValidation.distance?.toFixed(1)}km away from registration location`,
-          ],
+          ]
         );
 
         return NextResponse.json(
@@ -200,15 +327,28 @@ export async function POST(request: NextRequest) {
             success: false,
             message: `Login blocked: You are trying to login from a location ${locationValidation.distance?.toFixed(1)}km away from your registration location. Please contact support if this is not you.`,
           },
-          { status: 403 },
+          { status: 403 }
         );
+      }
+
+      // Update phone verification and activation if needed
+      if (!user.phoneVerified || !user.isActive) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            phoneVerified: true,
+            isActive: true,
+          },
+        });
+        user.phoneVerified = true;
+        user.isActive = true;
       }
 
       // Check device login restrictions
       const deviceCheck = await DeviceManager.canLoginFromDevice(
         user.id,
         user.activeRole,
-        loginContext.deviceInfo.deviceId,
+        loginContext.deviceInfo.deviceId
       );
 
       if (!deviceCheck.allowed) {
@@ -219,7 +359,7 @@ export async function POST(request: NextRequest) {
           "LOGIN",
           loginContext,
           "HIGH",
-          ["Multiple device login attempt blocked"],
+          ["Multiple device login attempt blocked"]
         );
 
         return NextResponse.json(
@@ -228,7 +368,7 @@ export async function POST(request: NextRequest) {
             message: deviceCheck.reason,
             existingDevices: deviceCheck.existingDevices,
           },
-          { status: 403 },
+          { status: 403 }
         );
       }
 
@@ -236,14 +376,14 @@ export async function POST(request: NextRequest) {
       await DeviceManager.forceLogoutOtherDevices(
         user.id,
         loginContext.deviceInfo.deviceId,
-        user.activeRole,
+        user.activeRole
       );
 
       // Get or create device record
       const device = await DeviceManager.getOrCreateDevice(
         user.id,
         loginContext.deviceInfo,
-        loginContext.locationInfo,
+        loginContext.locationInfo
       );
 
       // Log successful login
@@ -254,7 +394,7 @@ export async function POST(request: NextRequest) {
         loginContext,
         locationValidation.distance && locationValidation.distance > 10
           ? "MEDIUM"
-          : "LOW",
+          : "LOW"
       );
 
       // Send login notifications
@@ -262,14 +402,14 @@ export async function POST(request: NextRequest) {
         user.id,
         loginContext.deviceInfo,
         loginContext.locationInfo,
-        "LOGIN",
+        "LOGIN"
       );
 
       // Send admin notification if admin logs in
       if (user.activeRole === "ADMIN") {
         await DeviceManager.sendAdminLoginNotification(
           user.id,
-          user.fullName || user.phoneNumber,
+          user.fullName || user.phoneNumber
         );
       }
     }
@@ -277,7 +417,7 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json(
         { success: false, message: "User not found. Please register first." },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -365,13 +505,13 @@ export async function POST(request: NextRequest) {
           message: "Invalid input data",
           errors: error.errors,
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

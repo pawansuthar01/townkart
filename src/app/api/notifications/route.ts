@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { notificationManager } from "@/lib/notificationSystem";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
     if (!userId) {
       return NextResponse.json(
         { success: false, message: "User ID is required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -28,15 +29,21 @@ export async function GET(request: NextRequest) {
       where.notificationType = type;
     }
 
-    const [notifications, total] = await Promise.all([
-      prisma.notification.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.notification.count({ where }),
-    ]);
+    // Use notificationManager to get user notifications
+    const notifications = notificationManager.getUserNotifications(userId, {
+      unreadOnly:
+        isRead === "false" ? false : isRead === "true" ? true : undefined,
+      type: type as any,
+      limit,
+      offset: (page - 1) * limit,
+    });
+
+    // For pagination, we need to get total count
+    const allNotifications = notificationManager.getUserNotifications(userId);
+    const filteredNotifications = type
+      ? allNotifications.filter((n) => n.type === type)
+      : allNotifications;
+    const total = filteredNotifications.length;
 
     return NextResponse.json({
       success: true,
@@ -52,7 +59,7 @@ export async function GET(request: NextRequest) {
     console.error("Get notifications error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -66,31 +73,42 @@ export async function POST(request: NextRequest) {
     if (!userId || !title || !message || !notificationType) {
       return NextResponse.json(
         { success: false, message: "Missing required fields" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    const notification = await prisma.notification.create({
-      data: {
-        userId,
+    // Use the notification manager to send notification
+    const result = await notificationManager.sendNotification(
+      userId,
+      notificationType as any,
+      {
         title,
         message,
-        notificationType,
         referenceId,
-        priority: priority || "medium",
-      },
-    });
+      }
+    );
 
-    return NextResponse.json({
-      success: true,
-      message: "Notification created successfully",
-      data: notification,
-    });
+    if (result.success) {
+      return NextResponse.json({
+        success: true,
+        message: "Notification sent successfully",
+        data: { notificationId: result.notificationId },
+      });
+    } else {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to send notification",
+          errors: result.errors,
+        },
+        { status: 500 }
+      );
+    }
   } catch (error: any) {
     console.error("Create notification error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -103,29 +121,21 @@ export async function PUT(request: NextRequest) {
     if (!userId) {
       return NextResponse.json(
         { success: false, message: "User ID is required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    await prisma.notification.updateMany({
-      where: {
-        userId,
-        isRead: false,
-      },
-      data: {
-        isRead: true,
-      },
-    });
+    const count = notificationManager.markAllAsRead(userId);
 
     return NextResponse.json({
       success: true,
-      message: "All notifications marked as read",
+      message: `${count} notifications marked as read`,
     });
   } catch (error: any) {
     console.error("Mark notifications as read error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

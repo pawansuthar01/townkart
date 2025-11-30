@@ -109,7 +109,7 @@ export function Footer() {
           <p>
             © 2025 TownKart. All rights reserved. Made with{" "}
             <a
-              href="https://www.pawansuthar.in"
+              href="https://pawansuthar.in"
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-400 hover:text-blue-300 transition-colors"

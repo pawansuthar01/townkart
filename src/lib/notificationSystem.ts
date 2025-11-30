@@ -1,5 +1,6 @@
 // Real-Time Notification System
 import { prisma } from "@/lib/prisma";
+import { Resend } from "resend";
 
 export type NotificationType =
   | "order_status_update"
@@ -15,7 +16,8 @@ export type NotificationType =
   | "promotional"
   | "system_alert"
   | "admin_manual" // Manual notifications from admin
-  | "store_manual"; // Manual notifications from store
+  | "store_manual" // Manual notifications from store
+  | "invitation"; // User invitations
 
 export type NotificationPriority = "low" | "medium" | "high" | "urgent";
 
@@ -310,6 +312,23 @@ export const NOTIFICATION_TEMPLATES: Record<
     variables: ["title", "message", "storeName", "sentBy"],
     actions: [], // Will be set dynamically
   },
+  invitation: {
+    id: "invitation",
+    type: "invitation",
+    title: "You're Invited to Join TownKart",
+    message:
+      "You've been invited to join TownKart as a {{role}}. Click here to complete your registration.",
+    priority: "high",
+    channels: ["email"], // Primarily email for invitations
+    variables: ["role", "invitationUrl", "expiresAt", "message"],
+    actions: [
+      {
+        label: "Accept Invitation",
+        action: "navigate",
+        params: { route: "{{invitationUrl}}" },
+      },
+    ],
+  },
 };
 
 // Notification Manager Class
@@ -326,7 +345,7 @@ export class NotificationManager {
     userId: string,
     type: NotificationType,
     data: Record<string, any>,
-    channels?: NotificationChannel[],
+    channels?: NotificationChannel[]
   ): Promise<{ success: boolean; notificationId?: string; errors?: string[] }> {
     try {
       const subscription = this.subscriptions.get(userId);
@@ -379,7 +398,7 @@ export class NotificationManager {
       // Filter channels based on admin settings
       let allowedChannels = channels || subscription.channels;
       allowedChannels = allowedChannels.filter(
-        (channel) => adminSettings.channels[channel],
+        (channel) => adminSettings.channels[channel]
       );
 
       // Create notification
@@ -405,7 +424,7 @@ export class NotificationManager {
       // Send through channels
       const sendResults = await this.sendThroughChannels(
         notification,
-        subscription,
+        subscription
       );
 
       // Emit event for real-time updates
@@ -437,6 +456,83 @@ export class NotificationManager {
     }
   }
 
+  // Send external email (for invitations, etc.) using Resend
+  async sendExternalEmail(
+    email: string,
+    subject: string,
+    message: string,
+    html?: string,
+    actions?: Array<{ label: string; url: string }>
+  ): Promise<boolean> {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+
+      const htmlContent =
+        html ||
+        `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>${subject}</title>
+          </head>
+          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center; border-radius: 10px 10px 0 0;">
+              <h1 style="color: white; margin: 0; font-size: 28px;">TownKart</h1>
+              <p style="color: #e8e8e8; margin: 10px 0 0 0;">Your trusted delivery partner</p>
+            </div>
+
+            <div style="background: white; padding: 40px 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="color: #333; margin-top: 0; margin-bottom: 20px;">${subject}</h2>
+              <p style="font-size: 16px; line-height: 1.6; margin-bottom: 30px;">${message}</p>
+
+              ${
+                actions
+                  ?.map(
+                    (action) => `
+                <div style="text-align: center; margin: 20px 0;">
+                  <a href="${action.url}"
+                     style="display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2); transition: all 0.3s ease;">
+                    ${action.label}
+                  </a>
+                </div>
+              `
+                  )
+                  .join("") || ""
+              }
+
+              <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666; font-size: 14px;">
+                <p>If you have any questions, feel free to contact our support team.</p>
+                <p style="margin: 5px 0;">
+                  <a href="mailto:support@townkart.com" style="color: #667eea; text-decoration: none;">support@townkart.com</a>
+                </p>
+              </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+              <p>© 2024 TownKart. All rights reserved.</p>
+            </div>
+          </body>
+        </html>
+      `;
+
+      const data = await resend.emails.send({
+        from: "TownKart <noreply@townkart.com>",
+        to: [email],
+        subject: subject,
+        html: htmlContent,
+        text: `${subject}\n\n${message}`,
+      });
+
+      console.log("Email sent successfully:", data);
+      return true;
+    } catch (error) {
+      console.error("Failed to send external email:", error);
+      return false;
+    }
+  }
+
   // Broadcast notification to multiple users
   async broadcastNotification(
     recipients: Array<{
@@ -445,7 +541,7 @@ export class NotificationManager {
     }>,
     type: NotificationType,
     data: Record<string, any>,
-    channels?: NotificationChannel[],
+    channels?: NotificationChannel[]
   ): Promise<{
     success: boolean;
     results: Array<{ userId: string; success: boolean; error?: string }>;
@@ -456,14 +552,14 @@ export class NotificationManager {
           recipient.userId,
           type,
           data,
-          channels,
+          channels
         );
         return {
           userId: recipient.userId,
           success: result.success,
           error: result.errors?.[0],
         };
-      }),
+      })
     );
 
     return {
@@ -480,7 +576,7 @@ export class NotificationManager {
       type?: NotificationType;
       limit?: number;
       offset?: number;
-    } = {},
+    } = {}
   ): Notification[] {
     const userNotifications = this.notifications.get(userId) || [];
 
@@ -554,7 +650,7 @@ export class NotificationManager {
   // Update subscription preferences
   updateSubscription(
     userId: string,
-    updates: Partial<NotificationSubscription>,
+    updates: Partial<NotificationSubscription>
   ): boolean {
     const subscription = this.subscriptions.get(userId);
     if (!subscription) return false;
@@ -711,7 +807,7 @@ export class NotificationManager {
   // Private methods
   private async sendThroughChannels(
     notification: Notification,
-    subscription: NotificationSubscription,
+    subscription: NotificationSubscription
   ): Promise<
     Array<{ channel: NotificationChannel; success: boolean; error?: string }>
   > {
@@ -762,23 +858,181 @@ export class NotificationManager {
 
   private async sendPushNotification(
     notification: Notification,
-    subscription: NotificationSubscription,
+    subscription: NotificationSubscription
   ): Promise<void> {
     // Implement push notification sending (Firebase, etc.)
     console.log("Sending push notification:", notification.title);
     // This would integrate with FCM/APNS
   }
 
-  private async sendSMS(notification: Notification): Promise<void> {
-    // Implement SMS sending (Twilio, etc.)
-    console.log("Sending SMS:", notification.message);
-    // This would integrate with SMS service
+  private async sendEmail(notification: Notification): Promise<void> {
+    console.log("Sending email:", notification.title);
+
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+
+      // Find user email from notification data or userId
+      let recipientEmail: string;
+      if (notification.data?.email) {
+        // External email (for invitations)
+        recipientEmail = notification.data.email;
+      } else {
+        // Registered user
+        const user = await prisma.user.findUnique({
+          where: { id: notification.userId },
+          select: { email: true },
+        });
+        if (!user?.email) {
+          throw new Error("User email not found");
+        }
+        recipientEmail = user.email;
+      }
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>${notification.title}</title>
+          </head>
+          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center; border-radius: 10px 10px 0 0;">
+              <h1 style="color: white; margin: 0; font-size: 28px;">TownKart</h1>
+              <p style="color: #e8e8e8; margin: 10px 0 0 0;">Your trusted delivery partner</p>
+            </div>
+
+            <div style="background: white; padding: 40px 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="color: #333; margin-top: 0; margin-bottom: 20px;">${notification.title}</h2>
+              <p style="font-size: 16px; line-height: 1.6; margin-bottom: 30px;">${notification.message}</p>
+
+              ${
+                notification.actions
+                  ?.map(
+                    (action) => `
+                <div style="text-align: center; margin: 20px 0;">
+                  <a href="${action.params?.url || "#"}"
+                     style="display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2); transition: all 0.3s ease;">
+                    ${action.label}
+                  </a>
+                </div>
+              `
+                  )
+                  .join("") || ""
+              }
+
+              <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666; font-size: 14px;">
+                <p>If you have any questions, feel free to contact our support team.</p>
+                <p style="margin: 5px 0;">
+                  <a href="mailto:support@townkart.com" style="color: #667eea; text-decoration: none;">support@townkart.com</a>
+                </p>
+              </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+              <p>© 2024 TownKart. All rights reserved.</p>
+            </div>
+          </body>
+        </html>
+      `;
+
+      const data = await resend.emails.send({
+        from: "TownKart <noreply@townkart.com>",
+        to: [recipientEmail],
+        subject: notification.title,
+        html: htmlContent,
+        text: `${notification.title}\n\n${notification.message}`,
+      });
+
+      console.log("Email sent successfully:", data);
+    } catch (error) {
+      console.error("Failed to send email:", error);
+      throw error;
+    }
   }
 
-  private async sendEmail(notification: Notification): Promise<void> {
-    // Implement email sending (SendGrid, etc.)
-    console.log("Sending email:", notification.title);
-    // This would integrate with email service
+  private async sendSMS(notification: Notification): Promise<void> {
+    console.log("Sending SMS:", notification.title);
+
+    try {
+      const apiKey = process.env.MSG91_API_KEY;
+      const senderId = process.env.MSG91_SENDER_ID || "TOWNKT";
+      const route = process.env.MSG91_ROUTE || "4";
+
+      if (!apiKey) {
+        console.log(`[MOCK SMS] Message: ${notification.message}`);
+        console.log(
+          `[MOCK SMS] Please configure MSG91_API_KEY in your .env file`
+        );
+        return;
+      }
+
+      // Find user phone number
+      let recipientPhone: string;
+      if (notification.data?.phone) {
+        // External phone (for invitations)
+        recipientPhone = notification.data.phone;
+      } else {
+        // Registered user
+        const user = await prisma.user.findUnique({
+          where: { id: notification.userId },
+          select: { phoneNumber: true },
+        });
+        if (!user?.phoneNumber) {
+          throw new Error("User phone number not found");
+        }
+        recipientPhone = user.phoneNumber;
+      }
+
+      // Clean phone number (remove +91 if present, MSG91 expects 10 digit number)
+      const cleanPhone = recipientPhone.replace(/^\+91/, "").replace(/\D/g, "");
+
+      if (cleanPhone.length !== 10) {
+        throw new Error("Invalid phone number format");
+      }
+
+      // Create SMS message
+      const smsMessage = `${notification.title}: ${notification.message}`;
+
+      // MSG91 API call with DLT template support
+      const dltTemplateId = process.env.MSG91_DLT_TEMPLATE_ID;
+      const smsData: any = {
+        sender: senderId,
+        route: route,
+        country: "91",
+        sms: [
+          {
+            message: smsMessage,
+            to: [cleanPhone],
+          },
+        ],
+      };
+
+      // Add DLT template ID if available (required for Indian SMS)
+      if (dltTemplateId) {
+        smsData.sms[0].DLT_TE_ID = dltTemplateId;
+      }
+
+      const response = await fetch(`https://api.msg91.com/api/v2/sendsms`, {
+        method: "POST",
+        headers: {
+          authkey: apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(smsData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || result.type !== "success") {
+        throw new Error(result.message || "Failed to send SMS");
+      }
+
+      console.log(`SMS sent successfully via MSG91: ${result.message}`);
+    } catch (error) {
+      console.error("Failed to send SMS:", error);
+      throw error;
+    }
   }
 
   private async sendWhatsApp(notification: Notification): Promise<void> {
@@ -795,7 +1049,7 @@ export class NotificationManager {
 
   private interpolateObject(
     obj: Record<string, any>,
-    data: Record<string, any>,
+    data: Record<string, any>
   ): Record<string, any> {
     const result: Record<string, any> = {};
 
@@ -852,6 +1106,9 @@ export function setWebSocketServer(server: any) {
 // Export singleton instance
 export const notificationManager = new NotificationManager();
 
+// Alias for backward compatibility
+export const notificationService = notificationManager;
+
 // Utility functions
 export function getNotificationIcon(type: NotificationType): string {
   const icons: Record<NotificationType, string> = {
@@ -869,6 +1126,7 @@ export function getNotificationIcon(type: NotificationType): string {
     system_alert: "⚠️",
     admin_manual: "📢",
     store_manual: "🏪",
+    invitation: "📨",
   };
   return icons[type] || "🔔";
 }

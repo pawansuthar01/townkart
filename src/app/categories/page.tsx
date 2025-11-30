@@ -51,6 +51,16 @@ export default function CategoriesPage() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const { addItem } = useCart();
 
+  // Generate dynamic delivery time based on distance
+  const generateDeliveryTime = (distance: string) => {
+    const distanceKm = parseFloat(distance.replace(" km", ""));
+    // Base time 15-30 mins, add 5 mins per km
+    const baseTime = Math.floor(Math.random() * 15) + 15; // 15-30 mins
+    const additionalTime = Math.floor(distanceKm * 5); // 5 mins per km
+    const totalTime = baseTime + additionalTime;
+    return `${totalTime} mins`;
+  };
+
   // Get categories from service
   const allCategories = getCategoriesSorted();
   const categories =
@@ -97,7 +107,7 @@ export default function CategoriesPage() {
           distance: "2.5 km",
           stock: product.stockQuantity || 0,
           category: product.categoryName || "",
-          deliveryTime: "30 mins",
+          deliveryTime: generateDeliveryTime("2.5 km"),
           isAvailable: (product.stockQuantity || 0) > 0,
         }));
         setProducts(transformedProducts);
@@ -340,12 +350,21 @@ export default function CategoriesPage() {
                             {product.discount}% OFF
                           </Badge>
                         )}
-                        <Badge
-                          className={`text-xs ${
-                            product.isAvailable ? "bg-green-500" : "bg-gray-500"
-                          } text-white`}
-                        >
-                          {product.isAvailable ? "Available" : "Out of Stock"}
+                        {product.isNew && (
+                          <Badge className="bg-green-500 text-white font-bold text-xs">
+                            NEW
+                          </Badge>
+                        )}
+                        {product.rating >= 4.5 && (
+                          <Badge className="bg-yellow-500 text-white font-bold text-xs">
+                            ★ BEST SELLER
+                          </Badge>
+                        )}
+                        <Badge className="bg-blue-500 text-white font-bold text-xs">
+                          FREE DELIVERY
+                        </Badge>
+                        <Badge className="bg-purple-500 text-white font-bold text-xs">
+                          COD AVAILABLE
                         </Badge>
                       </div>
 
@@ -354,7 +373,7 @@ export default function CategoriesPage() {
                         <div className="flex items-center bg-white/90 backdrop-blur-sm rounded-full px-2 py-1">
                           <Star className="h-3 w-3 fill-yellow-400 text-yellow-400 mr-1" />
                           <span className="text-xs font-semibold">
-                            {product.rating}
+                            {product.rating.toFixed(1)}
                           </span>
                         </div>
                       </div>
@@ -370,7 +389,7 @@ export default function CategoriesPage() {
                           <span>{product.distance}</span>
                           <span className="mx-2">•</span>
                           <Clock className="h-3 w-3 mr-1" />
-                          <span>{product.deliveryTime}</span>
+                          <span>{generateDeliveryTime(product.distance)}</span>
                         </div>
 
                         <div className="flex items-center justify-between mb-3">
@@ -391,13 +410,29 @@ export default function CategoriesPage() {
                           <span>{product.reviews} reviews</span>
                         </div>
 
-                        <Button
-                          onClick={() => handleAddToCart(product)}
-                          className="w-full townkart-gradient hover:opacity-90 font-medium"
-                          disabled={!product.isAvailable}
-                        >
-                          {product.isAvailable ? "Add to Cart" : "Out of Stock"}
-                        </Button>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span className="flex items-center">
+                              <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+                              In Stock ({product.stock})
+                            </span>
+                            <span className="flex items-center">
+                              <span className="text-green-600 font-medium">
+                                ★ Trusted Seller
+                              </span>
+                            </span>
+                          </div>
+                          <Button
+                            onClick={() => handleAddToCart(product)}
+                            className="w-full townkart-gradient hover:opacity-90 font-medium"
+                            disabled={!product.isAvailable}
+                          >
+                            <ShoppingCart className="h-4 w-4 mr-2" />
+                            {product.isAvailable
+                              ? "Add to Cart"
+                              : "Out of Stock"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </CardContent>
@@ -435,19 +470,24 @@ export default function CategoriesPage() {
                             <h3 className="text-xl font-semibold text-gray-900 mb-2">
                               {product.name}
                             </h3>
-                            <div className="flex items-center text-sm text-gray-600 mb-2">
-                              <MapPin className="h-4 w-4 mr-1" />
-                              <span>
-                                {product.distance} • {product.shop}
-                              </span>
-                              <span className="mx-2">•</span>
-                              <Clock className="h-4 w-4 mr-1" />
-                              <span>{product.deliveryTime}</span>
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-sm text-gray-500 mb-2 md:mb-3">
+                              <div className="flex items-center min-w-0 flex-1">
+                                <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
+                                <span className="truncate">
+                                  {product.distance} • {product.shop}
+                                </span>
+                              </div>
+                              <div className="flex items-center flex-shrink-0">
+                                <Clock className="h-3 w-3 mr-1" />
+                                <span className="whitespace-nowrap">
+                                  {generateDeliveryTime(product.distance)}
+                                </span>
+                              </div>
                             </div>
                             <div className="flex items-center">
                               <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 mr-1" />
                               <span className="font-semibold mr-2">
-                                {product.rating}
+                                {product.rating.toFixed(1)}
                               </span>
                               <span className="text-gray-600">
                                 ({product.reviews} reviews)
@@ -480,13 +520,26 @@ export default function CategoriesPage() {
                           </div>
                         </div>
 
-                        <Button
-                          onClick={() => handleAddToCart(product)}
-                          className="townkart-gradient hover:opacity-90 font-medium"
-                          disabled={!product.isAvailable}
-                        >
-                          {product.isAvailable ? "Add to Cart" : "Out of Stock"}
-                        </Button>
+                        <div className="w-full sm:w-auto">
+                          <div className="flex items-center justify-center sm:justify-start text-xs text-gray-500 mb-2">
+                            <span className="flex items-center mr-4">
+                              <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+                              In Stock ({product.stock})
+                            </span>
+                            <span className="text-green-600 font-medium">
+                              ★ Trusted Seller
+                            </span>
+                          </div>
+                          <Button
+                            onClick={() => handleAddToCart(product)}
+                            className="townkart-gradient hover:opacity-90 font-medium w-full"
+                          >
+                            <ShoppingCart className="h-4 w-4 mr-2" />
+                            {product.isAvailable
+                              ? "Add to Cart"
+                              : "Out of Stock"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </CardContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/Header";
@@ -25,13 +25,13 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
   const { data: session, status } = useSession();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isNotFound, setIsNotFound] = useState(false);
   const userRole = (session?.user as any)?.activeRole;
 
-  // Check if current path is an auth page
   const isAuthPage =
-    pathname?.startsWith("/auth/") || pathname?.startsWith("/verify-otp");
-
-  // For auth pages, don't apply any layout
+    pathname?.startsWith("/auth/") ||
+    pathname?.startsWith("/verify-otp") ||
+    isNotFound;
   if (isAuthPage) {
     return <>{children}</>;
   }
@@ -62,7 +62,7 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
               isOpen={sidebarOpen}
               onClose={() => setSidebarOpen(false)}
             />
-            <main className="flex-1">{children}</main>
+            <main className="flex-1 md:ml-64 ">{children}</main>
           </div>
           <CustomerFooter />
         </div>
@@ -80,7 +80,7 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
               isOpen={sidebarOpen}
               onClose={() => setSidebarOpen(false)}
             />
-            <main className="flex-1 p-6">{children}</main>
+            <main className="flex-1 md:ml-64">{children}</main>
           </div>
         </div>
       );
@@ -97,7 +97,7 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
               isOpen={sidebarOpen}
               onClose={() => setSidebarOpen(false)}
             />
-            <main className="flex-1 p-6">{children}</main>
+            <main className="flex-1 md:ml-64">{children}</main>
           </div>
         </div>
       );
@@ -118,7 +118,7 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
               isOpen={sidebarOpen}
               onClose={() => setSidebarOpen(false)}
             />
-            <main className="flex-1 p-6">{children}</main>
+            <main className="flex-1 md:ml-64">{children}</main>
           </div>
         </div>
       );
@@ -127,7 +127,7 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
       return (
         <div className="min-h-screen bg-gray-50">
           <Header />
-          <main className="flex-1">{children}</main>
+          <main className="pt-24 md:pt-28">{children}</main>
           <div className="hidden md:block">
             <Footer />
           </div>

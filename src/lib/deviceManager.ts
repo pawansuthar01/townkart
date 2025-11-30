@@ -33,7 +33,7 @@ export class DeviceManager {
   static async getOrCreateDevice(
     userId: string,
     deviceInfo: DeviceInfo,
-    locationInfo: LocationInfo,
+    locationInfo: LocationInfo
   ) {
     let device = await prisma.device.findUnique({
       where: {
@@ -100,7 +100,7 @@ export class DeviceManager {
   static async canLoginFromDevice(
     userId: string,
     userRole: string,
-    deviceId: string,
+    deviceId: string
   ): Promise<{
     allowed: boolean;
     reason?: string;
@@ -145,7 +145,7 @@ export class DeviceManager {
    */
   static async validateLocation(
     userId: string,
-    currentLocation: LocationInfo,
+    currentLocation: LocationInfo
   ): Promise<{
     valid: boolean;
     distance?: number;
@@ -179,7 +179,7 @@ export class DeviceManager {
       regLocation.lat,
       regLocation.lng,
       currentLocation.lat,
-      currentLocation.lng,
+      currentLocation.lng
     );
 
     // Allow login if within 50km of registration location
@@ -198,7 +198,7 @@ export class DeviceManager {
     lat1: number,
     lng1: number,
     lat2: number,
-    lng2: number,
+    lng2: number
   ): number {
     const R = 6371; // Earth's radius in km
     const dLat = this.toRadians(lat2 - lat1);
@@ -228,7 +228,7 @@ export class DeviceManager {
     loginType: string,
     context: LoginContext,
     riskLevel: string = "LOW",
-    riskReasons?: string[],
+    riskReasons?: string[]
   ) {
     await prisma.deviceLoginLog.create({
       data: {
@@ -259,7 +259,7 @@ export class DeviceManager {
   static async forceLogoutOtherDevices(
     userId: string,
     currentDeviceId: string,
-    userRole: string,
+    userRole: string
   ) {
     if (userRole === "CUSTOMER") return; // Customers can stay logged in on multiple devices
 
@@ -297,7 +297,7 @@ export class DeviceManager {
     userId: string,
     deviceInfo: DeviceInfo,
     locationInfo: LocationInfo,
-    notificationType: "LOGIN" | "LOGOUT" | "NEW_DEVICE" | "LOCATION_CHANGE",
+    notificationType: "LOGIN" | "LOGOUT" | "NEW_DEVICE" | "LOCATION_CHANGE"
   ) {
     let title = "";
     let message = "";
@@ -333,7 +333,7 @@ export class DeviceManager {
    */
   static async sendAdminLoginNotification(
     adminUserId: string,
-    adminName: string,
+    adminName: string
   ) {
     // Get all admin users
     const adminUsers = await prisma.user.findMany({

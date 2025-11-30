@@ -6,7 +6,7 @@ import {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } },
+  { params }: { params: { orderId: string } }
 ) {
   try {
     const orderId = params.orderId;
@@ -14,7 +14,7 @@ export async function GET(
     if (!orderId) {
       return NextResponse.json(
         { error: "Order ID is required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -24,7 +24,7 @@ export async function GET(
       return NextResponse.json(deliveryData);
     } catch (error) {
       console.warn(
-        `Real delivery data not available for order ${orderId}, using mock data`,
+        `Real delivery data not available for order ${orderId}, using mock data`
       );
       // Fallback to mock data for development/demo
       const mockData = generateMockDeliveryData(orderId);
@@ -34,20 +34,10 @@ export async function GET(
     console.error("Error fetching delivery tracking:", error);
     return NextResponse.json(
       { error: "Failed to fetch delivery tracking data" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
 
-// WebSocket upgrade for real-time tracking
-export async function GET_WS(
-  request: NextRequest,
-  { params }: { params: { orderId: string } },
-) {
-  // This would be handled by a WebSocket server
-  // For now, return a placeholder response
-  return NextResponse.json(
-    { message: "WebSocket endpoint for real-time tracking" },
-    { status: 200 },
-  );
-}
+// WebSocket upgrade for real-time tracking would be handled separately
+// This endpoint only supports GET for HTTP requests

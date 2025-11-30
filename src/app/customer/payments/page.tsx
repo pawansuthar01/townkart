@@ -4,23 +4,6 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Wallet,
@@ -33,6 +16,7 @@ import {
   TrendingUp,
   TrendingDown,
   DollarSign,
+  ShoppingBag,
 } from "lucide-react";
 
 interface WalletData {
@@ -53,28 +37,40 @@ interface Transaction {
   orderId?: string;
 }
 
+interface CustomerStats {
+  totalShopping: number;
+  totalOrders: number;
+}
+
 export default function CustomerPaymentsPage() {
   const { user } = useAuth();
-  const [wallet, setWallet] = useState<WalletData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [customerStats, setCustomerStats] = useState<CustomerStats | null>(
+    null
+  );
   const [isLoading, setIsLoading] = useState(true);
-  const [isAddingMoney, setIsAddingMoney] = useState(false);
-  const [showAddMoneyDialog, setShowAddMoneyDialog] = useState(false);
 
-  // Add money form
-  const [addMoneyAmount, setAddMoneyAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("");
-
-  // Fetch wallet data
-  const fetchWalletData = async () => {
+  // Fetch customer stats
+  const fetchCustomerStats = async () => {
     try {
-      const response = await fetch("/api/wallet/balance");
+      const response = await fetch(
+        `/api/orders?customerId=${user?.id}&limit=1000`
+      );
       if (response.ok) {
         const data = await response.json();
-        setWallet(data.wallet);
+        if (data.success && data.orders) {
+          const totalShopping = data.orders.reduce(
+            (sum: number, order: any) => sum + order.finalAmount,
+            0
+          );
+          setCustomerStats({
+            totalShopping,
+            totalOrders: data.orders.length,
+          });
+        }
       }
     } catch (error) {
-      console.error("Error fetching wallet data:", error);
+      console.error("Error fetching customer stats:", error);
     }
   };
 
@@ -93,39 +89,11 @@ export default function CustomerPaymentsPage() {
 
   useEffect(() => {
     if (user) {
-      Promise.all([fetchWalletData(), fetchTransactions()]).finally(() => {
+      Promise.all([fetchCustomerStats(), fetchTransactions()]).finally(() => {
         setIsLoading(false);
       });
     }
   }, [user]);
-
-  // Handle add money
-  const handleAddMoney = async () => {
-    if (!addMoneyAmount || !paymentMethod) return;
-
-    setIsAddingMoney(true);
-    try {
-      // This would integrate with payment gateway
-      // For now, just show success message
-      alert(
-        `Adding ₹${addMoneyAmount} via ${paymentMethod} would be processed here`,
-      );
-      setShowAddMoneyDialog(false);
-      setAddMoneyAmount("");
-      setPaymentMethod("");
-    } catch (error) {
-      console.error("Error adding money:", error);
-      alert("Failed to add money");
-    } finally {
-      setIsAddingMoney(false);
-    }
-  };
-
-  // Handle withdraw money
-  const handleWithdrawMoney = async () => {
-    // This would be implemented with payout API
-    alert("Withdrawal feature would be implemented here");
-  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -183,9 +151,11 @@ export default function CustomerPaymentsPage() {
         <div className="max-w-4xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">My Wallet</h1>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Payment History
+              </h1>
               <p className="text-gray-600 mt-1">
-                Manage your payments and transactions
+                View your shopping history and total spent
               </p>
             </div>
           </div>
@@ -194,131 +164,54 @@ export default function CustomerPaymentsPage() {
 
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Wallet Balance Card */}
+          {/* Total Shopping Amount Card */}
           <div className="lg:col-span-1">
             <Card className="bg-gradient-to-br from-townkart-primary to-townkart-secondary text-white">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <Wallet className="h-8 w-8" />
+                  <DollarSign className="h-8 w-8" />
                   <Badge variant="secondary" className="bg-white/20 text-white">
-                    Active
+                    Total Spent
                   </Badge>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-white/80 text-sm">Current Balance</p>
+                  <p className="text-white/80 text-sm">Total Shopping Amount</p>
                   <p className="text-3xl font-bold">
-                    {formatCurrency(wallet?.currentBalance || 0)}
+                    {formatCurrency(customerStats?.totalShopping || 0)}
                   </p>
-                </div>
-                <div className="mt-6 space-y-3">
-                  <Dialog
-                    open={showAddMoneyDialog}
-                    onOpenChange={setShowAddMoneyDialog}
-                  >
-                    <DialogTrigger asChild>
-                      <Button className="w-full bg-white text-townkart-primary hover:bg-gray-100">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Money
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Add Money to Wallet</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        <div>
-                          <Label htmlFor="amount">Amount</Label>
-                          <Input
-                            id="amount"
-                            type="number"
-                            placeholder="Enter amount"
-                            value={addMoneyAmount}
-                            onChange={(e) => setAddMoneyAmount(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="paymentMethod">Payment Method</Label>
-                          <Select
-                            value={paymentMethod}
-                            onValueChange={setPaymentMethod}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select payment method" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="upi">UPI</SelectItem>
-                              <SelectItem value="card">
-                                Credit/Debit Card
-                              </SelectItem>
-                              <SelectItem value="netbanking">
-                                Net Banking
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Button
-                          onClick={handleAddMoney}
-                          disabled={
-                            isAddingMoney || !addMoneyAmount || !paymentMethod
-                          }
-                          className="w-full"
-                        >
-                          {isAddingMoney ? (
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          ) : null}
-                          Add Money
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-
-                  <Button
-                    variant="outline"
-                    className="w-full border-white/30 text-white hover:bg-white/10"
-                    onClick={handleWithdrawMoney}
-                  >
-                    <ArrowUpRight className="h-4 w-4 mr-2" />
-                    Withdraw
-                  </Button>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Wallet Stats */}
+            {/* Shopping Stats */}
             <Card className="mt-6">
               <CardHeader>
-                <CardTitle className="text-lg">Wallet Summary</CardTitle>
+                <CardTitle className="text-lg">Shopping Summary</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <TrendingUp className="h-4 w-4 text-green-600" />
-                    <span className="text-sm text-gray-600">Total Earned</span>
+                    <ShoppingBag className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm text-gray-600">Total Orders</span>
                   </div>
-                  <span className="font-semibold text-green-600">
-                    {formatCurrency(wallet?.totalEarned || 0)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <TrendingDown className="h-4 w-4 text-red-600" />
-                    <span className="text-sm text-gray-600">
-                      Total Withdrawn
-                    </span>
-                  </div>
-                  <span className="font-semibold text-red-600">
-                    {formatCurrency(wallet?.totalWithdrawn || 0)}
+                  <span className="font-semibold text-blue-600">
+                    {customerStats?.totalOrders || 0}
                   </span>
                 </div>
                 <div className="flex items-center justify-between pt-2 border-t">
                   <div className="flex items-center space-x-2">
-                    <DollarSign className="h-4 w-4 text-blue-600" />
+                    <DollarSign className="h-4 w-4 text-green-600" />
                     <span className="text-sm text-gray-600">
-                      Available Balance
+                      Average Order Value
                     </span>
                   </div>
-                  <span className="font-semibold text-blue-600">
-                    {formatCurrency(wallet?.currentBalance || 0)}
+                  <span className="font-semibold text-green-600">
+                    {customerStats?.totalOrders
+                      ? formatCurrency(
+                          (customerStats.totalShopping || 0) /
+                            customerStats.totalOrders
+                        )
+                      : formatCurrency(0)}
                   </span>
                 </div>
               </CardContent>
@@ -390,62 +283,6 @@ export default function CustomerPaymentsPage() {
             </Card>
           </div>
         </div>
-
-        {/* Payment Methods Section */}
-        <Card className="mt-8">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
-              Payment Methods
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Card className="border-2 border-dashed border-gray-300 hover:border-townkart-primary transition-colors cursor-pointer">
-                <CardContent className="p-6 text-center">
-                  <Plus className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-gray-600">Add Payment Method</p>
-                </CardContent>
-              </Card>
-
-              {/* Sample payment methods - in real app, these would be fetched */}
-              <Card className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <CreditCard className="h-5 w-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium">•••• •••• •••• 4242</p>
-                        <p className="text-sm text-gray-500">Expires 12/25</p>
-                      </div>
-                    </div>
-                    <Badge>Primary</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                        <div className="text-green-600 font-bold text-sm">
-                          UPI
-                        </div>
-                      </div>
-                      <div>
-                        <p className="font-medium">user@upi</p>
-                        <p className="text-sm text-gray-500">UPI ID</p>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

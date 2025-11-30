@@ -16,7 +16,6 @@ export async function GET() {
       },
       orderBy: { sortOrder: "asc" },
     });
-    console.log(offers);
     return NextResponse.json(offers);
   } catch (error) {
     console.error("Error fetching special offers:", error);

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn, getSession } from "next-auth/react";
+import { signIn, getSession, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,12 +24,31 @@ export function LoginForm() {
     identifier: "", // Can be email or phone number
     password: "",
   });
+  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const router = useRouter();
+  const { data: session, status } = useSession();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (status === "authenticated" && session?.user) {
+      const activeRole = (session.user as any)?.activeRole;
+
+      if (activeRole === "ADMIN") {
+        router.push("/admin/dashboard");
+      } else if (activeRole === "STORE_MANAGER") {
+        router.push("/store");
+      } else if (activeRole === "RIDER") {
+        router.push("/rider");
+      } else {
+        router.push("/");
+      }
+    }
+  }, [session, status, router]);
   const handleInputChange = async (field: string, value: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -47,6 +66,7 @@ export function LoginForm() {
       const result = await signIn("credentials", {
         identifier: formData.identifier,
         password: formData.password,
+        rememberMe,
         redirect: false,
       });
 
@@ -62,9 +82,19 @@ export function LoginForm() {
       }
 
       if (result?.ok) {
-        // Get session to check user role
+        // Get session to check user role and verification status
         const session = await getSession();
         const activeRole = (session?.user as any)?.activeRole;
+        const phoneVerified = (session?.user as any)?.phoneVerified;
+        const phoneNumber = (session?.user as any)?.phoneNumber;
+
+        // If phone not verified, redirect to verification
+        if (!phoneVerified) {
+          router.push(
+            `/auth/verify-otp?phone=${encodeURIComponent(phoneNumber || "")}&purpose=LOGIN`
+          );
+          return;
+        }
 
         if (activeRole === "ADMIN") {
           router.push("/admin/dashboard");
@@ -109,12 +139,19 @@ export function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-xl border-0">
+    <div className="min-h-screen bg-gradient-to-br from-townkart-primary/5 via-white to-townkart-secondary/5 flex items-center justify-center p-4">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-townkart-primary/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-townkart-secondary/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-blue-400/5 to-purple-400/5 rounded-full blur-3xl" />
+      </div>
+
+      <Card className="w-full max-w-md shadow-2xl border-0 bg-white/95 backdrop-blur-sm transition-all duration-300 relative">
         <CardHeader className="text-center pb-2">
           <div className="flex justify-center mb-4">
-            <div className="townkart-gradient p-3 rounded-full">
-              <ShoppingCart className="h-8 w-8 text-white" />
+            <div className="mx-auto w-16 h-16 bg-townkart-primary/10 rounded-full flex items-center justify-center">
+              <ShoppingCart className="h-8 w-8 text-townkart-primary" />
             </div>
           </div>
           <CardTitle className="text-2xl font-bold text-gray-900">
@@ -189,6 +226,8 @@ export function LoginForm() {
               <label className="flex items-center">
                 <input
                   type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
                   className="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                   disabled={isLoading}
                 />
@@ -281,31 +320,6 @@ export function LoginForm() {
                 Sign up
               </Link>
             </p>
-          </div>
-
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm font-medium text-gray-700 mb-2">
-              Demo Credentials:
-            </p>
-            <div className="space-y-1 text-xs text-gray-600">
-              <p>
-                <strong>Customer:</strong> +919876543215 or arun.kumar@email.com
-                / customer123
-              </p>
-              <p>
-                <strong>Merchant:</strong> +919876543211 or
-                rajesh.kumar@townkart.com / merchant123
-              </p>
-              <p>
-                <strong>Rider:</strong> +919876543213 or amit.singh@townkart.com
-                / rider123
-              </p>
-              <p>
-                <strong>Admin:</strong> +919876543210 or admin@townkart.com /
-                admin123
-              </p>
-            </div>
           </div>
         </CardContent>
       </Card>

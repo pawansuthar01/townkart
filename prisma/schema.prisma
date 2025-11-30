@@ -136,6 +136,8 @@ model User {
   locationDataRecords LocationDataRecord[]
   locationAuditLogs LocationAuditLog[]
   supportTickets    SupportTicket[]
+  sentInvitations   Invitation[]    @relation("SentInvitations")
+  usedInvitations   Invitation[]    @relation("UsedInvitations")
 
   @@map("users")
 }
@@ -602,13 +604,21 @@ model Notification {
 }
 
 model OTP {
-  id          String   @id @default(cuid())
-  phoneNumber String
-  otp         String
-  purpose     String   // 'LOGIN', 'REGISTER', 'RESET_PASSWORD'
-  expiresAt   DateTime
-  isUsed      Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  id                String   @id @default(cuid())
+  phoneNumber       String
+  otp               String
+  purpose           String   // 'LOGIN', 'REGISTER', 'RESET_PASSWORD', 'PHONE_VERIFICATION', 'ACCOUNT_REACTIVATION'
+  expiresAt         DateTime
+  isUsed            Boolean  @default(false)
+
+  // Delivery tracking for production monitoring
+  deliveryStatus    String?  @default("PENDING") // PENDING, SENT, DELIVERED, FAILED
+  deliveryAttempts  Int      @default(0)
+  deliveryChannels  Json?    // Array of channels used: ["SMS", "Email"]
+  deliveryResults   Json?    // Detailed delivery results with retry info
+  deliveryWebhookData Json?  // Data from delivery webhooks
+
+  createdAt         DateTime @default(now())
 
   @@map("otps")
 }
@@ -1812,6 +1822,42 @@ model SupportMessage {
 
   @@index([ticketId, sentAt])
   @@map("support_messages")
+}
+
+// Invitation System for Controlled Registration
+enum InvitationType {
+  ADMIN_TO_RIDER
+  ADMIN_TO_STORE
+  RIDER_TO_STORE
+}
+
+enum InvitationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  USED
+  EXPIRED
+}
+
+model Invitation {
+  id              String           @id @default(cuid())
+  invitedBy       String           // User ID who sent the invitation
+  invitedByUser   User             @relation("SentInvitations", fields: [invitedBy], references: [id])
+  invitedEmail    String
+  invitedPhone    String?
+  role            UserRole         // RIDER or STORE_MANAGER
+  invitationType  InvitationType
+  status          InvitationStatus @default(PENDING)
+  token           String           @unique // Unique invitation token
+  expiresAt       DateTime
+  usedAt          DateTime?
+  usedBy          String?          // User ID who used the invitation
+  usedByUser      User?            @relation("UsedInvitations", fields: [usedBy], references: [id])
+  message         String?          // Optional message from inviter
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@map("invitations")
 }
 
 // System Settings for Platform Management

@@ -207,16 +207,35 @@ export default function ProductPage() {
 
     try {
       setSubmittingReview(true);
-      // TODO: Implement review submission API
-      console.log("Review submitted:", {
-        productId: product.id,
+      // Mock review submission - in production, this would call an API
+      const newReview = {
+        id: Date.now().toString(),
+        user: user?.name || "Anonymous User",
         rating: reviewRating,
-        text: reviewText,
+        comment: reviewText,
+        date: new Date().toLocaleDateString(),
+        helpful: 0,
+      };
+
+      // Update local product state with new review
+      setProduct((prev) => {
+        if (!prev) return prev;
+        const updatedReviews = [...(prev.reviews || []), newReview];
+        const averageRating =
+          updatedReviews.reduce((sum, r) => sum + r.rating, 0) /
+          updatedReviews.length;
+
+        return {
+          ...prev,
+          reviews: updatedReviews,
+          totalReviews: updatedReviews.length,
+          averageRating: averageRating,
+          rating: averageRating,
+        };
       });
+
       setReviewText("");
       setReviewRating(5);
-      // Refresh product data to show new review
-      await fetchProduct();
     } catch (err) {
       console.error("Failed to submit review:", err);
     } finally {

@@ -159,7 +159,7 @@ export function calculateDistance(
   lat1: number,
   lon1: number,
   lat2: number,
-  lon2: number,
+  lon2: number
 ): number {
   const R = 6371; // Earth's radius in kilometers
   const dLat = toRadians(lat2 - lat1);
@@ -184,7 +184,7 @@ function toRadians(degrees: number): number {
 export function determineDeliveryZone(
   latitude: number,
   longitude: number,
-  zones: DeliveryZone[],
+  zones: DeliveryZone[]
 ): DeliveryZone | null {
   // Simple distance-based zone determination
   // In production, use proper polygon containment algorithms
@@ -206,7 +206,7 @@ export function determineDeliveryZone(
 // Calculate surge multiplier based on time and special days
 export function calculateSurgeMultiplier(
   currentTime: Date,
-  config: DeliveryChargeConfig,
+  config: DeliveryChargeConfig
 ): number {
   if (!config.surgePricingEnabled) return 1;
 
@@ -245,7 +245,7 @@ export function calculateWeightCharge(weight: number): number {
 // Calculate priority charges
 export function calculatePriorityCharge(
   priority: "standard" | "express" | "same_day",
-  baseCharge: number,
+  baseCharge: number
 ): number {
   switch (priority) {
     case "express":
@@ -260,7 +260,7 @@ export function calculatePriorityCharge(
 // Calculate delivery charges
 export function calculateDeliveryCharge(
   input: DeliveryCalculationInput,
-  config: DeliveryChargeConfig = DEFAULT_DELIVERY_CONFIG,
+  config: DeliveryChargeConfig = DEFAULT_DELIVERY_CONFIG
 ): DeliveryChargeResult {
   const {
     pickupLocation,
@@ -276,14 +276,14 @@ export function calculateDeliveryCharge(
     pickupLocation.latitude,
     pickupLocation.longitude,
     deliveryLocation.latitude,
-    deliveryLocation.longitude,
+    deliveryLocation.longitude
   );
 
   // Determine zone
   const zone = determineDeliveryZone(
     deliveryLocation.latitude,
     deliveryLocation.longitude,
-    config.zones,
+    config.zones
   );
 
   // Get zone-specific or default charges
@@ -319,7 +319,7 @@ export function calculateDeliveryCharge(
   // Apply minimum and maximum limits
   const afterLimits = Math.max(
     minimumCharge,
-    Math.min(maximumCharge || subtotal, subtotal),
+    Math.min(maximumCharge || subtotal, subtotal)
   );
 
   // Calculate discounts
@@ -373,7 +373,7 @@ export function calculateDeliveryCharge(
     breakdown.push({
       label: "Surge Charge",
       amount: Math.ceil(
-        (subtotal - subtotal / surgeMultiplier) * surgeMultiplier,
+        (subtotal - subtotal / surgeMultiplier) * surgeMultiplier
       ),
       description: `${((surgeMultiplier - 1) * 100).toFixed(0)}% surge pricing`,
     });
@@ -393,7 +393,7 @@ export function calculateDeliveryCharge(
     weightCharge: surgedWeightCharge,
     priorityCharge: surgedPriorityCharge,
     surgeCharge: Math.ceil(
-      (subtotal - subtotal / surgeMultiplier) * surgeMultiplier,
+      (subtotal - subtotal / surgeMultiplier) * surgeMultiplier
     ),
     discount,
     totalCharge,
@@ -453,8 +453,15 @@ export class DeliveryChargeManager {
     averageCharge: number;
     totalRevenue: number;
   }> {
-    // TODO: connect to DB/API
-    return [];
+    // Mock data for development - in production, query database
+    return this.config.zones.map((zone) => ({
+      zone,
+      deliveryCount: Math.floor(Math.random() * 100) + 10, // Mock delivery count
+      averageCharge: zone.baseCharge + zone.perKmCharge * 2, // Mock average
+      totalRevenue:
+        (zone.baseCharge + zone.perKmCharge * 2) *
+        (Math.floor(Math.random() * 100) + 10),
+    }));
   }
 
   // Get surge pricing analytics
@@ -474,7 +481,7 @@ export class DeliveryChargeManager {
     const currentTime = new Date();
     const currentMultiplier = calculateSurgeMultiplier(
       currentTime,
-      this.config,
+      this.config
     );
 
     return {
@@ -487,6 +494,38 @@ export class DeliveryChargeManager {
       specialDays: this.config.specialDays,
     };
   }
+}
+
+// Calculate delivery charge for an order (wrapper function)
+export function calculateOrderDeliveryCharge(
+  orderValue: number,
+  distanceKm: number,
+  customerTier: "regular" | "premium" | "vip" = "regular",
+  merchantLocation?: { lat: number; lng: number },
+  customerLocation?: { lat: number; lng: number },
+  config?: DeliveryChargeConfig
+): DeliveryChargeResult {
+  // Use provided locations or defaults
+  const pickupLocation = merchantLocation
+    ? { latitude: merchantLocation.lat, longitude: merchantLocation.lng }
+    : { latitude: 12.9716, longitude: 77.5946 }; // Default Bangalore coordinates
+
+  const deliveryLocation = customerLocation
+    ? { latitude: customerLocation.lat, longitude: customerLocation.lng }
+    : {
+        latitude: 12.9716 + (Math.random() - 0.5) * 0.01,
+        longitude: 77.5946 + (Math.random() - 0.5) * 0.01,
+      };
+
+  return calculateDeliveryCharge(
+    {
+      pickupLocation,
+      deliveryLocation,
+      orderValue,
+      currentTime: new Date(),
+    },
+    config
+  );
 }
 
 // Export default manager instance

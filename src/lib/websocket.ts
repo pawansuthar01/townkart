@@ -84,7 +84,7 @@ export class DeliveryWebSocketServer {
     }
 
     console.log(
-      `WebSocket connected: ${userType} ${userId} ${deliveryId ? `for delivery ${deliveryId}` : ""} ${storeId ? `for store ${storeId}` : ""}`,
+      `WebSocket connected: ${userType} ${userId} ${deliveryId ? `for delivery ${deliveryId}` : ""} ${storeId ? `for store ${storeId}` : ""}`
     );
 
     // Send initial state if deliveryId is provided
@@ -118,7 +118,7 @@ export class DeliveryWebSocketServer {
     ws: WebSocket,
     deliveryId: string,
     userId: string,
-    userType: string,
+    userType: string
   ) {
     try {
       // Import delivery service to get current state
@@ -128,10 +128,10 @@ export class DeliveryWebSocketServer {
           order: {
             include: {
               customer: { select: { id: true, fullName: true } },
-              merchant: {
+              store: {
                 select: {
                   id: true,
-                  businessName: true,
+                  name: true,
                   address: true,
                   latitude: true,
                   longitude: true,
@@ -162,7 +162,7 @@ export class DeliveryWebSocketServer {
           estimatedDeliveryTime: delivery.estimatedDeliveryTime,
           order: {
             orderNumber: delivery.order.orderNumber,
-            merchant: delivery.order.merchant,
+            merchant: delivery.order.store,
           },
         };
 
@@ -283,7 +283,7 @@ export class DeliveryWebSocketServer {
 
     // Also broadcast to user connections if they have this order
     for (const [userId, connections] of Array.from(
-      this.userConnections.entries(),
+      this.userConnections.entries()
     )) {
       connections.forEach((connection) => {
         if (
@@ -343,7 +343,7 @@ export class DeliveryWebSocketServer {
   // Broadcast rider location update to all relevant stores
   private async broadcastRiderLocationUpdate(
     riderId: string,
-    locationData: any,
+    locationData: any
   ) {
     try {
       // Find all active deliveries for this rider
@@ -365,7 +365,7 @@ export class DeliveryWebSocketServer {
 
       // Get unique store IDs
       const storeIds = Array.from(
-        new Set(activeDeliveries.map((d) => d.order.storeId)),
+        new Set(activeDeliveries.map((d) => d.order.storeId))
       );
 
       const message = {
@@ -394,7 +394,7 @@ export class DeliveryWebSocketServer {
 
   private removeConnection(
     deliveryId: string | null,
-    connection: WebSocketConnection,
+    connection: WebSocketConnection
   ) {
     const { userId, storeId } = connection;
 
@@ -447,7 +447,7 @@ export class DeliveryWebSocketServer {
     }
 
     console.log(
-      `WebSocket disconnected: ${connection.userType} ${connection.userId}`,
+      `WebSocket disconnected: ${connection.userType} ${connection.userId}`
     );
   }
 
@@ -455,21 +455,21 @@ export class DeliveryWebSocketServer {
   getStats() {
     const deliveryStats: { [deliveryId: string]: number } = {};
     for (const [deliveryId, connections] of Array.from(
-      this.connections.entries(),
+      this.connections.entries()
     )) {
       deliveryStats[deliveryId] = connections.length;
     }
 
     const storeStats: { [storeId: string]: number } = {};
     for (const [storeId, connections] of Array.from(
-      this.storeConnections.entries(),
+      this.storeConnections.entries()
     )) {
       storeStats[storeId] = connections.length;
     }
 
     const riderStats: { [riderId: string]: number } = {};
     for (const [riderId, connections] of Array.from(
-      this.riderConnections.entries(),
+      this.riderConnections.entries()
     )) {
       riderStats[riderId] = connections.length;
     }
@@ -481,7 +481,7 @@ export class DeliveryWebSocketServer {
       totalUsers: this.userConnections.size,
       totalConnections: Array.from(this.userConnections.values()).reduce(
         (sum, conns) => sum + conns.length,
-        0,
+        0
       ),
       deliveries: deliveryStats,
       stores: storeStats,
@@ -494,7 +494,7 @@ export class DeliveryWebSocketServer {
 export async function broadcastOrderStatusChange(
   orderId: string,
   newStatus: string,
-  data?: any,
+  data?: any
 ) {
   try {
     // Import notification manager to send notifications
@@ -514,7 +514,7 @@ export async function broadcastOrderStatusChange(
           orderId,
           status: newStatus,
           ...data,
-        },
+        }
       );
     }
 

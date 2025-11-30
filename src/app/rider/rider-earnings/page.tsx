@@ -52,7 +52,7 @@ export default function RiderEarningsPage() {
     try {
       setLoading(true);
       const response = await fetch(
-        `/api/riders/earnings?period=${selectedPeriod}`,
+        `/api/riders/earnings?period=${selectedPeriod}`
       );
       const data = await response.json();
 
@@ -66,7 +66,7 @@ export default function RiderEarningsPage() {
             penalties: e.penaltyAmount,
             total: e.totalEarnings,
             status: e.isPaid ? "paid" : "pending",
-          })),
+          }))
         );
       }
     } catch (error) {
@@ -76,9 +76,35 @@ export default function RiderEarningsPage() {
     }
   };
 
-  // TODO: connect to DB/API
+  // Mock payout data - TODO: connect to real API
   useEffect(() => {
-    // Fetch real payout data
+    const mockPayouts: PayoutData[] = [
+      {
+        id: "1",
+        amount: 2500,
+        date: "2024-11-25",
+        method: "Bank Transfer",
+        reference: "TXN123456789",
+        status: "completed",
+      },
+      {
+        id: "2",
+        amount: 1800,
+        date: "2024-11-18",
+        method: "UPI",
+        reference: "UPI987654321",
+        status: "completed",
+      },
+      {
+        id: "3",
+        amount: 3200,
+        date: "2024-11-11",
+        method: "Bank Transfer",
+        reference: "TXN456789123",
+        status: "pending",
+      },
+    ];
+    setPayoutData(mockPayouts);
   }, []);
 
   const summaryStats = {

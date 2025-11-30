@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     if (!deliveryId || !riderId) {
       return NextResponse.json(
         { error: "Delivery ID and Rider ID are required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -114,11 +114,31 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // TODO: Create delivery log
-      // await tx.deliveryLog.create({ ... });
+      // Create delivery log
+      await tx.deliveryLog.create({
+        data: {
+          deliveryId: deliveryId,
+          eventType: "assignment",
+          newStatus: "ASSIGNED",
+          description: `Delivery assigned to rider ${rider.user.fullName}`,
+          actorId: "system", // TODO: Get from session when admin assigns
+          actorType: "system",
+        },
+      });
 
-      // TODO: Create rider log
-      // await tx.riderLog.create({ ... });
+      // Create rider log
+      await tx.riderLog.create({
+        data: {
+          riderId: rider.id,
+          eventType: "delivery_assigned",
+          description: `Assigned to delivery ${deliveryId}`,
+          metadata: {
+            deliveryId,
+            orderId: delivery.orderId,
+            storeId: delivery.order.storeId,
+          },
+        },
+      });
 
       return updatedDelivery;
     });
@@ -134,7 +154,7 @@ export async function POST(request: NextRequest) {
     if (error.message === "Delivery not found") {
       return NextResponse.json(
         { success: false, message: "Delivery not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -144,28 +164,28 @@ export async function POST(request: NextRequest) {
           success: false,
           message: "Delivery already assigned to another rider",
         },
-        { status: 409 },
+        { status: 409 }
       );
     }
 
     if (error.message === "Rider not found") {
       return NextResponse.json(
         { success: false, message: "Rider not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
     if (error.message === "Rider is not available") {
       return NextResponse.json(
         { success: false, message: "Rider is not available" },
-        { status: 409 },
+        { status: 409 }
       );
     }
 
     if (error.message === "Order is not ready for pickup") {
       return NextResponse.json(
         { success: false, message: "Order is not ready for pickup" },
-        { status: 409 },
+        { status: 409 }
       );
     }
 
@@ -175,13 +195,13 @@ export async function POST(request: NextRequest) {
           success: false,
           message: "Rider has reached maximum daily deliveries",
         },
-        { status: 409 },
+        { status: 409 }
       );
     }
 
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

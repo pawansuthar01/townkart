@@ -58,8 +58,64 @@ export default function StorePromotionsPage() {
 
   const fetchPromotions = async () => {
     try {
-      // TODO: connect to DB/API
-      setPromotions([]);
+      // Mock data for development - TODO: connect to real API
+      const mockPromotions: Promotion[] = [
+        {
+          id: "1",
+          title: "20% Off on Orders Above ₹500",
+          description:
+            "Get 20% discount on all orders above ₹500. Valid for dine-in and takeaway.",
+          type: "percentage",
+          discountValue: 20,
+          minimumOrder: 500,
+          startDate: "2024-11-01",
+          endDate: "2024-12-31",
+          isActive: true,
+          usageCount: 45,
+          maxUsage: 100,
+        },
+        {
+          id: "2",
+          title: "₹100 Off on First Order",
+          description:
+            "Welcome offer: Get ₹100 off on your first order with us.",
+          type: "fixed",
+          discountValue: 100,
+          minimumOrder: 300,
+          startDate: "2024-10-01",
+          endDate: "2024-12-31",
+          isActive: true,
+          usageCount: 23,
+        },
+        {
+          id: "3",
+          title: "Buy One Get One Free - Lunch Special",
+          description:
+            "Buy any main course and get another one free. Valid only during lunch hours (12-3 PM).",
+          type: "buy_one_get_one",
+          discountValue: 50,
+          minimumOrder: 200,
+          startDate: "2024-11-15",
+          endDate: "2024-11-30",
+          isActive: false,
+          usageCount: 12,
+          maxUsage: 50,
+        },
+        {
+          id: "4",
+          title: "Weekend Special - 15% Off",
+          description:
+            "Enjoy 15% off on all orders this weekend. Valid for Saturday and Sunday only.",
+          type: "percentage",
+          discountValue: 15,
+          minimumOrder: 250,
+          startDate: "2024-11-23",
+          endDate: "2024-11-24",
+          isActive: true,
+          usageCount: 67,
+        },
+      ];
+      setPromotions(mockPromotions);
     } catch (error) {
       console.error("Error fetching promotions:", error);
     } finally {
@@ -116,8 +172,8 @@ export default function StorePromotionsPage() {
   const togglePromotionStatus = (id: string) => {
     setPromotions((prev) =>
       prev.map((promo) =>
-        promo.id === id ? { ...promo, isActive: !promo.isActive } : promo,
-      ),
+        promo.id === id ? { ...promo, isActive: !promo.isActive } : promo
+      )
     );
   };
 

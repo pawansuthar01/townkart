@@ -51,8 +51,75 @@ export default function StoreReviewsPage() {
 
   const fetchReviews = async () => {
     try {
-      // TODO: connect to DB/API
-      setReviews([]);
+      // Mock data for development - TODO: connect to real API
+      const mockReviews: Review[] = [
+        {
+          id: "1",
+          orderId: "ORD001",
+          customerName: "Rahul Sharma",
+          customerId: "cust1",
+          productName: "Chicken Biryani",
+          rating: 5,
+          comment:
+            "Amazing food! The biryani was perfectly spiced and arrived hot. Will definitely order again.",
+          createdAt: "2024-11-28T10:30:00Z",
+          response:
+            "Thank you for your kind words! We're glad you enjoyed our Chicken Biryani. Looking forward to serving you again.",
+          responseAt: "2024-11-28T11:00:00Z",
+          isPublic: true,
+        },
+        {
+          id: "2",
+          orderId: "ORD002",
+          customerName: "Priya Patel",
+          customerId: "cust2",
+          productName: "Paneer Butter Masala",
+          rating: 4,
+          comment:
+            "Good taste but delivery was a bit late. Food was still warm though.",
+          createdAt: "2024-11-27T14:20:00Z",
+          isPublic: true,
+        },
+        {
+          id: "3",
+          orderId: "ORD003",
+          customerName: "Amit Kumar",
+          customerId: "cust3",
+          productName: "Masala Dosa",
+          rating: 3,
+          comment:
+            "Average experience. The dosa was okay but not as crispy as expected.",
+          createdAt: "2024-11-26T08:45:00Z",
+          isPublic: true,
+        },
+        {
+          id: "4",
+          orderId: "ORD004",
+          customerName: "Sneha Reddy",
+          customerId: "cust4",
+          productName: "Chicken Biryani",
+          rating: 5,
+          comment: "Best biryani in town! Highly recommend this place.",
+          createdAt: "2024-11-25T19:15:00Z",
+          response:
+            "Thank you so much! We're thrilled to hear that you loved our Chicken Biryani. Your recommendation means a lot to us!",
+          responseAt: "2024-11-25T20:30:00Z",
+          isPublic: true,
+        },
+        {
+          id: "5",
+          orderId: "ORD005",
+          customerName: "Vikram Singh",
+          customerId: "cust5",
+          productName: "Veg Thali",
+          rating: 2,
+          comment:
+            "Food was cold and not fresh. Very disappointed with this order.",
+          createdAt: "2024-11-24T13:10:00Z",
+          isPublic: true,
+        },
+      ];
+      setReviews(mockReviews);
     } catch (error) {
       console.error("Error fetching reviews:", error);
     } finally {
@@ -74,8 +141,8 @@ export default function StoreReviewsPage() {
                 response: responseText,
                 responseAt: new Date().toISOString(),
               }
-            : review,
-        ),
+            : review
+        )
       );
       setSelectedReview(null);
       setResponseText("");
@@ -348,7 +415,7 @@ export default function StoreReviewsPage() {
                     <span className="text-xs text-gray-500">
                       {selectedReview.responseAt &&
                         new Date(
-                          selectedReview.responseAt,
+                          selectedReview.responseAt
                         ).toLocaleDateString()}
                     </span>
                   </div>

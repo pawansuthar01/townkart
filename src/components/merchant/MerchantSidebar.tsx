@@ -77,10 +77,8 @@ export function MerchantSidebar({ isOpen, onClose }: MerchantSidebarProps) {
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed top-0 left-0 h-full w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-50",
-          isOpen
-            ? "translate-x-0"
-            : "-translate-x-full md:translate-x-0 md:static md:z-auto",
+          "fixed top-0 left-0 h-full w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-50 md:fixed md:shadow-lg",
+          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         <div className="flex flex-col h-full">
@@ -146,7 +144,7 @@ export function MerchantSidebar({ isOpen, onClose }: MerchantSidebarProps) {
                         "flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                         isActive
                           ? "bg-townkart-primary text-white"
-                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                       )}
                     >
                       <Icon className="h-5 w-5" />
@@ -206,7 +204,7 @@ export function MerchantSidebar({ isOpen, onClose }: MerchantSidebarProps) {
           {/* Footer */}
           <div className="p-4 border-t border-gray-200">
             <div className="text-xs text-gray-500 text-center">
-              © 2024 TownKart
+              © 2025 TownKart
             </div>
           </div>
         </div>

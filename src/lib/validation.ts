@@ -18,7 +18,7 @@ export const registerSchema = z.object({
     .string()
     .regex(
       /^\+91[6-9]\d{9}$/,
-      "Please enter a valid Indian phone number (e.g., +919876543210)",
+      "Please enter a valid Indian phone number (e.g., +919876543210)"
     ),
   fullName: z
     .string()
@@ -37,17 +37,18 @@ export const registerSchema = z.object({
     }, "Please enter a valid email address"),
   password: z
     .string()
-    .min(8, "Password must be at least 8 characters")
+    .min(6, "Password must be at least 6 characters")
     .max(100, "Password must be less than 100 characters")
     .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
-      "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character",
+      /^(?=.*[a-zA-Z])(?=.*\d)/,
+      "Password must contain at least one letter and one number"
     ),
   role: z.enum(["CUSTOMER", "MERCHANT", "RIDER"], {
     errorMap: () => ({
       message: "Please select a valid role: Customer, Merchant, or Rider",
     }),
   }),
+  token: z.string().optional(), // Invitation token for non-customer roles
 });
 
 export const verifyOtpSchema = z.object({
@@ -91,7 +92,7 @@ export const updateProfileSchema = z
     currentPassword: z.string().optional(),
     newPassword: z
       .string()
-      .min(8, "Password must be at least 8 characters")
+      .min(6, "Password must be at least 6 characters")
       .max(100, "Password must be less than 100 characters")
       .optional(),
   })
@@ -106,7 +107,7 @@ export const updateProfileSchema = z
     {
       message: "Current password is required to set a new password",
       path: ["currentPassword"],
-    },
+    }
   );
 
 export const addressSchema = z.object({
@@ -348,7 +349,7 @@ export const createCollectionSchema = z.object({
     z.object({
       productId: z.string(),
       sortOrder: z.number().int().min(0).default(0),
-    }),
+    })
   ),
   type: z.enum([
     "MANUAL",
@@ -391,7 +392,7 @@ export const createOrderSchema = z.object({
     z.object({
       productId: z.string().min(1, "Product ID is required"),
       quantity: z.number().int().positive("Quantity must be greater than 0"),
-    }),
+    })
   ),
   deliveryAddress: addressSchema,
   paymentMethod: z.enum(["CASH_ON_DELIVERY", "UPI", "CARD", "WALLET"]),

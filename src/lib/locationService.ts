@@ -1,165 +1,46 @@
-export interface LocationData {
+import { prisma } from "@/lib/prisma";
+
+export interface LocationInfo {
   ip: string;
+  success: boolean;
   country?: string;
-  city?: string;
   region?: string;
-  lat?: number;
-  lng?: number;
-  timezone?: string;
-  isp?: string;
+  city?: string;
+  latitude?: number;
+  longitude?: number;
+  accuracy?: number;
+  address?: string;
+  pincode?: string;
+  zone?: any;
+  isServiced?: boolean;
+  deliveryFee?: number;
+  error?: string;
+}
+
+export interface DeliveryZone {
+  id: string;
+  name: string;
+  boundaries: any; // GeoJSON
+  centerLat: number;
+  centerLng: number;
+  radiusKm: number;
+  baseDeliveryFee: number;
+  perKmFee: number;
+  isActive: boolean;
 }
 
 export class LocationService {
-  /**
-   * Get location information from IP address using production-ready geolocation service
-   */
-  static async getLocationFromIP(ip: string): Promise<LocationData> {
-    try {
-      // Skip geolocation for local/private IPs
-      if (this.isLocalOrPrivateIP(ip)) {
-        return {
-          ip,
-          country: "Unknown",
-          city: "Local Network",
-          region: "Local",
-          lat: undefined,
-          lng: undefined,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          isp: "Local Network",
-        };
-      }
-
-      // Use ipapi.co for production geolocation (free tier available)
-      const API_KEY = process.env.IPAPI_KEY; // Optional: add API key for higher limits
-      const url = API_KEY
-        ? `https://ipapi.co/${ip}/json/?key=${API_KEY}`
-        : `https://ipapi.co/${ip}/json/`;
-
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "TownKart/1.0",
-        },
-        // Add timeout
-        signal: AbortSignal.timeout(5000), // 5 second timeout
-      });
-
-      if (!response.ok) {
-        throw new Error(`IP API returned ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // Check if API returned an error
-      if (data.error) {
-        throw new Error(data.reason || "IP API error");
-      }
-
-      return {
-        ip,
-        country: data.country_name || data.country,
-        city: data.city,
-        region: data.region || data.region_code,
-        lat: data.latitude ? parseFloat(data.latitude) : undefined,
-        lng: data.longitude ? parseFloat(data.longitude) : undefined,
-        timezone: data.timezone,
-        isp: data.org || data.asn,
-      };
-    } catch (error) {
-      console.error("Error getting location from IP:", error);
-
-      // Fallback: try alternative service (ipinfo.io)
-      try {
-        const fallbackResponse = await fetch(`https://ipinfo.io/${ip}/json`, {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-            "User-Agent": "TownKart/1.0",
-          },
-          signal: AbortSignal.timeout(3000),
-        });
-
-        if (fallbackResponse.ok) {
-          const fallbackData = await fallbackResponse.json();
-
-          if (!fallbackData.error) {
-            const [lat, lng] = fallbackData.loc
-              ? fallbackData.loc.split(",").map(parseFloat)
-              : [undefined, undefined];
-
-            return {
-              ip,
-              country: fallbackData.country,
-              city: fallbackData.city,
-              region: fallbackData.region,
-              lat,
-              lng,
-              timezone: fallbackData.timezone,
-              isp: fallbackData.org,
-            };
-          }
-        }
-      } catch (fallbackError) {
-        console.error("Fallback IP service also failed:", fallbackError);
-      }
-
-      // Final fallback
-      return {
-        ip,
-        country: "Unknown",
-        city: "Unknown",
-        region: "Unknown",
-        lat: undefined,
-        lng: undefined,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        isp: "Unknown",
-      };
-    }
-  }
-
-  /**
-   * Check if IP is local or private
-   */
-  private static isLocalOrPrivateIP(ip: string): boolean {
-    // Localhost
-    if (ip === "127.0.0.1" || ip === "::1" || ip.startsWith("127.")) {
-      return true;
-    }
-
-    // Private IP ranges
-    const parts = ip.split(".");
-    if (parts.length !== 4) return false;
-
-    const first = parseInt(parts[0]);
-    const second = parseInt(parts[1]);
-
-    // 10.0.0.0/8
-    if (first === 10) return true;
-
-    // 172.16.0.0/12
-    if (first === 172 && second >= 16 && second <= 31) return true;
-
-    // 192.168.0.0/16
-    if (first === 192 && second === 168) return true;
-
-    // Link-local (169.254.0.0/16) - but we'll geolocate these
-    // APIPA (169.254.0.0/16) is public, so don't treat as private
-
-    return false;
-  }
-
   /**
    * Parse user agent string to extract device info
    */
   static parseUserAgent(userAgent: string): {
     deviceType: string;
-    os?: string;
-    browser?: string;
+    os: string;
+    browser: string;
   } {
     const ua = userAgent.toLowerCase();
 
-    // Detect device type
+    // Device type detection
     let deviceType = "desktop";
     if (
       ua.includes("mobile") ||
@@ -171,52 +52,234 @@ export class LocationService {
       deviceType = "tablet";
     }
 
-    // Detect OS
-    let os: string | undefined;
+    // OS detection
+    let os = "Unknown";
     if (ua.includes("windows")) os = "Windows";
     else if (ua.includes("macintosh") || ua.includes("mac os x")) os = "macOS";
     else if (ua.includes("linux")) os = "Linux";
     else if (ua.includes("android")) os = "Android";
     else if (ua.includes("iphone") || ua.includes("ipad")) os = "iOS";
 
-    // Detect browser
-    let browser: string | undefined;
+    // Browser detection
+    let browser = "Unknown";
     if (ua.includes("chrome") && !ua.includes("edg")) browser = "Chrome";
     else if (ua.includes("firefox")) browser = "Firefox";
     else if (ua.includes("safari") && !ua.includes("chrome"))
       browser = "Safari";
     else if (ua.includes("edg")) browser = "Edge";
     else if (ua.includes("opera")) browser = "Opera";
-    else browser = "Unknown";
 
     return { deviceType, os, browser };
   }
 
   /**
-   * Calculate distance between two coordinates using Haversine formula
+   * SERVER-SAFE: IP → GEO lookup
+   */
+  static async lookupIP(ip: string): Promise<any> {
+    try {
+      const url = `https://ipapi.co/${ip}/json/`;
+      const res = await fetch(url);
+      return await res.json();
+    } catch (err) {
+      console.error("IP lookup failed:", err);
+      return null;
+    }
+  }
+
+  /**
+   * Reverse GPS → Address lookup
+   */
+  static async reverseGeocode(lat: number, lng: number): Promise<any> {
+    try {
+      const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
+      const res = await fetch(url);
+      const d = await res.json();
+
+      return {
+        address: d.locality || d.city || null,
+        city: d.city || null,
+        state: d.principalSubdivision || null,
+        pincode: d.postcode || null,
+      };
+    } catch (e) {
+      console.error("Reverse geocode error:", e);
+      return {};
+    }
+  }
+
+  /**
+   * Haversine distance
    */
   static calculateDistance(
     lat1: number,
     lng1: number,
     lat2: number,
     lng2: number
-  ): number {
-    const R = 6371; // Earth's radius in km
+  ) {
+    const R = 6371;
     const dLat = this.toRadians(lat2 - lat1);
     const dLng = this.toRadians(lng2 - lng1);
 
     const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.sin(dLat / 2) ** 2 +
       Math.cos(this.toRadians(lat1)) *
         Math.cos(this.toRadians(lat2)) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2);
+        Math.sin(dLng / 2) ** 2;
 
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
 
-  private static toRadians(degrees: number): number {
-    return degrees * (Math.PI / 180);
+  static toRadians(d: number) {
+    return d * (Math.PI / 180);
+  }
+
+  /**
+   * Check if coordinates are inside a delivery zone
+   */
+  static isPointInZone(lat: number, lng: number, zone: DeliveryZone): boolean {
+    const distance = this.calculateDistance(
+      lat,
+      lng,
+      zone.centerLat,
+      zone.centerLng
+    );
+    return distance <= zone.radiusKm;
+  }
+
+  /**
+   * Get active delivery zones
+   */
+  static async getActiveDeliveryZones(): Promise<DeliveryZone[]> {
+    try {
+      return await prisma.deliveryZone.findMany({
+        where: { isActive: true },
+      });
+    } catch (err) {
+      console.error("Zone fetch error:", err);
+      return [];
+    }
+  }
+
+  /**
+   * Best delivery zone (based on radius + lowest base fee)
+   */
+  static async findBestDeliveryZone(lat: number, lng: number) {
+    const zones = await this.getActiveDeliveryZones();
+    const valid = zones.filter((z) => this.isPointInZone(lat, lng, z));
+    if (!valid.length) return null;
+
+    return valid.reduce((best, cur) =>
+      cur.baseDeliveryFee < best.baseDeliveryFee ? cur : best
+    );
+  }
+
+  /**
+   * Calculate delivery fee
+   */
+  static calculateDeliveryFee(
+    userLat: number,
+    userLng: number,
+    storeLat: number,
+    storeLng: number,
+    zone?: DeliveryZone
+  ) {
+    const distance = this.calculateDistance(
+      userLat,
+      userLng,
+      storeLat,
+      storeLng
+    );
+
+    if (zone) {
+      const extra = Math.max(0, distance - 2);
+      return zone.baseDeliveryFee + extra * zone.perKmFee;
+    }
+
+    return 20 + distance * 5;
+  }
+
+  /**
+   * Check if location is inside any service area
+   */
+  static async isLocationServiced(lat: number, lng: number) {
+    try {
+      const areas = await prisma.serviceArea.findMany({
+        where: { isActive: true },
+      });
+
+      return areas.some((area) => {
+        const distance = this.calculateDistance(
+          lat,
+          lng,
+          area.centerLat,
+          area.centerLng
+        );
+        return distance <= area.radiusKm;
+      });
+    } catch (err) {
+      console.error("Service area error:", err);
+      return false;
+    }
+  }
+
+  /**
+   * ⭐ MAIN METHOD → FULL LOCATION INFO using client IP
+   */
+  static async getLocationInfoFromIP(ip: string): Promise<LocationInfo> {
+    try {
+      const data = await this.lookupIP(ip);
+
+      if (!data || !data.latitude || !data.longitude) {
+        return {
+          success: false,
+          ip: ip,
+          error: "Unable to determine location from IP",
+        };
+      }
+
+      const lat = data.latitude;
+      const lng = data.longitude;
+
+      // Reverse geocode
+      const geo = await this.reverseGeocode(lat, lng);
+
+      // Zone
+      const zone = await this.findBestDeliveryZone(lat, lng);
+
+      // Service check
+      const isServiced = await this.isLocationServiced(lat, lng);
+
+      return {
+        success: true,
+        ip,
+        country: data.country_name || undefined,
+        region: data.region || undefined,
+        city: data.city || undefined,
+        latitude: lat,
+        longitude: lng,
+        address: geo.address || undefined,
+        pincode: geo.pincode || undefined,
+        zone: zone
+          ? {
+              id: zone.id,
+              name: zone.name,
+              radiusKm: zone.radiusKm,
+              baseDeliveryFee: zone.baseDeliveryFee,
+              perKmFee: zone.perKmFee,
+            }
+          : undefined,
+        isServiced,
+      };
+    } catch (err: any) {
+      console.error("getLocationInfoFromIP error:", err);
+      return {
+        success: false,
+        ip: ip,
+        error: err.message,
+      };
+    }
   }
 }
+
+export default LocationService;

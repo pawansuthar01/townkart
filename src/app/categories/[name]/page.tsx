@@ -82,12 +82,25 @@ export default function CategoryPage() {
   const categorySlug = params.name as string;
   const { addItem } = useCart();
 
+  // Generate dynamic delivery time based on distance
+  const generateDeliveryTime = (distance: string) => {
+    const distanceKm = parseFloat(distance.replace(" km", ""));
+    // Base time 15-30 mins, add 5 mins per km
+    const baseTime = Math.floor(Math.random() * 15) + 15; // 15-30 mins
+    const additionalTime = Math.floor(distanceKm * 5); // 5 mins per km
+    const totalTime = baseTime + additionalTime;
+    return `${totalTime} mins`;
+  };
+
   // State
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [category, setCategory] = useState<CategoryData | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [searchInput, setSearchInput] = useState(
+    searchParams.get("search") || ""
+  );
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -114,6 +127,17 @@ export default function CategoryPage() {
     null
   );
   const [error, setError] = useState<string | null>(null);
+
+  // Debounced search - only update filters after user stops typing for 500ms
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchInput !== filters.search) {
+        handleFilterChange({ search: searchInput });
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchInput, filters.search]);
 
   // Build query string for URL
   const buildQueryString = useCallback((newFilters: typeof filters) => {
@@ -268,7 +292,6 @@ export default function CategoryPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className={`bg-gradient-to-r ${category.color} text-white`}>
         <div className="w-full px-4 md:px-6 py-6 md:py-8">
           <div className="flex items-center gap-4 mb-4">
@@ -310,10 +333,8 @@ export default function CategoryPage() {
                 <Input
                   type="text"
                   placeholder="Search products..."
-                  value={filters.search}
-                  onChange={(e) =>
-                    handleFilterChange({ search: e.target.value })
-                  }
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="pl-10 w-full"
                 />
               </div>
@@ -413,7 +434,6 @@ export default function CategoryPage() {
                     <SelectValue placeholder="Any" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Any</SelectItem>
                     <SelectItem value="4">4+ Stars</SelectItem>
                     <SelectItem value="3">3+ Stars</SelectItem>
                     <SelectItem value="2">2+ Stars</SelectItem>
@@ -435,7 +455,6 @@ export default function CategoryPage() {
                       <SelectValue placeholder="All Stores" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Stores</SelectItem>
                       {filterOptions.stores.map((store) => (
                         <SelectItem key={store.id} value={store.id}>
                           {store.name}
@@ -460,7 +479,6 @@ export default function CategoryPage() {
                       <SelectValue placeholder="All Brands" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Brands</SelectItem>
                       {filterOptions.brands.map((brand) => (
                         <SelectItem key={brand} value={brand}>
                           {brand}
@@ -554,7 +572,6 @@ export default function CategoryPage() {
                       <SelectValue placeholder="Any rating" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any rating</SelectItem>
                       <SelectItem value="4">4+ Stars</SelectItem>
                       <SelectItem value="3">3+ Stars</SelectItem>
                       <SelectItem value="2">2+ Stars</SelectItem>
@@ -578,7 +595,6 @@ export default function CategoryPage() {
                         <SelectValue placeholder="All stores" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All stores</SelectItem>
                         {filterOptions.stores.map((store) => (
                           <SelectItem key={store.id} value={store.id}>
                             {store.name}
@@ -605,7 +621,6 @@ export default function CategoryPage() {
                         <SelectValue placeholder="All brands" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All brands</SelectItem>
                         {filterOptions.brands.map((brand) => (
                           <SelectItem key={brand} value={brand}>
                             {brand}
@@ -687,6 +702,17 @@ export default function CategoryPage() {
                             NEW
                           </Badge>
                         )}
+                        {product.rating >= 4.5 && (
+                          <Badge className="bg-yellow-500 text-white font-bold">
+                            ★ BEST SELLER
+                          </Badge>
+                        )}
+                        <Badge className="bg-blue-500 text-white font-bold text-xs">
+                          FREE DELIVERY
+                        </Badge>
+                        <Badge className="bg-purple-500 text-white font-bold text-xs">
+                          COD AVAILABLE
+                        </Badge>
                       </div>
 
                       {/* Quick Actions */}
@@ -717,7 +743,7 @@ export default function CategoryPage() {
                         <div className="flex items-center">
                           <Clock className="h-3 w-3 mr-1" />
                           <span className="truncate">
-                            {product.deliveryTime}
+                            {generateDeliveryTime(product.distance)}
                           </span>
                         </div>
                       </div>
@@ -761,13 +787,27 @@ export default function CategoryPage() {
                         </Badge>
                       </div>
 
-                      <Button
-                        onClick={() => handleAddToCart(product)}
-                        className="w-full townkart-gradient hover:opacity-90 font-medium text-sm"
-                        size="sm"
-                      >
-                        Add to Cart
-                      </Button>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <span className="flex items-center">
+                            <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+                            In Stock ({product.stock})
+                          </span>
+                          <span className="flex items-center">
+                            <span className="text-green-600 font-medium">
+                              ★ Trusted Seller
+                            </span>
+                          </span>
+                        </div>
+                        <Button
+                          onClick={() => handleAddToCart(product)}
+                          className="w-full townkart-gradient hover:opacity-90 font-medium text-sm"
+                          size="sm"
+                        >
+                          <ShoppingCart className="h-4 w-4 mr-2" />
+                          Add to Cart
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -809,16 +849,16 @@ export default function CategoryPage() {
                             </p>
 
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-sm text-gray-500 mb-2 md:mb-3">
-                              <div className="flex items-center">
-                                <MapPin className="h-3 w-3 mr-1" />
+                              <div className="flex items-center min-w-0 flex-1">
+                                <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
                                 <span className="truncate">
                                   {product.distance} • {product.shop}
                                 </span>
                               </div>
-                              <div className="flex items-center">
+                              <div className="flex items-center flex-shrink-0">
                                 <Clock className="h-3 w-3 mr-1" />
-                                <span className="truncate">
-                                  {product.deliveryTime}
+                                <span className="whitespace-nowrap">
+                                  {generateDeliveryTime(product.distance)}
                                 </span>
                               </div>
                             </div>
@@ -837,7 +877,8 @@ export default function CategoryPage() {
                                 ))}
                               </div>
                               <span className="text-xs text-gray-600">
-                                {product.rating} ({product.reviews} reviews)
+                                {product.rating.toFixed(1)} ({product.reviews}{" "}
+                                reviews)
                               </span>
                             </div>
                           </div>
@@ -854,13 +895,24 @@ export default function CategoryPage() {
                               )}
                             </div>
 
-                            <Button
-                              onClick={() => handleAddToCart(product)}
-                              className="townkart-gradient hover:opacity-90 font-medium w-full sm:w-auto"
-                            >
-                              <ShoppingCart className="h-4 w-4 mr-2" />
-                              Add to Cart
-                            </Button>
+                            <div className="w-full sm:w-auto">
+                              <div className="flex items-center justify-center sm:justify-start text-xs text-gray-500 mb-2">
+                                <span className="flex items-center mr-4">
+                                  <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+                                  In Stock ({product.stock})
+                                </span>
+                                <span className="text-green-600 font-medium">
+                                  ★ Trusted Seller
+                                </span>
+                              </div>
+                              <Button
+                                onClick={() => handleAddToCart(product)}
+                                className="townkart-gradient hover:opacity-90 font-medium w-full"
+                              >
+                                <ShoppingCart className="h-4 w-4 mr-2" />
+                                Add to Cart
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </div>

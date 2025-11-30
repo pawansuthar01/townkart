@@ -24,7 +24,7 @@ export default withAuth(
 
     // Check if the current route is public
     const isPublicRoute = publicRoutes.some(
-      (route) => pathname === route || pathname.startsWith(`${route}/`),
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
     );
 
     if (isPublicRoute) {
@@ -34,6 +34,40 @@ export default withAuth(
     // If no token, redirect to login
     if (!token) {
       return NextResponse.redirect(new URL("/auth/login", req.url));
+    }
+
+    // Check if phone number is verified
+    const phoneVerified = token.phoneVerified as boolean;
+    if (!phoneVerified) {
+      // Allow access to OTP verification pages
+      if (
+        pathname === "/auth/verify-otp" ||
+        pathname === "/verify-otp" ||
+        pathname.startsWith("/api/auth/verify-otp")
+      ) {
+        return NextResponse.next();
+      }
+      // Redirect to unauthorized page for phone unverified
+      return NextResponse.redirect(
+        new URL("/unauthorized?reason=phone_unverified", req.url)
+      );
+    }
+
+    // Check if account is active
+    const isActive = token.isActive as boolean;
+    if (!isActive) {
+      // Allow access to OTP verification pages for account reactivation
+      if (
+        pathname === "/auth/verify-otp" ||
+        pathname === "/verify-otp" ||
+        pathname.startsWith("/api/auth/verify-otp")
+      ) {
+        return NextResponse.next();
+      }
+      // Redirect to unauthorized page with reason
+      return NextResponse.redirect(
+        new URL("/unauthorized?reason=account_inactive", req.url)
+      );
     }
 
     // Track device for authenticated users
@@ -107,7 +141,7 @@ export default withAuth(
         ];
 
         const isPublicRoute = publicRoutes.some(
-          (route) => pathname === route || pathname.startsWith(`${route}/`),
+          (route) => pathname === route || pathname.startsWith(`${route}/`)
         );
 
         if (isPublicRoute) return true;
@@ -116,7 +150,7 @@ export default withAuth(
         return !!token;
       },
     },
-  },
+  }
 );
 
 export const config = {

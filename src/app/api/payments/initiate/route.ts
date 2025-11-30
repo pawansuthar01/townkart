@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { initiatePaymentSchema } from "@/lib/validation";
 import { createRazorpayOrderData } from "@/types/payment.types";
 import { prisma } from "@/lib/prisma";
+import Razorpay from "razorpay";
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest) {
       where: { id: orderId },
       include: {
         customer: true,
-        merchant: true,
+        store: true,
         orderItems: {
           include: {
             product: true,
@@ -26,14 +27,14 @@ export async function POST(request: NextRequest) {
     if (!order) {
       return NextResponse.json(
         { success: false, message: "Order not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
     if (order.paymentStatus === "COMPLETED") {
       return NextResponse.json(
         { success: false, message: "Payment already completed for this order" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -61,48 +62,61 @@ export async function POST(request: NextRequest) {
     }
 
     // For online payments, create Razorpay order
+    const razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID!,
+      key_secret: process.env.RAZORPAY_KEY_SECRET!,
+    });
+
     const razorpayOrderData = createRazorpayOrderData(finalAmount);
 
-    // In production, call Razorpay API
-    // For now, simulate the response
-    const razorpayOrder = {
-      id: `order_${Date.now()}`,
-      entity: "order",
-      amount: razorpayOrderData.amount,
-      amount_paid: 0,
-      amount_due: razorpayOrderData.amount,
-      currency: "INR",
-      receipt: razorpayOrderData.receipt,
-      status: "created",
-      attempts: 0,
-      notes: {},
-      created_at: Math.floor(Date.now() / 1000),
-    };
+    try {
+      const razorpayOrder = await razorpay.orders.create({
+        amount: razorpayOrderData.amount,
+        currency: razorpayOrderData.currency,
+        receipt: razorpayOrderData.receipt,
+        payment_capture: true, // Auto capture payments
+        notes: {
+          orderId: orderId,
+          customerId: order.customerId,
+          storeId: order.storeId,
+        },
+      });
 
-    // Create payment record
-    const payment = await prisma.payment.create({
-      data: {
-        orderId,
-        amount: finalAmount,
-        paymentMethod,
-        transactionId: razorpayOrder.id,
-        gatewayOrderId: razorpayOrder.id,
-        paymentStatus: "PENDING",
-      },
-    });
+      // Create payment record
+      const payment = await prisma.payment.create({
+        data: {
+          orderId,
+          amount: finalAmount,
+          paymentMethod,
+          transactionId: razorpayOrder.id,
+          gatewayOrderId: razorpayOrder.id,
+          paymentStatus: "PENDING",
+        },
+      });
 
-    return NextResponse.json({
-      success: true,
-      message: "Payment initiated successfully",
-      data: {
-        orderId,
-        paymentId: payment.id,
-        razorpayOrderId: razorpayOrder.id,
-        amount: finalAmount,
-        currency: "INR",
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-      },
-    });
+      return NextResponse.json({
+        success: true,
+        message: "Payment initiated successfully",
+        data: {
+          orderId,
+          paymentId: payment.id,
+          razorpayOrderId: razorpayOrder.id,
+          amount: finalAmount,
+          currency: "INR",
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        },
+      });
+    } catch (razorpayError: any) {
+      console.error("Razorpay API error:", razorpayError);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Payment gateway error. Please try again.",
+          error: razorpayError.message,
+        },
+        { status: 500 }
+      );
+    }
   } catch (error: any) {
     console.error("Payment initiation error:", error);
 
@@ -113,13 +127,13 @@ export async function POST(request: NextRequest) {
           message: "Invalid input data",
           errors: error.errors,
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

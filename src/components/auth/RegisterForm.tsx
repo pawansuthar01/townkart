@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,7 @@ import {
   ShoppingCart,
   Store,
   Bike,
+  Info,
 } from "lucide-react";
 
 export function RegisterForm() {
@@ -42,15 +44,41 @@ export function RegisterForm() {
     phoneNumber: "",
     password: "",
     confirmPassword: "",
-    role: "",
+    role: "CUSTOMER", // Default to customer
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [invitationData, setInvitationData] = useState<{
+    token: string;
+    role: string;
+    email: string;
+    message?: string;
+  } | null>(null);
+  const [isValidatingToken, setIsValidatingToken] = useState(false);
 
   const { register } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (status === "authenticated" && session?.user) {
+      const activeRole = (session.user as any)?.activeRole;
+
+      if (activeRole === "ADMIN") {
+        router.push("/admin/dashboard");
+      } else if (activeRole === "STORE_MANAGER") {
+        router.push("/store");
+      } else if (activeRole === "RIDER") {
+        router.push("/rider");
+      } else {
+        router.push("/");
+      }
+    }
+  }, [session, status, router]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
@@ -58,6 +86,47 @@ export function RegisterForm() {
       [field]: value,
     }));
     if (error) setError("");
+  };
+
+  // Check for invitation token on component mount
+  useEffect(() => {
+    const token = searchParams.get("token");
+    if (token) {
+      validateInvitationToken(token);
+    } else {
+      // No token, default to customer registration
+      setFormData((prev) => ({ ...prev, role: "CUSTOMER" }));
+    }
+  }, [searchParams]);
+
+  const validateInvitationToken = async (token: string) => {
+    setIsValidatingToken(true);
+    try {
+      const response = await fetch(
+        `/api/auth/validate-invitation?token=${token}`
+      );
+      const data = await response.json();
+
+      if (data.valid) {
+        setInvitationData({
+          token,
+          role: data.invitation.role,
+          email: data.invitation.invitedEmail,
+          message: data.invitation.message,
+        });
+        setFormData((prev) => ({
+          ...prev,
+          role: data.invitation.role,
+          email: data.invitation.invitedEmail,
+        }));
+      } else {
+        setError(data.message || "Invalid invitation token");
+      }
+    } catch (error) {
+      setError("Failed to validate invitation token");
+    } finally {
+      setIsValidatingToken(false);
+    }
   };
 
   const validateForm = () => {
@@ -73,15 +142,11 @@ export function RegisterForm() {
     if (!emailRegex.test(formData.email))
       return "Please enter a valid email address";
 
-    // Enhanced password validation
-    if (formData.password.length < 8)
-      return "Password must be at least 8 characters long";
-    if (
-      !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/.test(
-        formData.password,
-      )
-    ) {
-      return "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character";
+    // Password validation
+    if (formData.password.length < 6)
+      return "Password must be at least 6 characters long";
+    if (!/^(?=.*[a-zA-Z])(?=.*\d)/.test(formData.password)) {
+      return "Password must contain at least one letter and one number";
     }
 
     if (formData.password !== formData.confirmPassword)
@@ -119,21 +184,14 @@ export function RegisterForm() {
         fullName: formData.fullName,
         phoneNumber: formData.phoneNumber,
         role: formData.role,
+        token: invitationData?.token,
       });
+
       if (result) {
-        // Redirect based on role
-        switch (formData.role) {
-          case "MERCHANT":
-            router.push("/store/setup");
-            break;
-          case "RIDER":
-            router.push("/rider/setup");
-            break;
-          case "CUSTOMER":
-          default:
-            router.push("/");
-            break;
-        }
+        // Redirect to OTP verification page
+        router.push(
+          `/auth/verify-otp?phone=${encodeURIComponent(formData.phoneNumber)}&role=${formData.role}`
+        );
       } else {
         throw new Error("Registration failed");
       }
@@ -158,24 +216,57 @@ export function RegisterForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-teal-100 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-xl border-0">
+    <div className="min-h-screen bg-gradient-to-br from-townkart-primary/5 via-white to-townkart-secondary/5 flex items-center justify-center p-4">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-townkart-primary/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-townkart-secondary/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-green-400/5 to-teal-400/5 rounded-full blur-3xl" />
+      </div>
+
+      <Card className="w-full max-w-md shadow-2xl border-0 bg-white/95 backdrop-blur-sm transition-all duration-300 relative">
         <CardHeader className="text-center pb-2">
           <div className="flex justify-center mb-4">
-            <div className="townkart-gradient p-3 rounded-full">
-              <User className="h-8 w-8 text-white" />
+            <div className="mx-auto w-16 h-16 bg-townkart-primary/10 rounded-full flex items-center justify-center">
+              <User className="h-8 w-8 text-townkart-primary" />
             </div>
           </div>
           <CardTitle className="text-2xl font-bold text-gray-900">
-            Create Account
+            {invitationData ? "Complete Registration" : "Create Account"}
           </CardTitle>
           <CardDescription className="text-gray-600">
-            Join TownKart and start your journey
+            {invitationData
+              ? `You're invited to join as a ${invitationData.role.toLowerCase().replace("_", " ")}`
+              : "Join TownKart and start your journey"}
           </CardDescription>
         </CardHeader>
 
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {isValidatingToken && (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>Validating invitation...</AlertDescription>
+              </Alert>
+            )}
+
+            {invitationData && (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="space-y-1">
+                    <p className="font-medium">
+                      You've been invited to join as a{" "}
+                      {invitationData.role.toLowerCase()}
+                    </p>
+                    {invitationData.message && (
+                      <p className="text-sm">{invitationData.message}</p>
+                    )}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
@@ -211,7 +302,7 @@ export function RegisterForm() {
                 value={formData.email}
                 onChange={(e) => handleInputChange("email", e.target.value)}
                 required
-                disabled={isLoading}
+                disabled={isLoading || !!invitationData}
                 className="h-11"
               />
             </div>
@@ -235,37 +326,30 @@ export function RegisterForm() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="role">I want to join as</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value) => handleInputChange("role", value)}
-              >
-                <SelectTrigger className="h-11">
-                  <SelectValue placeholder="Select your role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CUSTOMER">
-                    <div className="flex items-center gap-2">
-                      <ShoppingCart className="h-4 w-4" />
-                      Customer - Order food & products
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="MERCHANT">
-                    <div className="flex items-center gap-2">
-                      <Store className="h-4 w-4" />
-                      Merchant - Sell products & manage shop
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="RIDER">
-                    <div className="flex items-center gap-2">
-                      <Bike className="h-4 w-4" />
-                      Rider - Deliver orders & earn money
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Role selection only shown for invitations */}
+            {invitationData && (
+              <div className="space-y-2">
+                <Label htmlFor="role">Joining as</Label>
+                <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                  {formData.role === "RIDER" && (
+                    <Bike className="h-5 w-5 text-blue-600" />
+                  )}
+                  {formData.role === "STORE_MANAGER" && (
+                    <Store className="h-5 w-5 text-green-600" />
+                  )}
+                  <span className="font-medium">
+                    {formData.role === "STORE_MANAGER"
+                      ? "Store Manager"
+                      : formData.role}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Hidden role field for customers */}
+            {!invitationData && (
+              <input type="hidden" name="role" value="CUSTOMER" />
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="password" className="flex items-center gap-2">
@@ -276,7 +360,7 @@ export function RegisterForm() {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Create a password (min 8 characters, include uppercase, lowercase, number, special character)"
+                  placeholder="Create a password (min 6 characters, include letter and number)"
                   value={formData.password}
                   onChange={(e) =>
                     handleInputChange("password", e.target.value)

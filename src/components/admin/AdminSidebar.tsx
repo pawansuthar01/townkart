@@ -15,6 +15,7 @@ import {
   Gift,
   MapPin,
   Bell,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,11 @@ const adminNavItems = [
     title: "Users",
     href: "/admin/users",
     icon: Users,
+  },
+  {
+    title: "Invitations",
+    href: "/admin/invitations",
+    icon: Mail,
   },
   {
     title: "Products",
@@ -97,8 +103,8 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed top-0 left-0 h-full w-64 max-w-[280px] bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-50 md:relative md:translate-x-0 md:shadow-none md:w-64",
-          isOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed top-0 left-0 h-full w-64 max-w-[280px] bg-white shadow-lg transform transition-transform duration-300 ease-in-out z-50 md:fixed md:shadow-lg",
+          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         <div className="flex flex-col h-full">

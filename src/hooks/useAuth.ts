@@ -7,10 +7,10 @@ export const useAuth = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  const login = async (email: string, password: string) => {
+  const login = async (identifier: string, password: string) => {
     try {
       const result = await signIn("credentials", {
-        email,
+        identifier,
         password,
         redirect: false,
       });
@@ -46,6 +46,7 @@ export const useAuth = () => {
     fullName: string;
     phoneNumber: string;
     role: string;
+    token?: string;
   }) => {
     try {
       const response = await fetch("/api/auth/register", {
@@ -62,10 +63,7 @@ export const useAuth = () => {
       }
 
       const result = await response.json();
-
-      // Auto login after registration
-      const loginResult = await login(userData.email, userData.password);
-      return loginResult;
+      return result;
     } catch (error) {
       throw error;
     }

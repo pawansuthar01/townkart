@@ -62,12 +62,13 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         identifier: { label: "Email or Phone Number", type: "text" },
         password: { label: "Password", type: "password" },
+        rememberMe: { label: "Remember Me", type: "boolean" },
       },
       async authorize(credentials) {
         if (!credentials?.identifier || !credentials?.password) {
           return null;
         }
-        console.log(credentials);
+
         // Determine if identifier is email or phone number
         const isEmail = credentials.identifier.includes("@");
 
@@ -123,6 +124,12 @@ export const authOptions: NextAuthOptions = {
           },
         });
 
+        console.log("✅ User authenticated, returning:", {
+          id: user.id,
+          email: user.email,
+          name: user.fullName,
+        });
+
         return {
           id: user.id,
           email: user.email,
@@ -130,16 +137,17 @@ export const authOptions: NextAuthOptions = {
           image: user.profileImageUrl,
           roles: user.userRoles,
           activeRole: user.activeRole,
+          rememberMe: credentials.rememberMe === "true",
         } as any;
       },
     }),
   ],
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60, // 30 days (default)
   },
   jwt: {
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60, // 30 days (default)
   },
   pages: {
     signIn: "/auth/login",
@@ -150,13 +158,30 @@ export const authOptions: NextAuthOptions = {
       console.log("🔐 JWT callback triggered", {
         hasUser: !!user,
         tokenSub: token.sub,
+        userId: user?.id,
       });
       if (user) {
+        token.sub = user.id; // Ensure user ID is set in token
         token.roles = (user as any).roles;
         token.activeRole = (user as any).activeRole;
+        token.rememberMe = (user as any).rememberMe;
+
+        // Set expiry based on rememberMe
+        const now = Math.floor(Date.now() / 1000);
+        if (token.rememberMe) {
+          // 30 days for remember me
+          token.exp = now + 30 * 24 * 60 * 60;
+        } else {
+          // 24 hours for regular login
+          token.exp = now + 24 * 60 * 60;
+        }
+
         console.log("✅ JWT token updated with user data", {
+          sub: token.sub,
           roles: token.roles,
           activeRole: token.activeRole,
+          rememberMe: token.rememberMe,
+          exp: token.exp,
         });
       }
       return token;
@@ -167,9 +192,15 @@ export const authOptions: NextAuthOptions = {
         tokenSub: token?.sub,
       });
       if (token) {
+        // Set basic user info from token first
         session.user.id = token.sub!;
+        session.user.name = token.name;
+        session.user.email = token.email;
+        (session.user as any).image = token.picture;
         (session.user as any).roles = token.roles;
         (session.user as any).activeRole = token.activeRole;
+
+        console.log("Setting session user id:", token.sub);
 
         // Fetch complete user data with all relations
         try {

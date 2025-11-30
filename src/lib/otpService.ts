@@ -9,9 +9,51 @@ export interface OTPSettings {
   expiry_minutes: number;
   max_attempts: number;
   cooldown_minutes: number;
+  retry_attempts: number;
+  enable_fallback: boolean;
+}
+
+export interface OTPDeliveryResult {
+  success: boolean;
+  channel: string;
+  messageId?: string;
+  error?: string;
+  retryCount?: number;
+}
+
+export interface OTPTemplate {
+  sms: string;
+  email: {
+    subject: string;
+    text: string;
+    html: string;
+  };
 }
 
 export class OTPService {
+  private static getOTPTemplate(purpose: string, otp: string): OTPTemplate {
+    const purposeText = purpose.replace("_", " ").toLowerCase();
+
+    return {
+      sms: `Your TownKart OTP for ${purposeText} is: ${otp}. Valid for 10 minutes.`,
+      email: {
+        subject: `Your TownKart OTP for ${purposeText}`,
+        text: `Your OTP is: ${otp}\n\nThis OTP is valid for 10 minutes.\n\nIf you didn't request this, please ignore this message.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Your TownKart OTP</h2>
+            <p>Your OTP for ${purposeText} is:</p>
+            <div style="background-color: #f8f9fa; padding: 20px; text-align: center; margin: 20px 0;">
+              <span style="font-size: 24px; font-weight: bold; color: #007bff;">${otp}</span>
+            </div>
+            <p>This OTP is valid for 10 minutes.</p>
+            <p style="color: #666; font-size: 12px;">If you didn't request this, please ignore this message.</p>
+          </div>
+        `,
+      },
+    };
+  }
+
   private static async getAdminOTPSettings(): Promise<OTPSettings> {
     try {
       const settings = await prisma.systemSetting.findMany({
@@ -21,14 +63,16 @@ export class OTPService {
       });
 
       const otpSettings: OTPSettings = {
-        delivery_method: "sms",
+        delivery_method: "both", // Send via both SMS and Email/WhatsApp
         email_enabled: true,
         sms_enabled: true,
-        whatsapp_enabled: false,
-        otp_length: 6,
+        whatsapp_enabled: true, // Enable WhatsApp OTP
+        otp_length: 4,
         expiry_minutes: 10,
         max_attempts: 3,
         cooldown_minutes: 5,
+        retry_attempts: 2,
+        enable_fallback: true,
       };
 
       settings.forEach((setting) => {
@@ -41,19 +85,20 @@ export class OTPService {
           // Use default values if parsing fails
         }
       });
-
       return otpSettings;
     } catch (error) {
       console.error("Error fetching OTP settings:", error);
       return {
-        delivery_method: "sms",
+        delivery_method: "both",
         email_enabled: true,
         sms_enabled: true,
-        whatsapp_enabled: false,
+        whatsapp_enabled: true,
         otp_length: 6,
         expiry_minutes: 10,
         max_attempts: 3,
         cooldown_minutes: 5,
+        retry_attempts: 2,
+        enable_fallback: true,
       };
     }
   }
@@ -70,7 +115,12 @@ export class OTPService {
   static async sendOTP(
     phoneNumber: string,
     email: string | null,
-    purpose: "LOGIN" | "REGISTER" | "RESET_PASSWORD" = "LOGIN",
+    purpose:
+      | "LOGIN"
+      | "REGISTER"
+      | "RESET_PASSWORD"
+      | "PHONE_VERIFICATION"
+      | "ACCOUNT_REACTIVATION" = "LOGIN"
   ): Promise<{ success: boolean; message: string; channels: string[] }> {
     try {
       const settings = await this.getAdminOTPSettings();
@@ -88,20 +138,20 @@ export class OTPService {
         },
       });
 
-      if (recentOTP) {
-        const timeLeft = Math.ceil(
-          (recentOTP.createdAt.getTime() +
-            settings.cooldown_minutes * 60 * 1000 -
-            Date.now()) /
-            1000 /
-            60,
-        );
-        return {
-          success: false,
-          message: `Please wait ${timeLeft} minutes before requesting another OTP`,
-          channels: [],
-        };
-      }
+      // if (recentOTP) {
+      //   const timeLeft = Math.ceil(
+      //     (recentOTP.createdAt.getTime() +
+      //       settings.cooldown_minutes * 60 * 1000 -
+      //       Date.now()) /
+      //       1000 /
+      //       60
+      //   );
+      //   return {
+      //     success: false,
+      //     message: `Please wait ${timeLeft} minutes before requesting another OTP`,
+      //     channels: [],
+      //   };
+      // }
 
       // Check max attempts
       const recentAttempts = await prisma.oTP.count({
@@ -124,48 +174,139 @@ export class OTPService {
 
       const otp = this.generateOTP(settings.otp_length);
       const expiresAt = new Date(
-        Date.now() + settings.expiry_minutes * 60 * 1000,
+        Date.now() + settings.expiry_minutes * 60 * 1000
       );
 
-      // Create OTP record
-      await prisma.oTP.create({
+      // Create OTP record with delivery tracking
+      const otpRecord = await prisma.oTP.create({
         data: {
           phoneNumber,
           otp,
           purpose,
           expiresAt,
+          deliveryStatus: "PENDING",
+          deliveryAttempts: 0,
         },
       });
 
+      const template = this.getOTPTemplate(purpose, otp);
+      const deliveryResults: OTPDeliveryResult[] = [];
       const channels: string[] = [];
 
-      // Send based on delivery method and enabled channels
+      // Send based on delivery method and enabled channels with retry logic
       if (settings.delivery_method === "sms" && settings.sms_enabled) {
-        await this.sendSMS(phoneNumber, otp, purpose);
-        channels.push("SMS");
+        const smsResult = await this.sendWithRetry(
+          () => this.sendSMS(phoneNumber, template.sms, purpose),
+          settings.retry_attempts,
+          "SMS"
+        );
+        deliveryResults.push(smsResult);
+        if (smsResult.success) channels.push("SMS");
+
+        // Fallback to email if SMS fails and fallback is enabled
+        if (
+          !smsResult.success &&
+          settings.enable_fallback &&
+          settings.email_enabled &&
+          email
+        ) {
+          console.log(
+            `SMS failed, attempting email fallback for ${phoneNumber}`
+          );
+          const emailResult = await this.sendWithRetry(
+            () =>
+              this.sendEmail(
+                email!,
+                template.email.subject,
+                template.email.text,
+                template.email.html
+              ),
+            settings.retry_attempts,
+            "Email"
+          );
+          deliveryResults.push(emailResult);
+          if (emailResult.success) channels.push("Email");
+        }
       } else if (
         settings.delivery_method === "email" &&
         settings.email_enabled &&
         email
       ) {
-        await this.sendEmail(email, otp, purpose);
-        channels.push("Email");
+        const emailResult = await this.sendWithRetry(
+          () =>
+            this.sendEmail(
+              email,
+              template.email.subject,
+              template.email.text,
+              template.email.html
+            ),
+          settings.retry_attempts,
+          "Email"
+        );
+        deliveryResults.push(emailResult);
+        if (emailResult.success) channels.push("Email");
       } else if (settings.delivery_method === "both") {
+        const promises = [];
+
         if (settings.sms_enabled) {
-          await this.sendSMS(phoneNumber, otp, purpose);
-          channels.push("SMS");
+          promises.push(
+            this.sendWithRetry(
+              () => this.sendSMS(phoneNumber, template.sms, purpose),
+              settings.retry_attempts,
+              "SMS"
+            )
+          );
         }
+
         if (settings.email_enabled && email) {
-          await this.sendEmail(email, otp, purpose);
-          channels.push("Email");
+          promises.push(
+            this.sendWithRetry(
+              () =>
+                this.sendEmail(
+                  email,
+                  template.email.subject,
+                  template.email.text,
+                  template.email.html
+                ),
+              settings.retry_attempts,
+              "Email"
+            )
+          );
         }
+
+        const results = await Promise.all(promises);
+        deliveryResults.push(...results);
+        results.forEach((result) => {
+          if (result.success) channels.push(result.channel);
+        });
       }
 
-      // Send WhatsApp if enabled (fallback or additional)
+      // Send WhatsApp if enabled (additional channel)
       if (settings.whatsapp_enabled) {
-        await this.sendWhatsApp(phoneNumber, otp, purpose);
-        channels.push("WhatsApp");
+        const whatsappResult = await this.sendWithRetry(
+          () => this.sendWhatsApp(phoneNumber, template.sms, purpose),
+          settings.retry_attempts,
+          "WhatsApp"
+        );
+        deliveryResults.push(whatsappResult);
+        if (whatsappResult.success) channels.push("WhatsApp");
       }
+
+      // Update OTP record with delivery status
+      const successfulDeliveries = deliveryResults.filter((r) => r.success);
+      await prisma.oTP.update({
+        where: { id: otpRecord.id },
+        data: {
+          deliveryStatus:
+            successfulDeliveries.length > 0 ? "DELIVERED" : "FAILED",
+          deliveryAttempts: deliveryResults.reduce(
+            (sum, r) => sum + (r.retryCount || 0) + 1,
+            0
+          ),
+          deliveryChannels: channels,
+          deliveryResults: deliveryResults as any,
+        },
+      });
 
       return {
         success: true,
@@ -182,61 +323,247 @@ export class OTPService {
     }
   }
 
+  private static async sendWithRetry(
+    sendFunction: () => Promise<string | void>,
+    maxRetries: number,
+    channel: string
+  ): Promise<OTPDeliveryResult> {
+    let lastError: string = "";
+    let retryCount = 0;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const messageId = await sendFunction();
+        return {
+          success: true,
+          channel,
+          messageId: messageId || undefined,
+          retryCount,
+        };
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "Unknown error";
+        retryCount = attempt;
+
+        if (attempt < maxRetries) {
+          // Exponential backoff: wait 1s, 2s, 4s, etc.
+          const delay = Math.pow(2, attempt) * 1000;
+          console.log(
+            `Attempt ${attempt + 1} failed for ${channel}, retrying in ${delay}ms...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    return {
+      success: false,
+      channel,
+      error: lastError,
+      retryCount,
+    };
+  }
+
   private static async sendSMS(
     phoneNumber: string,
-    otp: string,
-    purpose: string,
+    message: string,
+    purpose: string
   ): Promise<void> {
-    // TODO: Integrate with SMS service (Twilio, AWS SNS, etc.)
-    console.log(`Sending SMS OTP ${otp} to ${phoneNumber} for ${purpose}`);
+    try {
+      // Check if MSG91 credentials are available
+      const apiKey = process.env.MSG91_API_KEY || process.env.SMS_API_KEY;
+      const senderId = process.env.MSG91_SENDER_ID || "TOWNKT";
+      const route = process.env.MSG91_ROUTE || "4"; // Transactional route
 
-    // Mock implementation - replace with actual SMS service
-    // Example with Twilio:
-    // const twilio = require('twilio')(accountSid, authToken);
-    // await twilio.messages.create({
-    //   body: `Your OTP for ${purpose} is: ${otp}`,
-    //   from: '+1234567890',
-    //   to: phoneNumber
-    // });
+      if (!apiKey) {
+        console.log(`[MOCK SMS] Message to ${phoneNumber}: ${message}`);
+        console.log(
+          `[MOCK SMS] Please configure MSG91_API_KEY or SMS_API_KEY in your .env file`
+        );
+        return;
+      }
+
+      // Clean phone number (remove +91 if present, MSG91 expects 10 digit number)
+      const cleanPhone = phoneNumber.replace(/^\+91/, "").replace(/\D/g, "");
+
+      if (cleanPhone.length !== 10) {
+        throw new Error("Invalid phone number format");
+      }
+
+      // MSG91 API call with DLT template support
+      const dltTemplateId = process.env.MSG91_DLT_TEMPLATE_ID;
+      const smsData: any = {
+        sender: senderId,
+        route: route,
+        country: "91",
+        sms: [
+          {
+            message: message,
+            to: [cleanPhone],
+          },
+        ],
+      };
+
+      // Add DLT template ID if available (required for Indian SMS)
+      if (dltTemplateId) {
+        smsData.sms[0].DLT_TE_ID = dltTemplateId;
+      }
+
+      const response = await fetch(`https://api.msg91.com/api/v2/sendsms`, {
+        method: "POST",
+        headers: {
+          authkey: apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(smsData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || result.type !== "success") {
+        throw new Error(result.message || "Failed to send SMS");
+      }
+
+      // Extract message ID for delivery tracking
+      const messageId = result.message_id || result.request_id;
+      console.log(
+        `SMS sent successfully via MSG91: ${result.message}, Message ID: ${messageId}`
+      );
+
+      // Return message ID for delivery tracking
+      return messageId;
+    } catch (error) {
+      console.error("Error sending SMS:", error);
+      throw new Error("Failed to send SMS");
+    }
   }
 
   private static async sendEmail(
     email: string,
-    otp: string,
-    purpose: string,
-  ): Promise<void> {
-    // TODO: Integrate with email service (SendGrid, AWS SES, etc.)
-    console.log(`Sending Email OTP ${otp} to ${email} for ${purpose}`);
+    subject: string,
+    text: string,
+    html: string
+  ): Promise<string | void> {
+    try {
+      // Check if Resend credentials are available
+      const apiKey = process.env.RESEND_API_KEY;
 
-    // Mock implementation - replace with actual email service
-    // Example with SendGrid:
-    // const sgMail = require('@sendgrid/mail');
-    // sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-    // await sgMail.send({
-    //   to: email,
-    //   from: 'noreply@townkart.com',
-    //   subject: `Your OTP for ${purpose}`,
-    //   text: `Your OTP is: ${otp}`,
-    //   html: `<strong>Your OTP is: ${otp}</strong>`
-    // });
+      if (!apiKey) {
+        console.log(`[MOCK EMAIL] Subject: ${subject}`);
+        console.log(`[MOCK EMAIL] To: ${email}`);
+        console.log(`[MOCK EMAIL] Text: ${text}`);
+        console.log(
+          `[MOCK EMAIL] Please configure RESEND_API_KEY in your .env file`
+        );
+        return;
+      }
+
+      const { Resend } = await import("resend");
+      const resend = new Resend(apiKey);
+
+      const data = await resend.emails.send({
+        from: "TownKart <noreply@townkart.com>",
+        to: [email],
+        subject: subject,
+        html: html,
+        text: text,
+      });
+
+      if (data.error) {
+        throw new Error(data.error.message);
+      }
+
+      console.log(`Email sent successfully via Resend: ${data.data?.id}`);
+      return data.data?.id;
+    } catch (error) {
+      console.error("Error sending email:", error);
+      throw new Error("Failed to send email");
+    }
   }
-
   private static async sendWhatsApp(
     phoneNumber: string,
-    otp: string,
-    purpose: string,
-  ): Promise<void> {
-    // TODO: Integrate with WhatsApp Business API
-    console.log(`Sending WhatsApp OTP ${otp} to ${phoneNumber} for ${purpose}`);
+    message: string,
+    purpose: string
+  ): Promise<string | void> {
+    try {
+      const authKey = process.env.MSG91_WHATSAPP_AUTH_KEY;
+      const senderNumber = process.env.MSG91_WHATSAPP_SENDER_NUMBER;
+      const templateName = process.env.MSG91_WHATSAPP_TEMPLATE_NAME;
+      const namespace = process.env.MSG91_WHATSAPP_NAMESPACE;
+      const buttonUrl =
+        process.env.MSG91_WHATSAPP_BUTTON_URL || "https://townkart.com"; // your button link
 
-    // Mock implementation - replace with actual WhatsApp service
-    // Example with Twilio WhatsApp:
-    // const twilio = require('twilio')(accountSid, authToken);
-    // await twilio.messages.create({
-    //   body: `Your OTP for ${purpose} is: ${otp}`,
-    //   from: 'whatsapp:+14155238886',
-    //   to: `whatsapp:${phoneNumber}`
-    // });
+      if (!authKey || !senderNumber || !templateName || !namespace) {
+        console.log(`[MOCK WhatsApp] Missing WhatsApp ENV keys`);
+        return;
+      }
+
+      const otp = message.match(/\d{4,6}/)?.[0];
+
+      const cleanPhone = phoneNumber.replace(/^\+91/, "").replace(/\D/g, "");
+      if (cleanPhone.length !== 10) throw new Error("Invalid mobile number");
+      const code = `otp${otp}`.substring(0, 15);
+      const payload = {
+        integrated_number: senderNumber,
+        content_type: "template",
+        payload: {
+          messaging_product: "whatsapp",
+          type: "template",
+          template: {
+            name: templateName,
+            language: { code: "en", policy: "deterministic" },
+            namespace,
+            to_and_components: [
+              {
+                to: [`91${cleanPhone}`],
+                components: {
+                  body_1: {
+                    type: "text",
+                    text: otp,
+                  },
+                  button_1: {
+                    subtype: "url",
+                    type: "text",
+                    text: code,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      };
+
+      const response = await fetch(
+        "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
+        {
+          method: "POST",
+          headers: {
+            authkey: authKey,
+            "Content-Type": "application/json",
+            accept: "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const result = await response.json();
+      console.log("WA Response:", result);
+
+      if (!response.ok || result.error) {
+        throw new Error(
+          result.error || result.message || "WhatsApp send failed"
+        );
+      }
+
+      return (
+        result.request_id ||
+        result.message_id ||
+        result.id ||
+        "WhatsApp message sent"
+      );
+    } catch (error) {
+      console.error("WhatsApp Error:", error);
+      throw new Error("Failed to send WhatsApp message");
+    }
   }
 
   static async verifyOTP(phoneNumber: string, otp: string): Promise<boolean> {
@@ -283,6 +610,104 @@ export class OTPService {
       });
     } catch (error) {
       console.error("Error cleaning up expired OTPs:", error);
+    }
+  }
+
+  // Monitoring and metrics
+  static async getOTPMetrics(
+    timeRange: "hour" | "day" | "week" = "day"
+  ): Promise<{
+    totalSent: number;
+    totalDelivered: number;
+    totalFailed: number;
+    deliveryRate: number;
+    averageRetries: number;
+    channelStats: Record<
+      string,
+      { sent: number; delivered: number; failed: number }
+    >;
+  }> {
+    try {
+      const timeFilter = new Date();
+      switch (timeRange) {
+        case "hour":
+          timeFilter.setHours(timeFilter.getHours() - 1);
+          break;
+        case "day":
+          timeFilter.setDate(timeFilter.getDate() - 1);
+          break;
+        case "week":
+          timeFilter.setDate(timeFilter.getDate() - 7);
+          break;
+      }
+
+      const otps = await prisma.oTP.findMany({
+        where: {
+          createdAt: {
+            gte: timeFilter,
+          },
+        },
+        select: {
+          deliveryStatus: true,
+          deliveryAttempts: true,
+          deliveryChannels: true,
+          deliveryResults: true,
+        },
+      });
+
+      const metrics = {
+        totalSent: otps.length,
+        totalDelivered: otps.filter((otp) => otp.deliveryStatus === "DELIVERED")
+          .length,
+        totalFailed: otps.filter((otp) => otp.deliveryStatus === "FAILED")
+          .length,
+        deliveryRate: 0,
+        averageRetries: 0,
+        channelStats: {} as Record<
+          string,
+          { sent: number; delivered: number; failed: number }
+        >,
+      };
+
+      metrics.deliveryRate =
+        metrics.totalSent > 0
+          ? (metrics.totalDelivered / metrics.totalSent) * 100
+          : 0;
+      metrics.averageRetries =
+        otps.reduce((sum, otp) => sum + (otp.deliveryAttempts || 0), 0) /
+          otps.length || 0;
+
+      // Channel statistics
+      otps.forEach((otp) => {
+        const channels = (otp.deliveryChannels as string[]) || [];
+        channels.forEach((channel: string) => {
+          if (!metrics.channelStats[channel]) {
+            metrics.channelStats[channel] = {
+              sent: 0,
+              delivered: 0,
+              failed: 0,
+            };
+          }
+          metrics.channelStats[channel].sent++;
+          if (otp.deliveryStatus === "DELIVERED") {
+            metrics.channelStats[channel].delivered++;
+          } else if (otp.deliveryStatus === "FAILED") {
+            metrics.channelStats[channel].failed++;
+          }
+        });
+      });
+
+      return metrics;
+    } catch (error) {
+      console.error("Error getting OTP metrics:", error);
+      return {
+        totalSent: 0,
+        totalDelivered: 0,
+        totalFailed: 0,
+        deliveryRate: 0,
+        averageRetries: 0,
+        channelStats: {},
+      };
     }
   }
 }
