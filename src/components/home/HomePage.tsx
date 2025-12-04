@@ -1286,8 +1286,8 @@ export function HomePage() {
         case "RIDER":
           router.push("/rider/rider-dashboard");
           break;
-        case "MERCHANT":
-          router.push("/merchant/merchant-dashboard");
+        case "STORE_MANAGER":
+          router.push("/store");
           break;
         default:
           break;

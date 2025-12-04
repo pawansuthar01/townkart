@@ -24,24 +24,20 @@ import { useState } from "react";
 import { CartSidebar } from "@/components/shared/CartSidebar";
 import { HomeSidebar } from "@/components/layout/HomeSidebar";
 import { useWishlist } from "@/hooks/useWishlist";
-import { useScrollFixed } from "@/hooks/useScrollFixed";
 
 export function Header() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { getCartSummary } = useCart();
-  const { user, isAuthenticated, logout } = useAuth();
   const { itemCount: wishlistCount } = useWishlist();
   const cartSummary = getCartSummary();
-  const isFixed = useScrollFixed(10);
 
   return (
     <header
       className={`bg-white shadow-sm border-b z-50 fixed top-0 left-0 right-0`}
     >
       <div className="px-4 py-3">
-        {/* Main Header Row */}
         <div className="flex items-center justify-between gap-4">
           {/* Left: Menu button and Logo */}
           <div className="flex items-center space-x-3 flex-shrink-0">

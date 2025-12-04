@@ -112,7 +112,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let user;
+    let user: any = null;
+    let device: any = null;
     let isNewUser = false;
 
     if (otpRecord.purpose === "PHONE_VERIFICATION") {
@@ -352,7 +353,21 @@ export async function POST(request: NextRequest) {
       );
 
       if (!deviceCheck.allowed) {
-        // Log failed login attempt
+        // For riders, return device selection instead of blocking
+        if (deviceCheck.requiresDeviceSelection) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: deviceCheck.reason,
+              existingDevices: deviceCheck.existingDevices,
+              requiresDeviceSelection: true,
+              action: "SELECT_DEVICE",
+            },
+            { status: 409 } // Conflict status for device selection
+          );
+        }
+
+        // Log failed login attempt for other roles
         await DeviceManager.logDeviceLogin(
           user.id,
           loginContext.deviceInfo.deviceId,
@@ -372,12 +387,21 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Force logout other devices for restricted roles
-      await DeviceManager.forceLogoutOtherDevices(
-        user.id,
-        loginContext.deviceInfo.deviceId,
-        user.activeRole
-      );
+      // For riders, always force logout other devices (single device policy)
+      if (user.activeRole === "RIDER") {
+        await DeviceManager.forceLogoutOtherDevices(
+          user.id,
+          loginContext.deviceInfo.deviceId,
+          user.activeRole
+        );
+      } else {
+        // For other roles, only logout if they have multiple active devices
+        await DeviceManager.forceLogoutOtherDevices(
+          user.id,
+          loginContext.deviceInfo.deviceId,
+          user.activeRole
+        );
+      }
 
       // Get or create device record
       const device = await DeviceManager.getOrCreateDevice(
@@ -414,71 +438,101 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Only create session for LOGIN and REGISTER purposes
+    if (
+      (otpRecord.purpose === "LOGIN" || otpRecord.purpose === "REGISTER") &&
+      user
+    ) {
+      // Generate tokens
+      const accessToken = generateAccessToken({
+        userId: user.id,
+        phoneNumber: user.phoneNumber,
+        activeRole: user.activeRole,
+      });
+
+      const refreshToken = generateRefreshToken({
+        userId: user.id,
+        phoneNumber: user.phoneNumber,
+      });
+
+      // Update user login info
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          lastLoginAt: new Date(),
+          lastLoginIP: loginContext.locationInfo.ip,
+          lastLoginDevice: loginContext.deviceInfo.deviceId,
+        },
+      });
+
+      // Create session with device tracking
+      const session = await prisma.session.create({
+        data: {
+          userId: user.id,
+          sessionToken: accessToken,
+          accessToken,
+          refreshToken,
+          deviceId: device?.id || null, // Use the actual device record ID, not the fingerprint
+          ipAddress: loginContext.locationInfo.ip,
+          userAgent: loginContext.userAgent,
+          location: {
+            country: loginContext.locationInfo.country,
+            city: loginContext.locationInfo.city,
+            region: loginContext.locationInfo.region,
+            lat: loginContext.locationInfo.lat,
+            lng: loginContext.locationInfo.lng,
+          },
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+        },
+      });
+
+      // Clean up expired OTPs for this phone number
+      await prisma.oTP.deleteMany({
+        where: {
+          phoneNumber,
+          expiresAt: {
+            lt: new Date(),
+          },
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: isNewUser
+          ? "Registration completed successfully"
+          : "Login successful",
+        data: {
+          user: {
+            id: user.id,
+            phoneNumber: user.phoneNumber,
+            fullName: user.fullName,
+            email: user.email,
+            userRoles: user.userRoles,
+            activeRole: user.activeRole,
+            phoneVerified: user.phoneVerified,
+            isActive: user.isActive,
+          },
+          accessToken,
+          refreshToken,
+          expiresIn: 15 * 60, // 15 minutes
+        },
+      });
+    }
+
+    // For other purposes (PHONE_VERIFICATION, ACCOUNT_REACTIVATION), just return success
     if (!user) {
       return NextResponse.json(
-        { success: false, message: "User not found. Please register first." },
+        { success: false, message: "User not found" },
         { status: 404 }
       );
     }
 
-    // Generate tokens
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      phoneNumber: user.phoneNumber,
-      activeRole: user.activeRole,
-    });
-
-    const refreshToken = generateRefreshToken({
-      userId: user.id,
-      phoneNumber: user.phoneNumber,
-    });
-
-    // Update user login info
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        lastLoginAt: new Date(),
-        lastLoginIP: loginContext.locationInfo.ip,
-        lastLoginDevice: loginContext.deviceInfo.deviceId,
-      },
-    });
-
-    // Create session with device tracking
-    const session = await prisma.session.create({
-      data: {
-        userId: user.id,
-        sessionToken: accessToken,
-        accessToken,
-        refreshToken,
-        deviceId: loginContext.deviceInfo.deviceId,
-        ipAddress: loginContext.locationInfo.ip,
-        userAgent: loginContext.userAgent,
-        location: {
-          country: loginContext.locationInfo.country,
-          city: loginContext.locationInfo.city,
-          region: loginContext.locationInfo.region,
-          lat: loginContext.locationInfo.lat,
-          lng: loginContext.locationInfo.lng,
-        },
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
-      },
-    });
-
-    // Clean up expired OTPs for this phone number
-    await prisma.oTP.deleteMany({
-      where: {
-        phoneNumber,
-        expiresAt: {
-          lt: new Date(),
-        },
-      },
-    });
-
     return NextResponse.json({
       success: true,
-      message: isNewUser
-        ? "Registration completed successfully"
-        : "Login successful",
+      message:
+        otpRecord.purpose === "PHONE_VERIFICATION"
+          ? "Phone number verified successfully"
+          : "Account reactivated successfully",
       data: {
         user: {
           id: user.id,
@@ -490,9 +544,6 @@ export async function POST(request: NextRequest) {
           phoneVerified: user.phoneVerified,
           isActive: user.isActive,
         },
-        accessToken,
-        refreshToken,
-        expiresIn: 15 * 60, // 15 minutes
       },
     });
   } catch (error: any) {

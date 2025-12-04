@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
+import { notificationManager } from "@/lib/notificationSystem";
 import {
   Bell,
   BellRing,
@@ -44,6 +45,7 @@ export default function NotificationsPage() {
     total: 0,
     totalPages: 0,
   });
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Fetch notifications
   const fetchNotifications = async (tab = activeTab, page = 1) => {
@@ -78,6 +80,40 @@ export default function NotificationsPage() {
     fetchNotifications();
   }, [user, activeTab]);
 
+  // Real-time notification updates
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const handleNotificationUpdate = (event: any) => {
+      // Check if this notification is for the current user
+      if (event.recipients.some((r: any) => r.userId === user.id)) {
+        fetchNotifications(activeTab, 1); // Refresh current page
+
+        // Play sound for new notifications
+        if (audioRef.current) {
+          const isOrderNotification = [
+            "order_status_update",
+            "delivery_assigned",
+            "delivery_started",
+            "delivery_completed",
+            "rider_delivery_offer",
+          ].includes(event.type);
+
+          audioRef.current.volume = isOrderNotification ? 0.8 : 0.6;
+          audioRef.current.play().catch(() => {
+            // Ignore audio play errors (user interaction required)
+          });
+        }
+      }
+    };
+
+    notificationManager.on("notification", handleNotificationUpdate);
+
+    return () => {
+      notificationManager.off("notification", handleNotificationUpdate);
+    };
+  }, [user?.id, activeTab]);
+
   // Mark as read
   const markAsRead = async (notificationId: string) => {
     try {
@@ -85,8 +121,8 @@ export default function NotificationsPage() {
       // For now, we'll just update the local state
       setNotifications((prev) =>
         prev.map((notif) =>
-          notif.id === notificationId ? { ...notif, isRead: true } : notif,
-        ),
+          notif.id === notificationId ? { ...notif, isRead: true } : notif
+        )
       );
     } catch (error) {
       console.error("Error marking notification as read:", error);
@@ -108,7 +144,7 @@ export default function NotificationsPage() {
 
       if (response.ok) {
         setNotifications((prev) =>
-          prev.map((notif) => ({ ...notif, isRead: true })),
+          prev.map((notif) => ({ ...notif, isRead: true }))
         );
       }
     } catch (error) {
@@ -122,7 +158,7 @@ export default function NotificationsPage() {
       // In a real app, you'd have a DELETE endpoint
       // For now, we'll just remove from local state
       setNotifications((prev) =>
-        prev.filter((notif) => notif.id !== notificationId),
+        prev.filter((notif) => notif.id !== notificationId)
       );
     } catch (error) {
       console.error("Error deleting notification:", error);
@@ -132,15 +168,15 @@ export default function NotificationsPage() {
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case "ORDER_UPDATE":
-        return <Package className="h-5 w-5 text-blue-600" />;
+        return <Package className="h-5 w-5 text-townkart-info" />;
       case "DELIVERY_UPDATE":
-        return <Truck className="h-5 w-5 text-green-600" />;
+        return <Truck className="h-5 w-5 text-townkart-accent" />;
       case "PAYMENT_SUCCESS":
-        return <CreditCard className="h-5 w-5 text-purple-600" />;
+        return <CreditCard className="h-5 w-5 text-townkart-success" />;
       case "PROMOTION":
-        return <Gift className="h-5 w-5 text-pink-600" />;
+        return <Gift className="h-5 w-5 text-townkart-secondary" />;
       case "SYSTEM_ALERT":
-        return <AlertCircle className="h-5 w-5 text-red-600" />;
+        return <AlertCircle className="h-5 w-5 text-townkart-error" />;
       default:
         return <Info className="h-5 w-5 text-gray-600" />;
     }
@@ -161,7 +197,7 @@ export default function NotificationsPage() {
     const date = new Date(dateString);
     const now = new Date();
     const diffInHours = Math.floor(
-      (now.getTime() - date.getTime()) / (1000 * 60 * 60),
+      (now.getTime() - date.getTime()) / (1000 * 60 * 60)
     );
 
     if (diffInHours < 1) {
@@ -266,9 +302,9 @@ export default function NotificationsPage() {
                 {notifications.map((notification) => (
                   <Card
                     key={notification.id}
-                    className={`transition-all hover:shadow-md ${
+                    className={`transition-all hover:shadow-townkart hover:scale-[1.02] ${
                       !notification.isRead
-                        ? "border-l-4 border-l-townkart-primary bg-blue-50/30"
+                        ? "border-l-6 border-l-townkart-primary bg-gradient-to-r from-townkart-primary/5 to-transparent shadow-sm"
                         : ""
                     }`}
                   >
@@ -286,7 +322,7 @@ export default function NotificationsPage() {
                                   {notification.title}
                                 </h3>
                                 {!notification.isRead && (
-                                  <div className="w-2 h-2 bg-townkart-primary rounded-full"></div>
+                                  <div className="w-2 h-2 bg-townkart-primary rounded-full animate-pulse"></div>
                                 )}
                               </div>
                               <p className="text-gray-600 mb-3">
@@ -304,7 +340,7 @@ export default function NotificationsPage() {
                                 <Badge variant="outline" className="text-xs">
                                   {notification.notificationType.replace(
                                     "_",
-                                    " ",
+                                    " "
                                   )}
                                 </Badge>
                               </div>
@@ -339,6 +375,14 @@ export default function NotificationsPage() {
                 ))}
 
                 {/* Load More */}
+
+                {/* Hidden audio element for notification sounds */}
+                <audio
+                  ref={audioRef}
+                  src="/sounds/notification.mp3"
+                  preload="auto"
+                />
+
                 {pagination.page < pagination.totalPages && (
                   <div className="text-center mt-8">
                     <Button

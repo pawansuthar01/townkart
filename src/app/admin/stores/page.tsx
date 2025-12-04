@@ -32,8 +32,16 @@ import {
   Search,
   RefreshCw,
   Loader2,
+  Check,
+  X,
+  Clock,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+
+// Prevent automatic scrolling
+if (typeof window !== "undefined") {
+  window.history.scrollRestoration = "manual";
+}
 
 interface StoreData {
   id: string;
@@ -55,6 +63,7 @@ interface StoreData {
   totalOrders: number;
   totalRevenue: number;
   ordersCount: number;
+  createdAt: string;
 }
 
 interface StoreManager {
@@ -68,12 +77,14 @@ interface StoreManager {
 
 export default function AdminStoresPage() {
   const [stores, setStores] = useState<StoreData[]>([]);
+  const [pendingStores, setPendingStores] = useState<StoreData[]>([]);
   const [storeManagers, setStoreManagers] = useState<StoreManager[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedManager, setSelectedManager] = useState<string>("");
   const [selectedStore, setSelectedStore] = useState<string>("");
+  const [pendingCount, setPendingCount] = useState(0);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
@@ -82,12 +93,13 @@ export default function AdminStoresPage() {
   });
 
   // Fetch stores
-  const fetchStores = async (page = 1) => {
+  const fetchStores = async (page = 1, type = "active") => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
         page: page.toString(),
         limit: pagination.limit.toString(),
+        type: type,
       });
 
       if (searchQuery) params.set("search", searchQuery);
@@ -96,7 +108,12 @@ export default function AdminStoresPage() {
       const response = await fetch(`/api/admin/stores?${params}`);
       if (response.ok) {
         const data = await response.json();
-        setStores(data.data);
+        if (type === "pending") {
+          setPendingStores(data.data);
+        } else {
+          setStores(data.data);
+        }
+        setPendingCount(data.pendingCount || 0);
         setPagination(data.pagination);
       }
     } catch (error) {
@@ -106,15 +123,20 @@ export default function AdminStoresPage() {
     }
   };
 
+  // Fetch pending stores
+  const fetchPendingStores = async (page = 1) => {
+    await fetchStores(page, "pending");
+  };
+
   // Fetch store managers (users with STORE_MANAGER role but no assigned store)
   const fetchStoreManagers = async () => {
     try {
       const response = await fetch(
-        "/api/admin/users?role=STORE_MANAGER&hasStore=false",
+        "/api/admin/users?role=STORE_MANAGER&hasStore=false"
       );
       if (response.ok) {
         const data = await response.json();
-        setStoreManagers(data.data || []);
+        setStoreManagers(data.users || []);
       }
     } catch (error) {
       console.error("Failed to fetch store managers:", error);
@@ -123,7 +145,23 @@ export default function AdminStoresPage() {
 
   useEffect(() => {
     fetchStores();
+    fetchPendingStores();
     fetchStoreManagers();
+
+    // Prevent automatic scrolling
+    const preventAutoScroll = () => {
+      if (window.scrollY > 0) {
+        window.scrollTo(0, 0);
+      }
+    };
+
+    // Prevent scroll restoration
+    window.history.scrollRestoration = "manual";
+
+    // Add a small delay to prevent any auto-scrolling
+    const timer = setTimeout(preventAutoScroll, 100);
+
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -144,7 +182,7 @@ export default function AdminStoresPage() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ managerId: selectedManager }),
-        },
+        }
       );
 
       if (response.ok) {
@@ -169,7 +207,7 @@ export default function AdminStoresPage() {
         `/api/admin/stores/${storeId}/remove-manager`,
         {
           method: "PUT",
-        },
+        }
       );
 
       if (response.ok) {
@@ -183,6 +221,32 @@ export default function AdminStoresPage() {
     } catch (error) {
       console.error("Failed to remove store manager:", error);
       alert("Failed to remove store manager");
+    }
+  };
+
+  const handleStoreAction = async (
+    storeId: string,
+    action: "approve" | "reject"
+  ) => {
+    try {
+      const response = await fetch(
+        `/api/admin/stores?id=${storeId}&action=${action}`,
+        {
+          method: "PUT",
+        }
+      );
+
+      if (response.ok) {
+        alert(`Store ${action}d successfully!`);
+        fetchStores();
+        fetchPendingStores();
+      } else {
+        const error = await response.json();
+        alert(error.message || `Failed to ${action} store`);
+      }
+    } catch (error) {
+      console.error(`Failed to ${action} store:`, error);
+      alert(`Failed to ${action} store`);
     }
   };
 
@@ -202,8 +266,11 @@ export default function AdminStoresPage() {
       </div>
 
       <Tabs defaultValue="stores" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="stores">Store Overview</TabsTrigger>
+          <TabsTrigger value="pending">
+            Pending Applications ({pendingCount})
+          </TabsTrigger>
           <TabsTrigger value="managers">Manager Assignments</TabsTrigger>
         </TabsList>
 
@@ -283,8 +350,8 @@ export default function AdminStoresPage() {
                     <TableHead>Rating</TableHead>
                     <TableHead>Orders</TableHead>
                     <TableHead>Revenue</TableHead>
-                    <TableHead>Status</TableHead>
                     <TableHead>Location</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -309,22 +376,178 @@ export default function AdminStoresPage() {
                         ₹{store.totalRevenue.toLocaleString()}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={store.isActive ? "default" : "secondary"}
-                        >
-                          {store.isActive ? "ACTIVE" : "INACTIVE"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
                         {store.city}, {store.state}
                       </TableCell>
                       <TableCell>
+                        <div className="flex gap-1">
+                          <Badge
+                            variant={store.isActive ? "default" : "secondary"}
+                          >
+                            {store.isActive ? "ACTIVE" : "INACTIVE"}
+                          </Badge>
+                          <Badge
+                            variant={store.isVerified ? "default" : "outline"}
+                          >
+                            {store.isVerified ? "VERIFIED" : "UNVERIFIED"}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex items-center gap-2">
+                          {!store.isActive && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  handleStoreAction(store.id, "approve")
+                                }
+                              >
+                                <Check className="h-4 w-4 text-green-600" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  handleStoreAction(store.id, "reject")
+                                }
+                              >
+                                <X className="h-4 w-4 text-red-600" />
+                              </Button>
+                            </>
+                          )}
                           <Button variant="ghost" size="sm">
                             <Eye className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="sm">
                             <Edit className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="pending" className="space-y-6">
+          {/* Pending Applications Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Pending Applications
+                </CardTitle>
+                <Clock className="h-4 w-4 text-yellow-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{pendingStores.length}</div>
+                <p className="text-xs text-muted-foreground">
+                  Awaiting approval
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Average Review Time
+                </CardTitle>
+                <Clock className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">24-48h</div>
+                <p className="text-xs text-muted-foreground">
+                  Standard processing time
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Pending Applications Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Store Applications ({pendingStores.length})</CardTitle>
+              <p className="text-sm text-gray-600">
+                Review and approve store registration applications
+              </p>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Store Name</TableHead>
+                    <TableHead>Manager</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Applied Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingStores.map((store) => (
+                    <TableRow key={store.id}>
+                      <TableCell className="font-medium">
+                        {store.name}
+                      </TableCell>
+                      <TableCell>
+                        {store.manager ? (
+                          <div>
+                            <div className="font-medium">
+                              {store.manager.name}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {store.manager.email}
+                            </div>
+                          </div>
+                        ) : (
+                          "No Manager"
+                        )}
+                      </TableCell>
+                      <TableCell>{store.category}</TableCell>
+                      <TableCell>
+                        {store.city}, {store.state}
+                      </TableCell>
+                      <TableCell>
+                        {new Date(store?.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className="bg-yellow-100 text-yellow-800"
+                        >
+                          UNDER REVIEW
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              handleStoreAction(store.id, "approve")
+                            }
+                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              handleStoreAction(store.id, "reject")
+                            }
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Reject
+                          </Button>
+                          <Button variant="ghost" size="sm">
+                            <Eye className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>

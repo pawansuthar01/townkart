@@ -169,7 +169,7 @@ export default function AdminOffersPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          setStores(data.stores);
+          setStores(data.data || []);
         }
       }
     } catch (error) {
@@ -602,8 +602,8 @@ export default function AdminOffersPage() {
                               } else {
                                 setSelectedProducts(
                                   selectedProducts.filter(
-                                    (id) => id !== product.id,
-                                  ),
+                                    (id) => id !== product.id
+                                  )
                                 );
                               }
                             }}
@@ -639,9 +639,7 @@ export default function AdminOffersPage() {
                                 ]);
                               } else {
                                 setSelectedStores(
-                                  selectedStores.filter(
-                                    (id) => id !== store.id,
-                                  ),
+                                  selectedStores.filter((id) => id !== store.id)
                                 );
                               }
                             }}
@@ -673,7 +671,7 @@ export default function AdminOffersPage() {
                                 setSelectedUsers([...selectedUsers, user.id]);
                               } else {
                                 setSelectedUsers(
-                                  selectedUsers.filter((id) => id !== user.id),
+                                  selectedUsers.filter((id) => id !== user.id)
                                 );
                               }
                             }}

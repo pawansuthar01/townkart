@@ -105,13 +105,47 @@ export class DeviceManager {
     allowed: boolean;
     reason?: string;
     existingDevices?: any[];
+    requiresDeviceSelection?: boolean;
   }> {
     // Customers can login from multiple devices
     if (userRole === "CUSTOMER") {
       return { allowed: true };
     }
 
-    // For riders, admins, stores - check if any other device is active
+    // For riders - strict single device policy
+    if (userRole === "RIDER") {
+      const activeDevices = await prisma.device.findMany({
+        where: {
+          userId,
+          isActive: true,
+          deviceId: { not: deviceId }, // Exclude current device
+        },
+        select: {
+          id: true,
+          deviceId: true,
+          deviceName: true,
+          deviceType: true,
+          os: true,
+          browser: true,
+          lastLoginAt: true,
+          lastIP: true,
+          lastLocation: true,
+          batteryLevel: true,
+        },
+        orderBy: { lastLoginAt: "desc" },
+      });
+
+      if (activeDevices.length > 0) {
+        return {
+          allowed: false,
+          reason: `You are already logged in from another device. Please select which device to logout from to continue.`,
+          existingDevices: activeDevices,
+          requiresDeviceSelection: true,
+        };
+      }
+    }
+
+    // For admins, stores - check if any other device is active
     const activeDevices = await prisma.device.findMany({
       where: {
         userId,

@@ -120,7 +120,8 @@ export class OTPService {
       | "REGISTER"
       | "RESET_PASSWORD"
       | "PHONE_VERIFICATION"
-      | "ACCOUNT_REACTIVATION" = "LOGIN"
+      | "ACCOUNT_REACTIVATION"
+      | "DEVICE_LOGOUT" = "LOGIN"
   ): Promise<{ success: boolean; message: string; channels: string[] }> {
     try {
       const settings = await this.getAdminOTPSettings();

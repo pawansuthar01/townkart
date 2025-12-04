@@ -1,13 +1,73 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const latitude = parseFloat(searchParams.get("latitude") || "0");
     const longitude = parseFloat(searchParams.get("longitude") || "0");
     const radius = parseFloat(searchParams.get("radius") || "5"); // 5km default for assignment
+
+    // Check rider status and location validity
+    const rider = await prisma.riderProfile.findUnique({
+      where: { userId: session.user.id },
+      select: {
+        id: true,
+        isAvailable: true,
+        isActive: true,
+        currentLat: true,
+        currentLng: true,
+        lastLocationUpdate: true,
+      },
+    });
+
+    if (!rider || !rider.isAvailable || !rider.isActive) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Rider not available or inactive",
+          code: "RIDER_INACTIVE",
+        },
+        { status: 403 }
+      );
+    }
+
+    // Check if rider has recent location data (within last 5 minutes)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    if (
+      !rider.lastLocationUpdate ||
+      rider.lastLocationUpdate < fiveMinutesAgo
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Location data is outdated. Please update your location.",
+          code: "LOCATION_OUTDATED",
+        },
+        { status: 403 }
+      );
+    }
+
+    // Check if rider has valid coordinates
+    if (!rider.currentLat || !rider.currentLng) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Location coordinates not available. Please enable location services.",
+          code: "LOCATION_MISSING",
+        },
+        { status: 403 }
+      );
+    }
 
     // Find unassigned deliveries that are ready for pickup
     const deliveries = await prisma.delivery.findMany({
@@ -24,10 +84,10 @@ export async function GET(request: NextRequest) {
             customer: {
               select: { id: true, fullName: true, phoneNumber: true },
             },
-            merchant: {
+            store: {
               select: {
                 id: true,
-                businessName: true,
+                name: true,
                 address: true,
                 latitude: true,
                 longitude: true,
@@ -45,20 +105,17 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Filter by distance from rider location to merchant
+    // Filter by distance from rider location to store
     const nearbyDeliveries = deliveries.filter((delivery) => {
-      if (
-        !delivery.order.merchant.latitude ||
-        !delivery.order.merchant.longitude
-      ) {
+      if (!delivery.order.store.latitude || !delivery.order.store.longitude) {
         return false;
       }
 
       const distance = calculateDistance(
         latitude,
         longitude,
-        delivery.order.merchant.latitude,
-        delivery.order.merchant.longitude,
+        delivery.order.store.latitude,
+        delivery.order.store.longitude
       );
 
       return distance <= radius;
@@ -69,14 +126,14 @@ export async function GET(request: NextRequest) {
       const distanceA = calculateDistance(
         latitude,
         longitude,
-        a.order.merchant.latitude!,
-        a.order.merchant.longitude!,
+        a.order.store.latitude!,
+        a.order.store.longitude!
       );
       const distanceB = calculateDistance(
         latitude,
         longitude,
-        b.order.merchant.latitude!,
-        b.order.merchant.longitude!,
+        b.order.store.latitude!,
+        b.order.store.longitude!
       );
       return distanceA - distanceB;
     });
@@ -90,7 +147,7 @@ export async function GET(request: NextRequest) {
     console.error("Get available deliveries error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -99,7 +156,7 @@ function calculateDistance(
   lat1: number,
   lng1: number,
   lat2: number,
-  lng2: number,
+  lng2: number
 ): number {
   const R = 6371; // Radius of the Earth in kilometers
   const dLat = ((lat2 - lat1) * Math.PI) / 180;

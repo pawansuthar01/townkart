@@ -34,34 +34,38 @@ export default function RiderSettingsPage() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
 
-  // Settings state
+  // Settings state - matches API response structure
   const [settings, setSettings] = useState({
-    // Notifications
-    orderNotifications: true,
-    deliveryAlerts: true,
-    earningsAlerts: true,
-    systemUpdates: false,
+    // Notifications (from user preferences)
+    emailNotifications: true,
+    pushNotifications: true,
+    smsNotifications: false,
 
-    // Availability
-    autoAcceptOrders: false,
-    maxDailyOrders: 20,
-    preferredAreas: "all",
-    workingHours: "flexible",
-
-    // Vehicle
+    // Rider Profile Settings
     vehicleType: "bike",
     vehicleNumber: "",
+    licenseNumber: "",
+    emergencyContact: "",
+    emergencyPhone: "",
+    city: "",
+    isAvailable: false,
+    maxDailyDeliveries: 20,
+    preferredZones: null,
+    skills: null,
+    availabilitySchedule: null,
 
-    // Privacy
-    locationSharing: true,
-    profileVisibility: "private",
-    earningsVisibility: "private",
+    // Status Information (read-only)
+    isVerified: false,
+    isActive: true,
+    suspensionReason: null,
+    suspendedUntil: null,
 
-    // Preferences
-    language: "en",
-    theme: "system",
-    soundNotifications: true,
-    vibration: true,
+    // Performance Metrics (read-only)
+    rating: 0,
+    totalDeliveries: 0,
+    totalEarnings: 0,
+    onTimeDeliveryRate: 0,
+    averageDeliveryTime: 0,
   });
 
   // Password change state
@@ -89,7 +93,7 @@ export default function RiderSettingsPage() {
           }
         }
 
-        const response = await fetch(`/api/riders/${user.id}/settings`);
+        const response = await fetch(`/api/riders/settings`);
         if (response.ok) {
           const data = await response.json();
           setSettings((prev) => ({ ...prev, ...data.settings }));
@@ -121,7 +125,7 @@ export default function RiderSettingsPage() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/riders/${user.id}/settings`, {
+      const response = await fetch(`/api/riders/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
@@ -131,7 +135,7 @@ export default function RiderSettingsPage() {
         const settingsWithCache = { ...settings, _cacheTime: Date.now() };
         localStorage.setItem(
           `rider_settings_${user.id}`,
-          JSON.stringify(settingsWithCache),
+          JSON.stringify(settingsWithCache)
         );
         alert("Settings saved successfully!");
       } else {
@@ -215,11 +219,11 @@ export default function RiderSettingsPage() {
       </div>
 
       <div className="container-max py-8">
-        <Tabs defaultValue="delivery" className="space-y-6">
+        <Tabs defaultValue="profile" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="delivery" className="flex items-center gap-2">
-              <Bike className="h-4 w-4" />
-              <span className="hidden sm:inline">Delivery</span>
+            <TabsTrigger value="profile" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              <span className="hidden sm:inline">Profile</span>
             </TabsTrigger>
             <TabsTrigger
               value="notifications"
@@ -228,9 +232,9 @@ export default function RiderSettingsPage() {
               <Bell className="h-4 w-4" />
               <span className="hidden sm:inline">Notifications</span>
             </TabsTrigger>
-            <TabsTrigger value="privacy" className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              <span className="hidden sm:inline">Privacy</span>
+            <TabsTrigger value="delivery" className="flex items-center gap-2">
+              <Bike className="h-4 w-4" />
+              <span className="hidden sm:inline">Delivery</span>
             </TabsTrigger>
             <TabsTrigger value="security" className="flex items-center gap-2">
               <Shield className="h-4 w-4" />
@@ -238,94 +242,180 @@ export default function RiderSettingsPage() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Delivery Settings */}
-          <TabsContent value="delivery">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Bike className="h-5 w-5" />
-                  Delivery Preferences
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <Label htmlFor="vehicleType">Vehicle Type</Label>
-                    <Select
-                      value={settings.vehicleType}
-                      onValueChange={(value) =>
-                        handleSettingChange("vehicleType", value)
-                      }
-                    >
-                      <SelectTrigger className="mt-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="bike">Bike</SelectItem>
-                        <SelectItem value="scooter">Scooter</SelectItem>
-                        <SelectItem value="car">Car</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+          {/* Profile Settings */}
+          <TabsContent value="profile">
+            <div className="space-y-6">
+              {/* Vehicle Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Bike className="h-5 w-5" />
+                    Vehicle Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <Label htmlFor="vehicleType">Vehicle Type</Label>
+                      <Select
+                        value={settings.vehicleType}
+                        onValueChange={(value) =>
+                          handleSettingChange("vehicleType", value)
+                        }
+                      >
+                        <SelectTrigger className="mt-2">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="bike">Bike</SelectItem>
+                          <SelectItem value="scooter">Scooter</SelectItem>
+                          <SelectItem value="car">Car</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                  <div>
-                    <Label htmlFor="maxDailyOrders">Max Daily Orders</Label>
-                    <Select
-                      value={settings.maxDailyOrders.toString()}
-                      onValueChange={(value) =>
-                        handleSettingChange("maxDailyOrders", parseInt(value))
-                      }
-                    >
-                      <SelectTrigger className="mt-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="10">10 orders</SelectItem>
-                        <SelectItem value="15">15 orders</SelectItem>
-                        <SelectItem value="20">20 orders</SelectItem>
-                        <SelectItem value="25">25 orders</SelectItem>
-                        <SelectItem value="30">30 orders</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                    <div>
+                      <Label htmlFor="vehicleNumber">Vehicle Number</Label>
+                      <Input
+                        id="vehicleNumber"
+                        value={settings.vehicleNumber || ""}
+                        onChange={(e) =>
+                          handleSettingChange("vehicleNumber", e.target.value)
+                        }
+                        placeholder="Enter vehicle number"
+                        className="mt-2"
+                      />
+                    </div>
 
-                <div>
-                  <Label htmlFor="preferredAreas">Preferred Areas</Label>
-                  <Select
-                    value={settings.preferredAreas}
-                    onValueChange={(value) =>
-                      handleSettingChange("preferredAreas", value)
-                    }
-                  >
-                    <SelectTrigger className="mt-2">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Areas</SelectItem>
-                      <SelectItem value="city-center">City Center</SelectItem>
-                      <SelectItem value="residential">Residential</SelectItem>
-                      <SelectItem value="commercial">Commercial</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                    <div>
+                      <Label htmlFor="licenseNumber">License Number</Label>
+                      <Input
+                        id="licenseNumber"
+                        value={settings.licenseNumber || ""}
+                        onChange={(e) =>
+                          handleSettingChange("licenseNumber", e.target.value)
+                        }
+                        placeholder="Enter license number"
+                        className="mt-2"
+                      />
+                    </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Auto Accept Orders</p>
-                    <p className="text-sm text-gray-600">
-                      Automatically accept incoming delivery requests
-                    </p>
+                    <div>
+                      <Label htmlFor="city">Operating City</Label>
+                      <Input
+                        id="city"
+                        value={settings.city || ""}
+                        onChange={(e) =>
+                          handleSettingChange("city", e.target.value)
+                        }
+                        placeholder="Enter operating city"
+                        className="mt-2"
+                      />
+                    </div>
                   </div>
-                  <Switch
-                    checked={settings.autoAcceptOrders}
-                    onCheckedChange={(checked) =>
-                      handleSettingChange("autoAcceptOrders", checked)
-                    }
-                  />
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              {/* Emergency Contact */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MapPin className="h-5 w-5" />
+                    Emergency Contact
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <Label htmlFor="emergencyContact">
+                        Emergency Contact Name
+                      </Label>
+                      <Input
+                        id="emergencyContact"
+                        value={settings.emergencyContact || ""}
+                        onChange={(e) =>
+                          handleSettingChange(
+                            "emergencyContact",
+                            e.target.value
+                          )
+                        }
+                        placeholder="Enter emergency contact name"
+                        className="mt-2"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="emergencyPhone">
+                        Emergency Contact Phone
+                      </Label>
+                      <Input
+                        id="emergencyPhone"
+                        value={settings.emergencyPhone || ""}
+                        onChange={(e) =>
+                          handleSettingChange("emergencyPhone", e.target.value)
+                        }
+                        placeholder="Enter emergency contact phone"
+                        className="mt-2"
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Availability Settings */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="h-5 w-5" />
+                    Availability Settings
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <Label htmlFor="maxDailyDeliveries">
+                        Max Daily Deliveries
+                      </Label>
+                      <Select
+                        value={settings.maxDailyDeliveries.toString()}
+                        onValueChange={(value) =>
+                          handleSettingChange(
+                            "maxDailyDeliveries",
+                            parseInt(value)
+                          )
+                        }
+                      >
+                        <SelectTrigger className="mt-2">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10 deliveries</SelectItem>
+                          <SelectItem value="15">15 deliveries</SelectItem>
+                          <SelectItem value="20">20 deliveries</SelectItem>
+                          <SelectItem value="25">25 deliveries</SelectItem>
+                          <SelectItem value="30">30 deliveries</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Available for Deliveries</p>
+                        <p className="text-sm text-gray-600">
+                          Set your availability status
+                        </p>
+                      </div>
+                      <Switch
+                        checked={settings.isAvailable}
+                        onCheckedChange={(checked) =>
+                          handleSettingChange("isAvailable", checked)
+                        }
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* Notifications Tab */}
@@ -341,75 +431,45 @@ export default function RiderSettingsPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Order Notifications</p>
+                      <p className="font-medium">Email Notifications</p>
                       <p className="text-sm text-gray-600">
-                        Get notified about new delivery requests
+                        Receive notifications via email
                       </p>
                     </div>
                     <Switch
-                      checked={settings.orderNotifications}
+                      checked={settings.emailNotifications}
                       onCheckedChange={(checked) =>
-                        handleSettingChange("orderNotifications", checked)
+                        handleSettingChange("emailNotifications", checked)
                       }
                     />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Delivery Alerts</p>
+                      <p className="font-medium">Push Notifications</p>
                       <p className="text-sm text-gray-600">
-                        Receive alerts about delivery status updates
+                        Receive push notifications on your device
                       </p>
                     </div>
                     <Switch
-                      checked={settings.deliveryAlerts}
+                      checked={settings.pushNotifications}
                       onCheckedChange={(checked) =>
-                        handleSettingChange("deliveryAlerts", checked)
+                        handleSettingChange("pushNotifications", checked)
                       }
                     />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Earnings Alerts</p>
+                      <p className="font-medium">SMS Notifications</p>
                       <p className="text-sm text-gray-600">
-                        Get notified about payments and earnings
+                        Receive notifications via SMS
                       </p>
                     </div>
                     <Switch
-                      checked={settings.earningsAlerts}
+                      checked={settings.smsNotifications}
                       onCheckedChange={(checked) =>
-                        handleSettingChange("earningsAlerts", checked)
-                      }
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Sound Notifications</p>
-                      <p className="text-sm text-gray-600">
-                        Play sound for notifications
-                      </p>
-                    </div>
-                    <Switch
-                      checked={settings.soundNotifications}
-                      onCheckedChange={(checked) =>
-                        handleSettingChange("soundNotifications", checked)
-                      }
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Vibration</p>
-                      <p className="text-sm text-gray-600">
-                        Vibrate device for notifications
-                      </p>
-                    </div>
-                    <Switch
-                      checked={settings.vibration}
-                      onCheckedChange={(checked) =>
-                        handleSettingChange("vibration", checked)
+                        handleSettingChange("smsNotifications", checked)
                       }
                     />
                   </div>
@@ -418,72 +478,89 @@ export default function RiderSettingsPage() {
             </Card>
           </TabsContent>
 
-          {/* Privacy Tab */}
-          <TabsContent value="privacy">
+          {/* Delivery Tab */}
+          <TabsContent value="delivery">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5" />
-                  Privacy Settings
+                  <Bike className="h-5 w-5" />
+                  Delivery Settings
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-4">
                   <div>
-                    <Label htmlFor="profileVisibility">
-                      Profile Visibility
+                    <Label htmlFor="maxDailyDeliveries">
+                      Maximum Daily Deliveries
                     </Label>
                     <Select
-                      value={settings.profileVisibility}
+                      value={settings.maxDailyDeliveries.toString()}
                       onValueChange={(value) =>
-                        handleSettingChange("profileVisibility", value)
+                        handleSettingChange(
+                          "maxDailyDeliveries",
+                          parseInt(value)
+                        )
                       }
                     >
                       <SelectTrigger className="mt-2">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="public">Public</SelectItem>
-                        <SelectItem value="private">Private</SelectItem>
-                        <SelectItem value="partners">Partners Only</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="earningsVisibility">
-                      Earnings Visibility
-                    </Label>
-                    <Select
-                      value={settings.earningsVisibility}
-                      onValueChange={(value) =>
-                        handleSettingChange("earningsVisibility", value)
-                      }
-                    >
-                      <SelectTrigger className="mt-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="public">Public</SelectItem>
-                        <SelectItem value="private">Private</SelectItem>
-                        <SelectItem value="partners">Partners Only</SelectItem>
+                        <SelectItem value="10">10 deliveries</SelectItem>
+                        <SelectItem value="15">15 deliveries</SelectItem>
+                        <SelectItem value="20">20 deliveries</SelectItem>
+                        <SelectItem value="25">25 deliveries</SelectItem>
+                        <SelectItem value="30">30 deliveries</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Location Sharing</p>
+                      <p className="font-medium">Available for Deliveries</p>
                       <p className="text-sm text-gray-600">
-                        Share your location for better delivery matching
+                        Set your availability to receive delivery requests
                       </p>
                     </div>
                     <Switch
-                      checked={settings.locationSharing}
+                      checked={settings.isAvailable}
                       onCheckedChange={(checked) =>
-                        handleSettingChange("locationSharing", checked)
+                        handleSettingChange("isAvailable", checked)
                       }
                     />
+                  </div>
+
+                  {/* Performance Metrics (Read-only) */}
+                  <div className="mt-8 p-4 bg-gray-50 rounded-lg">
+                    <h3 className="font-medium text-gray-900 mb-4">
+                      Performance Overview
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-600">Total Deliveries</p>
+                        <p className="font-semibold text-gray-900">
+                          {settings.totalDeliveries}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Rating</p>
+                        <p className="font-semibold text-gray-900">
+                          {settings.rating}/5.0
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">On-Time Rate</p>
+                        <p className="font-semibold text-gray-900">
+                          {settings.onTimeDeliveryRate}%
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Avg Delivery Time</p>
+                        <p className="font-semibold text-gray-900">
+                          {settings.averageDeliveryTime}min
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -509,7 +586,7 @@ export default function RiderSettingsPage() {
                         onChange={(e) =>
                           handlePasswordChange(
                             "currentPassword",
-                            e.target.value,
+                            e.target.value
                           )
                         }
                       />

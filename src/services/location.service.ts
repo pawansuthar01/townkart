@@ -10,8 +10,9 @@ export interface LocationPermissionStatus {
 export interface LocationData {
   latitude: number;
   longitude: number;
-  accuracy?: number;
-  timestamp: number;
+  accuracy: number;
+  timestamp: number | string;
+
   speed?: number;
   heading?: number;
   altitude?: number;
@@ -22,6 +23,7 @@ export interface LocationPermissionOptions {
   timeout?: number;
   maximumAge?: number;
   background?: boolean;
+  maxAccuracy?: number; // Maximum acceptable accuracy in meters
 }
 
 export interface RiderLocationTrackingOptions {
@@ -98,13 +100,15 @@ export class LocationService {
 
   // Request location permission and get current position
   async requestLocation(
-    options: LocationPermissionOptions = {},
+    options: LocationPermissionOptions = {}
   ): Promise<LocationData> {
     const defaultOptions: PositionOptions = {
       enableHighAccuracy: options.enableHighAccuracy ?? true,
       timeout: options.timeout ?? 10000,
       maximumAge: options.maximumAge ?? 30000,
     };
+
+    const maxAccuracy = options.maxAccuracy ?? 1000; // Default 1km max accuracy
 
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
@@ -114,6 +118,18 @@ export class LocationService {
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          // Validate location accuracy
+          if (position.coords.accuracy > maxAccuracy) {
+            reject(
+              new Error(
+                `Location accuracy too low (${Math.round(position.coords.accuracy)}m). ` +
+                  `Maximum allowed accuracy is ${maxAccuracy}m. ` +
+                  `Please ensure GPS is enabled and you have a clear view of the sky.`
+              )
+            );
+            return;
+          }
+
           const locationData: LocationData = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
@@ -144,7 +160,7 @@ export class LocationService {
 
           reject(new Error(errorMessage));
         },
-        defaultOptions,
+        defaultOptions
       );
     });
   }
@@ -153,7 +169,7 @@ export class LocationService {
   startLocationTracking(
     options: RiderLocationTrackingOptions,
     onLocationUpdate: (location: LocationData) => void,
-    onError?: (error: Error) => void,
+    onError?: (error: Error) => void
   ): void {
     if (!navigator.geolocation) {
       onError?.(new Error("Geolocation is not supported"));
@@ -168,6 +184,18 @@ export class LocationService {
 
     this.watchId = navigator.geolocation.watchPosition(
       (position) => {
+        // Validate location accuracy for tracking
+        const maxAccuracy = 1000; // 1km max for tracking
+        if (position.coords.accuracy > maxAccuracy) {
+          onError?.(
+            new Error(
+              `Location accuracy too low (${Math.round(position.coords.accuracy)}m) for tracking. ` +
+                `Please ensure GPS is enabled and you have a clear view of the sky.`
+            )
+          );
+          return;
+        }
+
         const locationData: LocationData = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
@@ -193,7 +221,7 @@ export class LocationService {
           this.shouldWarnBatteryOptimization()
         ) {
           console.warn(
-            "Battery optimization may be affecting location accuracy",
+            "Battery optimization may be affecting location accuracy"
           );
         }
 
@@ -218,7 +246,7 @@ export class LocationService {
 
         onError?.(new Error(errorMessage));
       },
-      watchOptions,
+      watchOptions
     );
   }
 
@@ -238,7 +266,7 @@ export class LocationService {
   // Check if location is within service area
   async isWithinServiceArea(
     location: LocationData,
-    serviceArea: ServiceArea,
+    serviceArea: ServiceArea
   ): Promise<boolean> {
     // Simple bounding box check first
     const bounds = serviceArea.bounds as {
@@ -261,7 +289,7 @@ export class LocationService {
       location.latitude,
       location.longitude,
       serviceArea.centerLat,
-      serviceArea.centerLng,
+      serviceArea.centerLng
     );
 
     return distance <= serviceArea.radiusKm;
@@ -270,14 +298,14 @@ export class LocationService {
   // Check if location is within delivery zone
   async isWithinDeliveryZone(
     location: LocationData,
-    deliveryZone: DeliveryZone,
+    deliveryZone: DeliveryZone
   ): Promise<boolean> {
     // For now, use simple distance check from zone center
     const distance = this.calculateDistance(
       location.latitude,
       location.longitude,
       deliveryZone.centerLat,
-      deliveryZone.centerLng,
+      deliveryZone.centerLng
     );
 
     return distance <= deliveryZone.radiusKm;
@@ -288,7 +316,7 @@ export class LocationService {
     lat1: number,
     lng1: number,
     lat2: number,
-    lng2: number,
+    lng2: number
   ): number {
     const R = 6371; // Earth's radius in kilometers
     const dLat = this.toRadians(lat2 - lat1);
@@ -313,12 +341,13 @@ export class LocationService {
   private detectLocationSpoofing(location: LocationData): boolean {
     if (!this.lastLocation) return false;
 
-    const timeDiff = location.timestamp - this.lastLocation.timestamp;
+    const timeDiff =
+      Number(location.timestamp) - Number(this.lastLocation.timestamp);
     const distance = this.calculateDistance(
       location.latitude,
       location.longitude,
       this.lastLocation.latitude,
-      this.lastLocation.longitude,
+      this.lastLocation.longitude
     );
 
     // Check for impossible speed (faster than commercial jet)
@@ -351,7 +380,7 @@ export class LocationService {
 
   // Subscribe to permission changes
   onPermissionChange(
-    callback: (status: LocationPermissionStatus) => void,
+    callback: (status: LocationPermissionStatus) => void
   ): () => void {
     this.permissionCallbacks.push(callback);
     return () => {

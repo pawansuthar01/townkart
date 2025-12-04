@@ -71,8 +71,8 @@ export default function AdminInvitationsPage() {
     expiresInHours: 24,
   });
   const [creating, setCreating] = useState(false);
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterRole, setFilterRole] = useState("");
+  const [filterStatus, setFilterStatus] = useState("ALL");
+  const [filterRole, setFilterRole] = useState("ALL");
 
   useEffect(() => {
     fetchInvitations();
@@ -82,8 +82,9 @@ export default function AdminInvitationsPage() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (filterStatus) params.append("status", filterStatus);
-      if (filterRole) params.append("role", filterRole);
+      if (filterStatus && filterStatus !== "ALL")
+        params.append("status", filterStatus);
+      if (filterRole && filterRole !== "ALL") params.append("role", filterRole);
 
       const response = await fetch(`/api/admin/invitations?${params}`);
       if (!response.ok) throw new Error("Failed to fetch invitations");
@@ -325,7 +326,7 @@ export default function AdminInvitationsPage() {
                   <SelectValue placeholder="All" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="ALL">All</SelectItem>
                   <SelectItem value="PENDING">Pending</SelectItem>
                   <SelectItem value="APPROVED">Approved</SelectItem>
                   <SelectItem value="REJECTED">Rejected</SelectItem>
@@ -341,7 +342,7 @@ export default function AdminInvitationsPage() {
                   <SelectValue placeholder="All" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="ALL">All</SelectItem>
                   <SelectItem value="RIDER">Rider</SelectItem>
                   <SelectItem value="STORE_MANAGER">Store Manager</SelectItem>
                 </SelectContent>

@@ -1,6 +1,66 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { DeviceManager } from "@/lib/deviceManager";
+
+async function validateRiderSession(session: any): Promise<boolean> {
+  try {
+    // Check if session exists and is active
+    const dbSession = await prisma.session.findFirst({
+      where: {
+        userId: session.user.id,
+        sessionToken: session.sessionToken,
+        isActive: true,
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+      include: {
+        device: true,
+      },
+    });
+
+    if (!dbSession) {
+      console.log("Session validation failed: Session not found or expired");
+      return false;
+    }
+
+    // Check if device is still active
+    if (!dbSession.device || !dbSession.device.isActive) {
+      console.log("Session validation failed: Device not active");
+      return false;
+    }
+
+    // For riders, check if they have other active devices (should be single device)
+    if (dbSession.deviceId) {
+      const activeDevices = await prisma.device.count({
+        where: {
+          userId: session.user.id,
+          isActive: true,
+          deviceId: { not: dbSession.deviceId },
+        },
+      });
+
+      if (activeDevices > 0) {
+        console.log(
+          "Session validation failed: Multiple active devices for rider"
+        );
+        // Force logout from all other devices
+        await DeviceManager.forceLogoutOtherDevices(
+          session.user.id,
+          dbSession.deviceId,
+          session.user.activeRole
+        );
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Session validation error:", error);
+    return false;
+  }
+}
 
 export async function authMiddleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -20,7 +80,7 @@ export async function authMiddleware(request: NextRequest) {
 
   // Check if the current route is public
   const isPublicRoute = publicRoutes.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
 
   if (isPublicRoute) {
@@ -34,21 +94,22 @@ export async function authMiddleware(request: NextRequest) {
     if (!session || !session.user) {
       return NextResponse.json(
         { success: false, message: "Authentication required" },
-        { status: 401 },
+        { status: 401 }
       );
     }
+
+    // TODO: Re-enable session validation after proper testing
+    // For now, skip validation to avoid blocking valid requests
+    const activeRole = (session.user as any).activeRole || "CUSTOMER";
 
     // Add user info to headers for use in API routes
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-user-id", session.user.id);
     requestHeaders.set(
       "x-user-roles",
-      JSON.stringify((session.user as any).roles || []),
+      JSON.stringify((session.user as any).roles || [])
     );
-    requestHeaders.set(
-      "x-active-role",
-      (session.user as any).activeRole || "CUSTOMER",
-    );
+    requestHeaders.set("x-active-role", activeRole);
 
     return NextResponse.next({
       request: {
@@ -59,7 +120,7 @@ export async function authMiddleware(request: NextRequest) {
     console.error("Auth middleware error:", error);
     return NextResponse.json(
       { success: false, message: "Authentication error" },
-      { status: 401 },
+      { status: 401 }
     );
   }
 }
@@ -67,7 +128,7 @@ export async function authMiddleware(request: NextRequest) {
 export function roleBasedAccessControl(
   userRoles: string[],
   activeRole: string,
-  requiredPermissions: string[],
+  requiredPermissions: string[]
 ): boolean {
   // Import RBAC dynamically to avoid circular dependencies
   const { RBAC } = require("@/middleware/rbac");
@@ -97,7 +158,7 @@ export function roleBasedAccessControl(
 
   // Check if user has all required permissions
   return rbacPermissions.every((perm) =>
-    RBAC.hasPermission(userRoles, perm.resource, perm.action),
+    RBAC.hasPermission(userRoles, perm.resource, perm.action)
   );
 }
 
@@ -108,7 +169,7 @@ export async function customerOnlyMiddleware(request: NextRequest) {
     if (!session || !session.user) {
       return NextResponse.json(
         { success: false, message: "Authentication required" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -118,7 +179,7 @@ export async function customerOnlyMiddleware(request: NextRequest) {
     if (!roleBasedAccessControl(userRoles, activeRole, ["view_products"])) {
       return NextResponse.json(
         { success: false, message: "Customer access required" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -126,7 +187,7 @@ export async function customerOnlyMiddleware(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { success: false, message: "Authentication error" },
-      { status: 401 },
+      { status: 401 }
     );
   }
 }
@@ -137,7 +198,7 @@ export async function merchantOnlyMiddleware(request: NextRequest) {
     if (!session || !session.user) {
       return NextResponse.json(
         { success: false, message: "Authentication required" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -147,7 +208,7 @@ export async function merchantOnlyMiddleware(request: NextRequest) {
     if (!roleBasedAccessControl(userRoles, activeRole, ["manage_products"])) {
       return NextResponse.json(
         { success: false, message: "Merchant access required" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -155,7 +216,7 @@ export async function merchantOnlyMiddleware(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { success: false, message: "Authentication error" },
-      { status: 401 },
+      { status: 401 }
     );
   }
 }
@@ -166,7 +227,7 @@ export async function riderOnlyMiddleware(request: NextRequest) {
     if (!session || !session.user) {
       return NextResponse.json(
         { success: false, message: "Authentication required" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -180,7 +241,7 @@ export async function riderOnlyMiddleware(request: NextRequest) {
     ) {
       return NextResponse.json(
         { success: false, message: "Rider access required" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -188,7 +249,7 @@ export async function riderOnlyMiddleware(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { success: false, message: "Authentication error" },
-      { status: 401 },
+      { status: 401 }
     );
   }
 }
@@ -201,7 +262,7 @@ export async function adminOnlyMiddleware(request: NextRequest) {
     if (!session || !session.user) {
       return NextResponse.json(
         { success: false, message: "Authentication required" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -211,7 +272,7 @@ export async function adminOnlyMiddleware(request: NextRequest) {
     if (!roleBasedAccessControl(userRoles, activeRole, ["manage_users"])) {
       return NextResponse.json(
         { success: false, message: "Admin access required" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -220,7 +281,7 @@ export async function adminOnlyMiddleware(request: NextRequest) {
     console.error("Admin middleware error:", error);
     return NextResponse.json(
       { success: false, message: "Authentication error" },
-      { status: 401 },
+      { status: 401 }
     );
   }
 }

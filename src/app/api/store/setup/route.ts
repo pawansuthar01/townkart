@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     ) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     if (existingStore) {
       return NextResponse.json(
         { error: "User already has a store" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         // GST is optional
         return NextResponse.json(
           { error: `Missing required document: ${field}` },
-          { status: 400 },
+          { status: 400 }
         );
       }
     }
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     if (!defaultServiceArea) {
       return NextResponse.json(
         { error: "No active service area found" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -121,6 +121,7 @@ export async function POST(request: NextRequest) {
         managerId: session.user.id,
         isActive: false, // Pending approval
         isVerified: false,
+        // applicationStatus: "PENDING", // TODO: Uncomment after Prisma client regeneration
         serviceAreaId: defaultServiceArea.id,
 
         // Store document URLs (you might want to create a separate documents table)
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
     console.error("Store setup error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

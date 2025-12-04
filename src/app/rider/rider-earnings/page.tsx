@@ -150,64 +150,63 @@ export default function RiderEarningsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Earnings</h1>
-              <p className="text-gray-600 mt-1">
-                Track your delivery earnings and payouts
-              </p>
-            </div>
-            <Button className="flex items-center gap-2">
-              <Download className="h-4 w-4" />
-              Download Report
-            </Button>
-          </div>
+      {/* Mobile App Header Actions */}
+      <div className="px-4 py-4 bg-white border-b">
+        <div className="flex items-center justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Export
+          </Button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-6 text-center">
-              <DollarSign className="h-8 w-8 text-green-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">
+      <div className="px-4 py-6 space-y-6">
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+            <CardContent className="p-4 text-center">
+              <DollarSign className="h-6 w-6 text-green-600 mx-auto mb-2" />
+              <div className="text-xl font-bold text-green-800">
                 ₹{summaryStats.today.earnings}
               </div>
-              <div className="text-sm text-gray-600">Today</div>
+              <div className="text-xs text-green-600">Today</div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6 text-center">
-              <TrendingUp className="h-8 w-8 text-blue-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+            <CardContent className="p-4 text-center">
+              <TrendingUp className="h-6 w-6 text-blue-600 mx-auto mb-2" />
+              <div className="text-xl font-bold text-blue-800">
                 ₹{summaryStats.week.earnings}
               </div>
-              <div className="text-sm text-gray-600">This Week</div>
+              <div className="text-xs text-blue-600">This Week</div>
             </CardContent>
           </Card>
+        </div>
 
-          <Card>
-            <CardContent className="p-6 text-center">
-              <Calendar className="h-8 w-8 text-purple-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">
+        {/* Monthly & Total Stats */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+            <CardContent className="p-4 text-center">
+              <Calendar className="h-6 w-6 text-purple-600 mx-auto mb-2" />
+              <div className="text-xl font-bold text-purple-800">
                 ₹{summaryStats.month.earnings}
               </div>
-              <div className="text-sm text-gray-600">This Month</div>
+              <div className="text-xs text-purple-600">This Month</div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6 text-center">
-              <CreditCard className="h-8 w-8 text-indigo-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">
+          <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
+            <CardContent className="p-4 text-center">
+              <CreditCard className="h-6 w-6 text-indigo-600 mx-auto mb-2" />
+              <div className="text-xl font-bold text-indigo-800">
                 ₹{summaryStats.total.earnings}
               </div>
-              <div className="text-sm text-gray-600">Total Earnings</div>
+              <div className="text-xs text-indigo-600">Total</div>
             </CardContent>
           </Card>
         </div>

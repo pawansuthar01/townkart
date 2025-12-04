@@ -72,11 +72,11 @@ export function StoreHeader({ onMenuClick, isMenuOpen }: StoreHeaderProps) {
   };
 
   return (
-    <header className="bg-white shadow-sm border-b sticky top-0 z-50">
+    <header
+      className={`bg-white shadow-sm border-b sticky top-0 z-50 ${isMenuOpen ? "md:ml-64" : ""}`}
+    >
       <div className="px-4 py-3">
-        {/* Mobile-first layout */}
         <div className="flex items-center justify-between">
-          {/* Left: Menu button and Logo */}
           <div className="flex items-center space-x-3">
             <button
               onClick={onMenuClick}

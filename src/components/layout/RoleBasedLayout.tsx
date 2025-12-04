@@ -35,7 +35,7 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
   if (isAuthPage) {
     return <>{children}</>;
   }
-
+  console.log(userRole);
   // Show loading state
   if (status === "loading") {
     return (
@@ -69,38 +69,7 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
       );
 
     case "RIDER":
-      return (
-        <div className="min-h-screen bg-gray-50">
-          <RiderHeader
-            onMenuClick={() => setSidebarOpen(true)}
-            isMenuOpen={sidebarOpen}
-          />
-          <div className="flex">
-            <RiderSidebar
-              isOpen={sidebarOpen}
-              onClose={() => setSidebarOpen(false)}
-            />
-            <main className="flex-1 md:ml-64">{children}</main>
-          </div>
-        </div>
-      );
-
-    case "MERCHANT":
-      return (
-        <div className="min-h-screen bg-gray-50">
-          <MerchantHeader
-            onMenuClick={() => setSidebarOpen(true)}
-            isMenuOpen={sidebarOpen}
-          />
-          <div className="flex">
-            <MerchantSidebar
-              isOpen={sidebarOpen}
-              onClose={() => setSidebarOpen(false)}
-            />
-            <main className="flex-1 md:ml-64">{children}</main>
-          </div>
-        </div>
-      );
+      return <>{children}</>;
 
     case "STORE_MANAGER":
       // Store manager uses its own layout in the store directory

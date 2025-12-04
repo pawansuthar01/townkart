@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     if (!attemptId) {
       return NextResponse.json(
         { success: false, message: "Attempt ID required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     console.error("Update login attempt error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

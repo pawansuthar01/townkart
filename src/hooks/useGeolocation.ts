@@ -14,6 +14,7 @@ interface GeolocationOptions {
   enableHighAccuracy?: boolean;
   timeout?: number;
   maximumAge?: number;
+  maxAccuracy?: number;
 }
 
 export const useGeolocation = (options: GeolocationOptions = {}) => {
@@ -45,8 +46,20 @@ export const useGeolocation = (options: GeolocationOptions = {}) => {
       ...options,
     };
 
+    const maxAccuracy = options.maxAccuracy ?? 5000; // Default 5km for general use
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        // Validate location accuracy
+        if (position.coords.accuracy > maxAccuracy) {
+          setState((prev) => ({
+            ...prev,
+            error: `Location accuracy too low (${Math.round(position.coords.accuracy)}m). Please ensure GPS is enabled.`,
+            isLoading: false,
+          }));
+          return;
+        }
+
         setState({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
@@ -78,7 +91,7 @@ export const useGeolocation = (options: GeolocationOptions = {}) => {
           isLoading: false,
         }));
       },
-      defaultOptions,
+      defaultOptions
     );
   }, [state.isSupported, options]);
 
@@ -133,7 +146,7 @@ export const useGeolocation = (options: GeolocationOptions = {}) => {
           isLoading: false,
         }));
       },
-      defaultOptions,
+      defaultOptions
     );
 
     return () => {
@@ -166,7 +179,7 @@ export const useGeolocation = (options: GeolocationOptions = {}) => {
         navigator.geolocation.getCurrentPosition(
           () => resolve(true),
           () => resolve(false),
-          { timeout: 1000 },
+          { timeout: 1000 }
         );
       });
     }
@@ -187,7 +200,7 @@ export const useGeolocation = (options: GeolocationOptions = {}) => {
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return R * c; // Distance in kilometers
     },
-    [],
+    []
   );
 
   // Get address from coordinates (reverse geocoding)
@@ -196,7 +209,7 @@ export const useGeolocation = (options: GeolocationOptions = {}) => {
       try {
         // Using a free geocoding service or you can integrate with Google Maps
         const response = await fetch(
-          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
         );
         const data = await response.json();
         return {
@@ -214,7 +227,7 @@ export const useGeolocation = (options: GeolocationOptions = {}) => {
         return null;
       }
     },
-    [],
+    []
   );
 
   return {

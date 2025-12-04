@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
-import { useScrollFixed } from "@/hooks/useScrollFixed";
 import {
   Store,
   User,
@@ -32,7 +31,6 @@ export function MerchantHeader({
   isMenuOpen,
 }: MerchantHeaderProps) {
   const { user, isAuthenticated, logout } = useAuth();
-  const isFixed = useScrollFixed(10);
 
   const handleLogout = async () => {
     await logout();
@@ -40,7 +38,7 @@ export function MerchantHeader({
 
   return (
     <header
-      className={`bg-white shadow-sm border-b z-50 md:ml-64 ${isFixed ? "fixed top-0 left-0 right-0 md:left-64" : ""}`}
+      className={`bg-white shadow-sm border-b z-50 md:ml-64 fixed top-0 left-0 right-0 `}
     >
       <div className="px-4 py-3">
         {/* Mobile-first layout */}

@@ -673,9 +673,43 @@ async function main() {
       }),
     ]);
 
-    // Create stores
-    console.log("🏬 Creating stores");
+    // Create additional store managers for pending applications
+    console.log(
+      "🏪 Creating additional store managers for pending applications"
+    );
+    const pendingStoreManagers = await Promise.all([
+      prisma.user.create({
+        data: {
+          phoneNumber: "+919876543214",
+          fullName: "Amit Singh",
+          email: "amit.manager@townkart.com",
+          password: await hashPassword("manager123"),
+          userRoles: ["STORE_MANAGER"],
+          activeRole: "STORE_MANAGER",
+          emailVerified: true,
+          phoneVerified: true,
+          isActive: true,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          phoneNumber: "+919876543215",
+          fullName: "Sunita Patel",
+          email: "sunita.manager@townkart.com",
+          password: await hashPassword("manager123"),
+          userRoles: ["STORE_MANAGER"],
+          activeRole: "STORE_MANAGER",
+          emailVerified: true,
+          phoneVerified: true,
+          isActive: true,
+        },
+      }),
+    ]);
+
+    // Create stores (approved and pending)
+    console.log("🏬 Creating stores (approved and pending)");
     const stores = await Promise.all([
+      // Approved stores
       prisma.store.create({
         data: {
           name: "Fresh Mart Hanumangarh Junction",
@@ -692,6 +726,7 @@ async function main() {
           managerId: storeManagers[0].id,
           isActive: true,
           isVerified: true,
+          // applicationStatus: "APPROVED", // TODO: Uncomment after Prisma client regeneration
           averageRating: 4.5,
           totalOrders: 1250,
           totalRevenue: 250000,
@@ -720,6 +755,7 @@ async function main() {
           managerId: storeManagers[1].id,
           isActive: true,
           isVerified: true,
+          // applicationStatus: "APPROVED", // TODO: Uncomment after Prisma client regeneration
           averageRating: 4.3,
           totalOrders: 890,
           totalRevenue: 180000,
@@ -729,6 +765,78 @@ async function main() {
             monday: { open: "10:00", close: "20:00" },
           },
           serviceAreaId: serviceArea.id,
+        },
+      }),
+      // Pending store applications
+      prisma.store.create({
+        data: {
+          name: "Quick Grocery Hub",
+          code: "QGH001",
+          description: "Quick service grocery store",
+          address: "789 Bypass Road, Hanumangarh, Rajasthan 335512",
+          city: "Hanumangarh",
+          state: "Rajasthan",
+          pincode: "335512",
+          latitude: 29.5718,
+          longitude: 74.3394,
+          category: "Grocery",
+          subcategory: "Convenience Store",
+          managerId: pendingStoreManagers[0].id,
+          isActive: false, // Pending approval
+          isVerified: false,
+          // applicationStatus: "PENDING", // TODO: Uncomment after Prisma client regeneration
+          phoneNumber: "+919876543218",
+          email: "hub@quickgrocery.com",
+          operatingHours: {
+            monday: { open: "08:00", close: "22:00" },
+          },
+          serviceAreaId: serviceArea.id,
+        },
+      }),
+      prisma.store.create({
+        data: {
+          name: "Fashion Corner",
+          code: "FC001",
+          description: "Trendy fashion boutique",
+          address: "321 Mall Road, Hanumangarh, Rajasthan 335513",
+          city: "Hanumangarh",
+          state: "Rajasthan",
+          pincode: "335513",
+          latitude: 29.6018,
+          longitude: 74.3094,
+          category: "Fashion",
+          subcategory: "Boutique",
+          managerId: pendingStoreManagers[1].id,
+          isActive: false, // Pending approval
+          isVerified: false,
+          // applicationStatus: "PENDING", // TODO: Uncomment after Prisma client regeneration
+          phoneNumber: "+919876543219",
+          email: "corner@fashioncorner.com",
+          operatingHours: {
+            monday: { open: "11:00", close: "19:00" },
+          },
+          serviceAreaId: serviceArea.id,
+        },
+      }),
+    ]);
+
+    // Create store staff entries for approved stores
+    console.log("🏪 Creating store staff entries for approved stores");
+    await Promise.all([
+      prisma.storeStaff.create({
+        data: {
+          storeId: stores[0].id, // Fresh Mart
+          userId: storeManagers[0].id,
+          role: "manager",
+          isActive: true,
+        },
+      }),
+      prisma.storeStaff.create({
+        data: {
+          storeId: stores[1].id, // Mega Mall
+          userId: storeManagers[1].id,
+          role: "manager",
+          isActive: true,
         },
       }),
     ]);
@@ -963,20 +1071,21 @@ async function main() {
       ],
     });
 
-    // Create products for store1 and store2 using our robust batch creator
-    console.log("📦 Creating products for stores (batched)");
+    // Create products only for approved stores (not pending applications)
+    console.log("📦 Creating products for approved stores (batched)");
     const store1Products = await createProductBatchesForStore(
-      stores[0],
+      stores[0], // Fresh Mart - approved
       400,
       0,
       categories
-    ); // reduced count for demo: 400
+    );
     const store2Products = await createProductBatchesForStore(
-      stores[1],
+      stores[1], // Mega Mall - approved
       200,
       400,
       categories
-    ); // 200
+    );
+    // Note: stores[2] and stores[3] are pending applications, so no products created for them
 
     console.log(
       `✅ Products created: ${store1Products.length + store2Products.length}`
@@ -1070,9 +1179,13 @@ async function main() {
       "  Admin credentials: +919876543210 / +919876543211 (admin123)"
     );
     console.log(
-      "  Manager credentials: +919876543212 / +919876543213 (manager123)"
+      "  Approved store managers: +919876543212 / +919876543213 (manager123)"
+    );
+    console.log(
+      "  Pending store managers: +919876543214 / +919876543215 (manager123)"
     );
     console.log("  Sample customer: +91987654330 (customer123)");
+    console.log("  📋 Pending Applications: 2 stores waiting for approval");
   } catch (err) {
     console.error("❌ Seeder error:", err);
     process.exitCode = 1;

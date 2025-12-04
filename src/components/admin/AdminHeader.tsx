@@ -1,9 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useScrollFixed } from "@/hooks/useScrollFixed";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +21,6 @@ interface AdminHeaderProps {
 
 export function AdminHeader({ onMenuClick, isMenuOpen }: AdminHeaderProps) {
   const { data: session } = useSession();
-  const isFixed = useScrollFixed(10);
 
   const handleSignOut = async () => {
     await signOut({ callbackUrl: "/" });
@@ -29,7 +28,7 @@ export function AdminHeader({ onMenuClick, isMenuOpen }: AdminHeaderProps) {
 
   return (
     <header
-      className={`bg-white shadow-sm border-b z-50 md:ml-64 ${isFixed ? "fixed top-0 left-0 right-0 md:left-64" : ""}`}
+      className={`bg-white shadow-sm border-b sticky top-0 z-50 ${isMenuOpen ? "md:ml-64" : ""}`}
     >
       <div className="px-4 py-3">
         {/* Mobile-first layout */}
@@ -107,10 +106,30 @@ export function AdminHeader({ onMenuClick, isMenuOpen }: AdminHeaderProps) {
 
         {/* Desktop Navigation - Hidden on mobile */}
         <nav className="hidden md:flex items-center justify-center space-x-8 mt-3">
-          <span className="text-gray-700 font-medium">Dashboard</span>
-          <span className="text-gray-700 font-medium">Users</span>
-          <span className="text-gray-700 font-medium">Orders</span>
-          <span className="text-gray-700 font-medium">Analytics</span>
+          <Link
+            href="/admin/dashboard"
+            className="text-gray-700 hover:text-townkart-primary transition-colors font-medium"
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/admin/users"
+            className="text-gray-700 hover:text-townkart-primary transition-colors font-medium"
+          >
+            Users
+          </Link>
+          <Link
+            href="/admin/orders"
+            className="text-gray-700 hover:text-townkart-primary transition-colors font-medium"
+          >
+            Orders
+          </Link>
+          <Link
+            href="/admin/analytics"
+            className="text-gray-700 hover:text-townkart-primary transition-colors font-medium"
+          >
+            Analytics
+          </Link>
         </nav>
       </div>
     </header>

@@ -13,11 +13,14 @@ import {
   Layers,
   Crosshair,
 } from "lucide-react";
+import { loadGoogleMaps } from "@/lib/googleMapsLoader";
 
 // Extend Window interface for Google Maps
 declare global {
   interface Window {
     google: any;
+    googleMapsLoaded?: boolean;
+    googleMapsCallbacks?: (() => void)[];
   }
 }
 
@@ -86,7 +89,7 @@ export function MapIntegration({
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [currentLocation, setCurrentLocation] = useState<MapLocation | null>(
-    null,
+    null
   );
 
   // Initialize map
@@ -95,50 +98,35 @@ export function MapIntegration({
 
     let timeoutId: NodeJS.Timeout;
 
-    // Load Google Maps API if not already loaded
-    if (!window.google) {
-      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-      if (!apiKey) {
-        console.error("Google Maps API key not found");
-        setMapError(
-          "Google Maps API key is not configured. Please check your environment variables.",
-        );
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry,places,directions`;
-      script.async = true;
-      script.defer = true;
-      script.onload = initializeMap;
-      script.onerror = () => {
-        console.error("Failed to load Google Maps API");
-        setMapError(
-          "Failed to load map. Please check your internet connection and try again.",
-        );
-      };
-
-      // Listen for Google Maps authentication errors
-      window.addEventListener("error", (event) => {
-        if (event.message && event.message.includes("Google Maps")) {
-          setMapError(
-            "Google Maps API key is not authorized for this domain. Please check your API key restrictions.",
-          );
-        }
-      });
-      document.head.appendChild(script);
-
-      // Set a timeout for loading
-      timeoutId = setTimeout(() => {
-        if (!isMapLoaded && !mapError) {
-          setMapError(
-            "Map loading timed out. Please check your Google Maps API key.",
-          );
-        }
-      }, 10000); // 10 second timeout
-    } else {
-      initializeMap();
+    // Load Google Maps API using centralized loader
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error("Google Maps API key not found");
+      setMapError(
+        "Google Maps API key is not configured. Please check your environment variables."
+      );
+      return;
     }
+
+    loadGoogleMaps(apiKey, ["geometry", "places", "directions"])
+      .then(() => {
+        initializeMap();
+      })
+      .catch((error) => {
+        console.error("Failed to load Google Maps API:", error);
+        setMapError(
+          "Failed to load map. Please check your internet connection and try again."
+        );
+      });
+
+    // Set a timeout for loading
+    timeoutId = setTimeout(() => {
+      if (!isMapLoaded && !mapError) {
+        setMapError(
+          "Map loading timed out. Please check your Google Maps API key."
+        );
+      }
+    }, 10000); // 10 second timeout
 
     function initializeMap() {
       if (!mapRef.current || !window.google) return;
@@ -176,7 +164,7 @@ export function MapIntegration({
             setIsMapLoaded(true);
             setMapError(null); // Clear any timeout errors
             clearTimeout(timeoutId); // Clear the timeout
-          },
+          }
         );
 
         // Handle authentication errors
@@ -185,15 +173,15 @@ export function MapIntegration({
           "auth_failure",
           () => {
             setMapError(
-              "Google Maps authentication failed. Please check your API key configuration.",
+              "Google Maps authentication failed. Please check your API key configuration."
             );
             clearTimeout(timeoutId);
-          },
+          }
         );
       } catch (error) {
         console.error("Error initializing Google Maps:", error);
         setMapError(
-          "Failed to initialize map. Please check your Google Maps API key.",
+          "Failed to initialize map. Please check your Google Maps API key."
         );
       }
 
@@ -228,7 +216,7 @@ export function MapIntegration({
           },
           (error) => {
             console.error("Error getting current location:", error);
-          },
+          }
         );
       }
     }
@@ -331,7 +319,7 @@ export function MapIntegration({
 
       return markerInstance;
     },
-    [onMarkerClick],
+    [onMarkerClick]
   );
 
   // Create route
@@ -341,7 +329,7 @@ export function MapIntegration({
       map: mapInstance,
       suppressMarkers: true,
       polylineOptions: {
-        strokeColor: route.color || "#f59e0b",
+        strokeColor: route.color || "#39B54A", // townkart-accent
         strokeWeight: route.strokeWeight || 4,
       },
     });
@@ -385,7 +373,7 @@ export function MapIntegration({
             },
           ],
           geodesic: true,
-          strokeColor: route.color || "#f59e0b",
+          strokeColor: route.color || "#39B54A", // townkart-accent
           strokeOpacity: 0.8,
           strokeWeight: route.strokeWeight || 4,
         });
@@ -407,10 +395,10 @@ export function MapIntegration({
           "data:image/svg+xml;charset=UTF-8," +
           encodeURIComponent(`
           <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="20" cy="20" r="18" fill="#10b981" stroke="white" stroke-width="4"/>
+            <circle cx="20" cy="20" r="18" fill="#10B981" stroke="white" stroke-width="4"/>
             <rect x="12" y="14" width="16" height="12" rx="2" fill="white"/>
-            <rect x="16" y="18" width="8" height="2" fill="#10b981"/>
-            <rect x="16" y="22" width="8" height="2" fill="#10b981"/>
+            <rect x="16" y="18" width="8" height="2" fill="#10B981"/>
+            <rect x="16" y="22" width="8" height="2" fill="#10B981"/>
           </svg>
         `),
         scaledSize: new window.google.maps.Size(40, 40),
@@ -421,7 +409,7 @@ export function MapIntegration({
           "data:image/svg+xml;charset=UTF-8," +
           encodeURIComponent(`
           <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="20" cy="20" r="18" fill="#ef4444" stroke="white" stroke-width="4"/>
+            <circle cx="20" cy="20" r="18" fill="#EF4444" stroke="white" stroke-width="4"/>
             <path d="M20 10l6 6-6 10-6-10 6-6z" fill="white"/>
           </svg>
         `),
@@ -433,7 +421,7 @@ export function MapIntegration({
           "data:image/svg+xml;charset=UTF-8," +
           encodeURIComponent(`
           <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="20" cy="20" r="18" fill="#f59e0b" stroke="white" stroke-width="4"/>
+            <circle cx="20" cy="20" r="18" fill="#39B54A" stroke="white" stroke-width="4"/>
             <path d="M14 26l12-8-12-8v16z" fill="white"/>
           </svg>
         `),
@@ -445,11 +433,11 @@ export function MapIntegration({
           "data:image/svg+xml;charset=UTF-8," +
           encodeURIComponent(`
           <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="20" cy="20" r="18" fill="#8b5cf6" stroke="white" stroke-width="4"/>
+            <circle cx="20" cy="20" r="18" fill="#F7931E" stroke="white" stroke-width="4"/>
             <path d="M12 28h16l-2-8h-12l-2 8z" fill="white"/>
-            <circle cx="16" cy="20" r="2" fill="#8b5cf6"/>
-            <circle cx="20" cy="20" r="2" fill="#8b5cf6"/>
-            <circle cx="24" cy="20" r="2" fill="#8b5cf6"/>
+            <circle cx="16" cy="20" r="2" fill="#F7931E"/>
+            <circle cx="20" cy="20" r="2" fill="#F7931E"/>
+            <circle cx="24" cy="20" r="2" fill="#F7931E"/>
           </svg>
         `),
         scaledSize: new window.google.maps.Size(40, 40),
@@ -647,7 +635,7 @@ export function useMapIntegration(options: Partial<MapIntegrationProps> = {}) {
     options.center || {
       latitude: 12.9716,
       longitude: 77.5946,
-    },
+    }
   );
 
   const addMarker = useCallback((marker: MapMarker) => {
@@ -661,10 +649,10 @@ export function useMapIntegration(options: Partial<MapIntegrationProps> = {}) {
   const updateMarker = useCallback(
     (markerId: string, updates: Partial<MapMarker>) => {
       setMarkers((prev) =>
-        prev.map((m) => (m.id === markerId ? { ...m, ...updates } : m)),
+        prev.map((m) => (m.id === markerId ? { ...m, ...updates } : m))
       );
     },
-    [],
+    []
   );
 
   const addRoute = useCallback((route: MapRoute) => {

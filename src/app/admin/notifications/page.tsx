@@ -112,7 +112,7 @@ export default function AdminNotificationsPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          setUsers(data.users);
+          setUsers(data.data.users || []);
         }
       }
     } catch (error) {
@@ -351,7 +351,7 @@ export default function AdminNotificationsPage() {
                                 setNewNotification({
                                   ...newNotification,
                                   channels: newNotification.channels.filter(
-                                    (c) => c !== channel,
+                                    (c) => c !== channel
                                   ),
                                 });
                               }
@@ -451,9 +451,7 @@ export default function AdminNotificationsPage() {
                                   setSelectedUsers([...selectedUsers, user.id]);
                                 } else {
                                   setSelectedUsers(
-                                    selectedUsers.filter(
-                                      (id) => id !== user.id,
-                                    ),
+                                    selectedUsers.filter((id) => id !== user.id)
                                   );
                                 }
                               }}

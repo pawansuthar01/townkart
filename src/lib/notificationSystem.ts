@@ -10,6 +10,7 @@ export type NotificationType =
   | "payment_received"
   | "payment_failed"
   | "rider_location_update"
+  | "rider_location_alert"
   | "rider_delivery_offer" // New: Delivery offer for riders
   | "merchant_order_ready"
   | "customer_support"
@@ -101,6 +102,15 @@ export const NOTIFICATION_TEMPLATES: Record<
   NotificationType,
   NotificationTemplate
 > = {
+  rider_location_alert: {
+    id: "rider_location_alert",
+    type: "rider_location_alert",
+    title: "Rider Location alert",
+    message: "{{riderName}} is {{distance}} away from your location",
+    priority: "high",
+    channels: ["in_app", "email", "push", "whatsapp"],
+    variables: ["riderName", "distance", "eta"],
+  },
   order_status_update: {
     id: "order_status_update",
     type: "order_status_update",
@@ -1124,6 +1134,7 @@ export function getNotificationIcon(type: NotificationType): string {
     customer_support: "💬",
     promotional: "🎉",
     system_alert: "⚠️",
+    rider_location_alert: "⚠️",
     admin_manual: "📢",
     store_manual: "🏪",
     invitation: "📨",

@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { useCart } from "@/hooks/useCart";
 import { useAuth } from "@/hooks/useAuth";
 import { useWishlist } from "@/hooks/useWishlist";
-import { useScrollFixed } from "@/hooks/useScrollFixed";
 import {
   ShoppingCart,
   Search,
@@ -47,7 +46,6 @@ export function CustomerHeader({
   const { user, isAuthenticated, logout } = useAuth();
   const { itemCount: wishlistCount } = useWishlist();
   const cartSummary = getCartSummary();
-  const isFixed = useScrollFixed(10);
 
   const handleLogout = async () => {
     await logout();
@@ -55,7 +53,7 @@ export function CustomerHeader({
 
   return (
     <header
-      className={`bg-white shadow-sm border-b z-50 md:ml-64 ${isFixed ? "fixed top-0 left-0 right-0" : ""}`}
+      className={`bg-white shadow-sm border-b z-50 md:ml-64  "fixed top-0 left-0 right-0`}
     >
       <div className="px-4 py-3">
         {/* Main Header Row */}

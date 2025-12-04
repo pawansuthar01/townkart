@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
-import { useScrollFixed } from "@/hooks/useScrollFixed";
 import {
   Bike,
   User,
@@ -32,7 +31,6 @@ export function RiderHeader({ onMenuClick, isMenuOpen }: RiderHeaderProps) {
   const { user, isAuthenticated, logout } = useAuth();
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayDeliveries, setTodayDeliveries] = useState(0);
-  const isFixed = useScrollFixed(10);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -62,7 +60,7 @@ export function RiderHeader({ onMenuClick, isMenuOpen }: RiderHeaderProps) {
 
   return (
     <header
-      className={`bg-white shadow-sm border-b z-50 md:ml-64 ${isFixed ? "fixed top-0 left-0 right-0 md:left-64" : ""}`}
+      className={`bg-white shadow-sm border-b sticky top-0 z-50 ${isMenuOpen ? "md:ml-64" : ""}`}
     >
       <div className="px-4 py-3">
         {/* Mobile-first layout */}
@@ -126,7 +124,7 @@ export function RiderHeader({ onMenuClick, isMenuOpen }: RiderHeaderProps) {
 
             {/* Notifications */}
             <Link
-              href="/notifications"
+              href="/rider/notifications"
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <Bell className="h-5 w-5 text-gray-600" />

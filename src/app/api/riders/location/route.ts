@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id || session.user.activeRole !== "RIDER") {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -28,7 +28,19 @@ export async function POST(request: NextRequest) {
     if (!latitude || !longitude) {
       return NextResponse.json(
         { success: false, message: "Latitude and longitude are required" },
-        { status: 400 },
+        { status: 400 }
+      );
+    }
+
+    // Validate location accuracy - reject IP-based locations
+    const MAX_ACCURACY_METERS = 1000; // 1km maximum
+    if (accuracy && accuracy > MAX_ACCURACY_METERS) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Location accuracy too low (${Math.round(accuracy)}m). Please ensure GPS is enabled and try again.`,
+        },
+        { status: 400 }
       );
     }
 
@@ -40,7 +52,7 @@ export async function POST(request: NextRequest) {
     if (!riderProfile) {
       return NextResponse.json(
         { success: false, message: "Rider profile not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -93,7 +105,7 @@ export async function POST(request: NextRequest) {
           latitude,
           longitude,
           area.centerLat,
-          area.centerLng,
+          area.centerLng
         );
         if (distance <= area.radiusKm) {
           inServiceArea = true;
@@ -142,7 +154,7 @@ export async function POST(request: NextRequest) {
     console.error("Error updating rider location:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -153,7 +165,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id || session.user.activeRole !== "RIDER") {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -171,7 +183,7 @@ export async function GET(request: NextRequest) {
     if (!riderProfile) {
       return NextResponse.json(
         { success: false, message: "Rider profile not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -190,7 +202,7 @@ export async function GET(request: NextRequest) {
     console.error("Error fetching rider location:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -200,7 +212,7 @@ function calculateDistance(
   lat1: number,
   lng1: number,
   lat2: number,
-  lng2: number,
+  lng2: number
 ): number {
   const R = 6371; // Earth's radius in kilometers
   const dLat = toRadians(lat2 - lat1);

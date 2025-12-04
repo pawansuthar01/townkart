@@ -15,24 +15,56 @@ export async function POST(request: NextRequest) {
     if (!orderId) {
       return NextResponse.json(
         { error: "Order ID is required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    // Get rider profile
+    // Get rider profile with location data
     const rider = await prisma.riderProfile.findUnique({
       where: { userId: session.user.id },
       select: {
         id: true,
         isAvailable: true,
+        isActive: true,
         maxDailyDeliveries: true,
+        currentLat: true,
+        currentLng: true,
+        lastLocationUpdate: true,
       },
     });
 
-    if (!rider || !rider.isAvailable) {
+    if (!rider || !rider.isAvailable || !rider.isActive) {
       return NextResponse.json(
-        { error: "Rider not available" },
-        { status: 400 },
+        { error: "Rider not available or inactive" },
+        { status: 400 }
+      );
+    }
+
+    // Check if rider has recent location data (within last 5 minutes)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    if (
+      !rider.lastLocationUpdate ||
+      rider.lastLocationUpdate < fiveMinutesAgo
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Location data is outdated. Please update your location before accepting deliveries.",
+          code: "LOCATION_OUTDATED",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if rider has valid coordinates
+    if (!rider.currentLat || !rider.currentLng) {
+      return NextResponse.json(
+        {
+          error:
+            "Location coordinates not available. Please ensure location services are enabled.",
+          code: "LOCATION_MISSING",
+        },
+        { status: 400 }
       );
     }
 
@@ -48,7 +80,7 @@ export async function POST(request: NextRequest) {
     if (!delivery) {
       return NextResponse.json(
         { error: "Delivery not available" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -59,7 +91,7 @@ export async function POST(request: NextRequest) {
     if (!success) {
       return NextResponse.json(
         { error: "Failed to assign delivery" },
-        { status: 500 },
+        { status: 500 }
       );
     }
 
@@ -79,7 +111,7 @@ export async function POST(request: NextRequest) {
     console.error("Accept delivery error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

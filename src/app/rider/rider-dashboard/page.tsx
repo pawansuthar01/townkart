@@ -31,7 +31,7 @@ export default function RiderDashboard() {
   const { user } = useAuth();
   const dispatch = useDispatch<AppDispatch>();
   const { deliveries, loading } = useSelector(
-    (state: RootState) => state.delivery,
+    (state: RootState) => state.delivery
   );
   const [activeTab, setActiveTab] = useState<"active" | "history">("active");
   const [earnings, setEarnings] = useState({
@@ -96,10 +96,10 @@ export default function RiderDashboard() {
   };
 
   const activeDeliveries = deliveries.filter(
-    (d) => d.deliveryStatus !== "DELIVERED",
+    (d) => d.deliveryStatus !== "DELIVERED"
   );
   const completedDeliveries = deliveries.filter(
-    (d) => d.deliveryStatus === "DELIVERED",
+    (d) => d.deliveryStatus === "DELIVERED"
   );
 
   const getStatusColor = (status: string) => {
@@ -134,324 +134,229 @@ export default function RiderDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Hero Section */}
-      <section className="bg-gradient-to-r from-green-500 to-green-600 text-white py-12">
-        <div className="w-full px-4">
-          <div className="text-center">
-            <div className="flex items-center justify-center mb-4">
-              <Bike className="h-12 w-12 mr-3" />
-              <h1 className="text-3xl md:text-4xl font-bold">
-                Rider Dashboard
-              </h1>
+      {/* Mobile App Style Dashboard */}
+      <div className="px-4 py-6 space-y-6">
+        {/* Welcome Section */}
+        <div className="bg-gradient-to-r from-townkart-primary to-townkart-secondary text-white rounded-2xl p-6 mb-6 shadow-townkart">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold mb-1">
+                Welcome back, {user?.name}!
+              </h2>
+              <p className="text-white/80 text-sm">
+                Ready to earn with TownKart deliveries
+              </p>
             </div>
-            <p className="text-xl text-green-100 max-w-2xl mx-auto">
-              Welcome back, {user?.name}! Ready to earn with TownKart
-              deliveries.
-            </p>
+            <Bike className="h-12 w-12 opacity-80" />
           </div>
         </div>
-      </section>
 
-      <div className="w-full px-4 py-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-6 text-center">
-              <DollarSign className="h-8 w-8 text-green-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <Card className="bg-gradient-to-br from-townkart-primary/10 to-townkart-primary/20 border-townkart-primary/30">
+            <CardContent className="p-4 text-center">
+              <DollarSign className="h-6 w-6 text-townkart-primary mx-auto mb-2" />
+              <div className="text-xl font-bold text-townkart-primary">
                 ₹{earnings.today}
               </div>
-              <div className="text-sm text-gray-600">Today's Earnings</div>
+              <div className="text-xs text-townkart-primary/80">
+                Today's Earnings
+              </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6 text-center">
-              <Package className="h-8 w-8 text-blue-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">
-                {stats.totalDeliveries}
+          <Card className="bg-gradient-to-br from-townkart-info/10 to-townkart-info/20 border-townkart-info/30">
+            <CardContent className="p-4 text-center">
+              <Package className="h-6 w-6 text-townkart-info mx-auto mb-2" />
+              <div className="text-xl font-bold text-townkart-info">
+                {activeDeliveries.length}
               </div>
-              <div className="text-sm text-gray-600">Total Deliveries</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6 text-center">
-              <Star className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">
-                {stats.rating}
+              <div className="text-xs text-townkart-info/80">
+                Active Deliveries
               </div>
-              <div className="text-sm text-gray-600">Average Rating</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6 text-center">
-              <Clock className="h-8 w-8 text-purple-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold text-gray-900">
-                {stats.averageDeliveryTime}m
-              </div>
-              <div className="text-sm text-gray-600">Avg Delivery Time</div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Weekly Goal Progress */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Target className="h-5 w-5 mr-2" />
-              Weekly Goal Progress
-            </CardTitle>
+        {/* Performance Overview */}
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Performance Overview</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-medium text-gray-700">
-                Deliveries this week: {stats.weeklyProgress} /{" "}
-                {stats.weeklyGoal}
-              </span>
-              <span className="text-sm text-gray-500">
-                {Math.round((stats.weeklyProgress / stats.weeklyGoal) * 100)}%
+          <CardContent className="space-y-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-2">
+                <Star className="h-4 w-4 text-townkart-warning" />
+                <span className="text-sm text-gray-600">Rating</span>
+              </div>
+              <span className="font-semibold">{stats.rating}/5.0</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-2">
+                <Clock className="h-4 w-4 text-townkart-secondary" />
+                <span className="text-sm text-gray-600">Avg Delivery Time</span>
+              </div>
+              <span className="font-semibold">
+                {stats.averageDeliveryTime}m
               </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-3">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-2">
+                <Target className="h-4 w-4 text-townkart-accent" />
+                <span className="text-sm text-gray-600">Weekly Goal</span>
+              </div>
+              <span className="font-semibold">
+                {stats.weeklyProgress}/{stats.weeklyGoal}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Weekly Goal Progress */}
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-2">
+                <Target className="h-5 w-5 text-townkart-accent" />
+                <span className="font-medium text-gray-900">Weekly Goal</span>
+              </div>
+              <span className="text-sm text-gray-600">
+                {stats.weeklyProgress}/{stats.weeklyGoal}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
               <div
-                className="bg-green-500 h-3 rounded-full transition-all duration-300"
+                className="bg-townkart-accent h-2 rounded-full transition-all duration-300"
                 style={{
                   width: `${Math.min(
                     (stats.weeklyProgress / stats.weeklyGoal) * 100,
-                    100,
+                    100
                   )}%`,
                 }}
               ></div>
             </div>
+            <p className="text-xs text-gray-500 text-center">
+              {Math.round((stats.weeklyProgress / stats.weeklyGoal) * 100)}%
+              complete
+            </p>
           </CardContent>
         </Card>
 
-        {/* Earnings Overview */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <TrendingUp className="h-5 w-5 mr-2" />
-              Earnings Overview
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
-                  ₹{earnings.today}
+        {/* Active Deliveries */}
+        {activeDeliveries.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <Package className="h-5 w-5 mr-2 text-townkart-info" />
+                  <span>Active Deliveries</span>
                 </div>
-                <div className="text-sm text-gray-600">Today</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">
-                  ₹{earnings.week}
-                </div>
-                <div className="text-sm text-gray-600">This Week</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">
-                  ₹{earnings.month}
-                </div>
-                <div className="text-sm text-gray-600">This Month</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900">
-                  ₹{earnings.total}
-                </div>
-                <div className="text-sm text-gray-600">Total Earnings</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Deliveries Section */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center">
-                <Package className="h-5 w-5 mr-2" />
-                My Deliveries
+                <Badge variant="secondary">{activeDeliveries.length}</Badge>
               </CardTitle>
-              <div className="flex space-x-2">
-                <Button
-                  variant={activeTab === "active" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setActiveTab("active")}
-                >
-                  Active ({activeDeliveries.length})
-                </Button>
-                <Button
-                  variant={activeTab === "history" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setActiveTab("history")}
-                >
-                  History ({completedDeliveries.length})
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading deliveries...</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {(activeTab === "active"
-                  ? activeDeliveries
-                  : completedDeliveries
-                ).map((delivery) => (
-                  <Card
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {loading ? (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                  <p className="text-sm text-gray-600">Loading deliveries...</p>
+                </div>
+              ) : activeDeliveries.length > 0 ? (
+                activeDeliveries.slice(0, 2).map((delivery) => (
+                  <div
                     key={delivery.id}
-                    className="border-l-4 border-l-green-500"
+                    className="bg-white border border-gray-200 rounded-lg p-4"
                   >
-                    <CardContent className="p-6">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-3">
-                            <h3 className="font-semibold text-gray-900">
-                              Order #{delivery.order?.orderNumber}
-                            </h3>
-                            <Badge
-                              className={`${getStatusColor(delivery.deliveryStatus)} text-white`}
-                            >
-                              {getStatusText(delivery.deliveryStatus)}
-                            </Badge>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div>
-                              <div className="flex items-center text-sm text-gray-600 mb-2">
-                                <MapPin className="h-4 w-4 mr-1" />
-                                <span>
-                                  Pickup:{" "}
-                                  {delivery.order?.merchant.businessName}
-                                </span>
-                              </div>
-                              <div className="flex items-center text-sm text-gray-600 mb-2">
-                                <Navigation className="h-4 w-4 mr-1" />
-                                <span>
-                                  Delivery: {delivery.order?.customer.fullName}
-                                </span>
-                              </div>
-                            </div>
-                            <div>
-                              <div className="flex items-center text-sm text-gray-600 mb-2">
-                                <Package className="h-4 w-4 mr-1" />
-                                <span>
-                                  {delivery.order?.orderItems.length} items
-                                </span>
-                              </div>
-                              <div className="flex items-center text-sm text-gray-600 mb-2">
-                                <DollarSign className="h-4 w-4 mr-1" />
-                                <span>Earn ₹{delivery.deliveryFee}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center space-x-4">
-                            <div className="flex items-center text-sm text-gray-600">
-                              <Clock className="h-4 w-4 mr-1" />
-                              <span>{delivery.distanceKm} km away</span>
-                            </div>
-                            {delivery.order?.customer.phoneNumber && (
-                              <Button variant="outline" size="sm">
-                                <Phone className="h-4 w-4 mr-1" />
-                                Call Customer
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col space-y-2 mt-4 md:mt-0">
-                          {delivery.deliveryStatus === "ASSIGNED" && (
-                            <Button className="bg-green-500 hover:bg-green-600">
-                              Accept Delivery
-                            </Button>
-                          )}
-                          {delivery.deliveryStatus === "PICKED_UP" && (
-                            <Button className="bg-blue-500 hover:bg-blue-600">
-                              Start Delivery
-                            </Button>
-                          )}
-                          {delivery.deliveryStatus === "OUT_FOR_DELIVERY" && (
-                            <Button className="bg-orange-500 hover:bg-orange-600">
-                              Mark Delivered
-                            </Button>
-                          )}
-                          <Button variant="outline" size="sm">
-                            View Details
-                          </Button>
-                        </div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-2">
+                        <Package className="h-4 w-4 text-townkart-info" />
+                        <span className="font-medium text-gray-900">
+                          Order #{delivery.order?.orderNumber}
+                        </span>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      <Badge
+                        className={`${getStatusColor(delivery.deliveryStatus)} text-white text-xs`}
+                      >
+                        {getStatusText(delivery.deliveryStatus)}
+                      </Badge>
+                    </div>
 
-                {(activeTab === "active"
-                  ? activeDeliveries
-                  : completedDeliveries
-                ).length === 0 && (
-                  <div className="text-center py-8">
-                    <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      No {activeTab} deliveries
-                    </h3>
-                    <p className="text-gray-600">
-                      {activeTab === "active"
-                        ? "You don't have any active deliveries at the moment."
-                        : "You haven't completed any deliveries yet."}
-                    </p>
+                    <div className="space-y-2 mb-3">
+                      <div className="flex items-center text-sm text-gray-600">
+                        <MapPin className="h-4 w-4 mr-2 text-townkart-error" />
+                        <span>{delivery.order?.customer.fullName}</span>
+                      </div>
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Navigation className="h-4 w-4 mr-2 text-townkart-info" />
+                        <span>{delivery.distanceKm} km away</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-medium text-townkart-accent">
+                        Earn ₹{delivery.deliveryFee}
+                      </div>
+                      {delivery.deliveryStatus === "ASSIGNED" && (
+                        <Button
+                          size="sm"
+                          className="bg-townkart-accent hover:bg-townkart-accent/90"
+                        >
+                          Accept
+                        </Button>
+                      )}
+                      {delivery.deliveryStatus === "PICKED_UP" && (
+                        <Button
+                          size="sm"
+                          className="bg-townkart-info hover:bg-townkart-info/90"
+                        >
+                          Start
+                        </Button>
+                      )}
+                      {delivery.deliveryStatus === "OUT_FOR_DELIVERY" && (
+                        <Button
+                          size="sm"
+                          className="bg-townkart-warning hover:bg-townkart-warning/90"
+                        >
+                          Deliver
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-gray-600">No active deliveries</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <Navigation className="h-12 w-12 text-blue-500 mx-auto mb-4" />
-              <h3 className="font-semibold text-gray-900 mb-2">
-                Available Deliveries
-              </h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Browse and accept new delivery tasks
-              </p>
-              <Button className="w-full">View Available Orders</Button>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-2 gap-4">
+          <Link href="/rider/deliveries">
+            <Card className="hover:shadow-townkart transition-all duration-200 cursor-pointer border-2 hover:border-townkart-info/50">
+              <CardContent className="p-4 text-center">
+                <Navigation className="h-8 w-8 text-townkart-info mx-auto mb-2" />
+                <h3 className="font-semibold text-gray-900 text-sm mb-1">
+                  Available Orders
+                </h3>
+                <p className="text-xs text-gray-600">Browse new deliveries</p>
+              </CardContent>
+            </Card>
+          </Link>
 
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <Activity className="h-12 w-12 text-green-500 mx-auto mb-4" />
-              <h3 className="font-semibold text-gray-900 mb-2">Go Online</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Set your availability and start earning
-              </p>
-              <Button className="w-full bg-green-500 hover:bg-green-600">
-                Go Online
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardContent className="p-6 text-center">
-              <Award className="h-12 w-12 text-purple-500 mx-auto mb-4" />
-              <h3 className="font-semibold text-gray-900 mb-2">Performance</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                View your delivery stats and ratings
-              </p>
-              <Button variant="outline" className="w-full">
-                View Analytics
-              </Button>
-            </CardContent>
-          </Card>
+          <Link href="/rider/analytics">
+            <Card className="hover:shadow-townkart transition-all duration-200 cursor-pointer border-2 hover:border-townkart-secondary/50">
+              <CardContent className="p-4 text-center">
+                <Award className="h-8 w-8 text-townkart-secondary mx-auto mb-2" />
+                <h3 className="font-semibold text-gray-900 text-sm mb-1">
+                  Performance
+                </h3>
+                <p className="text-xs text-gray-600">View your stats</p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       </div>
     </div>

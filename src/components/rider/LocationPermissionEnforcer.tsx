@@ -1,78 +1,89 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
-  MapPin,
   AlertTriangle,
+  MapPin,
   RefreshCw,
-  Settings,
-  CheckCircle,
-  XCircle,
+  X,
   Clock,
   Battery,
   Wifi,
   WifiOff,
+  Shield,
+  AlertCircle,
 } from "lucide-react";
-import {
-  locationService,
-  LocationData,
-  LocationPermissionStatus,
-  RiderLocationTrackingOptions,
-} from "@/services/location.service";
 import { useAuth } from "@/hooks/useAuth";
 
-export interface LocationPermissionEnforcerProps {
-  onLocationAvailable?: (location: LocationData) => void;
+interface LocationStatus {
+  hasPermission: boolean;
+  isEnabled: boolean;
+  accuracy: number | null;
+  lastUpdate: Date | null;
+  error: string | null;
+  batteryLevel: number;
+  isOnline: boolean;
+}
+
+interface LocationPermissionEnforcerProps {
+  onLocationUpdate?: (location: any) => void;
+  requireContinuousTracking?: boolean;
+  onPermissionDenied?: () => void;
   onLocationLost?: () => void;
-  onPermissionRevoked?: () => void;
-  onBatteryWarning?: () => void;
-  onSpoofingDetected?: () => void;
   className?: string;
-  enforceStrictMode?: boolean; // If true, blocks app usage without location
 }
 
 export function LocationPermissionEnforcer({
-  onLocationAvailable,
+  onLocationUpdate,
+  requireContinuousTracking = false,
+  onPermissionDenied,
   onLocationLost,
-  onPermissionRevoked,
-  onBatteryWarning,
-  onSpoofingDetected,
   className = "",
-  enforceStrictMode = true,
 }: LocationPermissionEnforcerProps) {
-  const { user } = useAuth();
-  const [permissionStatus, setPermissionStatus] =
-    useState<LocationPermissionStatus | null>(null);
-  const [isTracking, setIsTracking] = useState(false);
-  const [currentLocation, setCurrentLocation] = useState<LocationData | null>(
-    null,
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [lastLocationTime, setLastLocationTime] = useState<Date | null>(null);
-  const [locationTimeoutWarning, setLocationTimeoutWarning] = useState(false);
-  const [batteryWarningShown, setBatteryWarningShown] = useState(false);
-  const [networkStatus, setNetworkStatus] = useState(navigator.onLine);
-  const [locationStreak, setLocationStreak] = useState(0); // Consecutive successful location updates
+  const { user, logout } = useAuth();
+  const router = useRouter();
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>({
+    hasPermission: false,
+    isEnabled: false,
+    accuracy: null,
+    lastUpdate: null,
+    error: null,
+    batteryLevel: 100,
+    isOnline: navigator.onLine,
+  });
 
-  const trackingOptions: RiderLocationTrackingOptions = {
-    updateInterval: 30000, // 30 seconds
-    backgroundEnabled: true,
-    batteryOptimizationWarning: true,
-    spoofingDetection: true,
-  };
+  const [showPermissionDialog, setShowPermissionDialog] = useState(false);
+  const [showLocationLostDialog, setShowLocationLostDialog] = useState(false);
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0);
+  const [isCheckingPermission, setIsCheckingPermission] = useState(false);
 
-  const locationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const watchIdRef = useRef<number | null>(null);
   const permissionCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const locationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastLocationRef = useRef<any>(null);
 
-  // Check network status
+  // Check location permission on mount
   useEffect(() => {
-    const handleOnline = () => setNetworkStatus(true);
-    const handleOffline = () => setNetworkStatus(false);
+    checkLocationPermission();
+    setupPermissionMonitoring();
+    setupBatteryMonitoring();
+
+    return () => {
+      cleanup();
+    };
+  }, []);
+
+  // Monitor network status
+  useEffect(() => {
+    const handleOnline = () =>
+      setLocationStatus((prev) => ({ ...prev, isOnline: true }));
+    const handleOffline = () =>
+      setLocationStatus((prev) => ({ ...prev, isOnline: false }));
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -83,438 +94,505 @@ export function LocationPermissionEnforcer({
     };
   }, []);
 
-  // Check initial permission and start tracking if possible
-  useEffect(() => {
-    const initializeLocationTracking = async () => {
-      try {
-        const status = await locationService.checkPermission();
-        setPermissionStatus(status);
+  const setupPermissionMonitoring = () => {
+    // Check permissions every 30 seconds
+    permissionCheckIntervalRef.current = setInterval(() => {
+      checkLocationPermission();
+    }, 30000);
+  };
 
-        if (status.granted) {
-          startLocationTracking();
-        } else if (enforceStrictMode) {
-          setError(
-            "Location permission is required to continue using the rider app",
-          );
-          onPermissionRevoked?.();
-        }
-      } catch (err) {
-        console.error("Error initializing location tracking:", err);
-        setError("Failed to initialize location services");
-      }
-    };
+  const setupBatteryMonitoring = () => {
+    if ("getBattery" in navigator) {
+      (navigator as any).getBattery().then((battery: any) => {
+        setLocationStatus((prev) => ({
+          ...prev,
+          batteryLevel: Math.round(battery.level * 100),
+        }));
 
-    initializeLocationTracking();
-
-    // Periodic permission check every 5 minutes
-    permissionCheckIntervalRef.current = setInterval(
-      async () => {
-        try {
-          const status = await locationService.checkPermission();
-          if (permissionStatus?.granted && !status.granted) {
-            // Permission was revoked
-            stopLocationTracking();
-            setPermissionStatus(status);
-            setError("Location permission has been revoked");
-            onPermissionRevoked?.();
-          }
-        } catch (err) {
-          console.error("Error checking permission:", err);
-        }
-      },
-      5 * 60 * 1000,
-    ); // 5 minutes
-
-    // Listen for permission changes
-    const unsubscribe = locationService.onPermissionChange((status) => {
-      setPermissionStatus(status);
-      if (!status.granted && enforceStrictMode) {
-        stopLocationTracking();
-        setError(
-          "Location permission is required to continue using the rider app",
-        );
-        onPermissionRevoked?.();
-      } else if (status.granted && !isTracking) {
-        startLocationTracking();
-      }
-    });
-
-    return () => {
-      stopLocationTracking();
-      if (permissionCheckIntervalRef.current) {
-        clearInterval(permissionCheckIntervalRef.current);
-      }
-      unsubscribe();
-    };
-  }, [enforceStrictMode, onPermissionRevoked]);
-
-  // Location timeout monitoring
-  useEffect(() => {
-    if (isTracking && lastLocationTime) {
-      const checkTimeout = () => {
-        const now = new Date();
-        const timeSinceLastLocation =
-          now.getTime() - lastLocationTime.getTime();
-        const timeoutThreshold = 5 * 60 * 1000; // 5 minutes
-        const criticalThreshold = 10 * 60 * 1000; // 10 minutes
-
-        if (timeSinceLastLocation > criticalThreshold) {
-          // Critical: auto-logout or reassign
-          setError(
-            "Location tracking has been lost for too long. Please check your GPS and network connection.",
-          );
-          onLocationLost?.();
-          if (enforceStrictMode) {
-            // Trigger auto-logout or delivery reassignment
-            handleCriticalLocationLoss();
-          }
-        } else if (timeSinceLastLocation > timeoutThreshold) {
-          setLocationTimeoutWarning(true);
-          setError("Location updates delayed. Please check your GPS signal.");
-        } else {
-          setLocationTimeoutWarning(false);
-          setError(null);
-        }
-      };
-
-      locationTimeoutRef.current = setInterval(checkTimeout, 60000); // Check every minute
-
-      return () => {
-        if (locationTimeoutRef.current) {
-          clearInterval(locationTimeoutRef.current);
-        }
-      };
+        battery.addEventListener("levelchange", () => {
+          setLocationStatus((prev) => ({
+            ...prev,
+            batteryLevel: Math.round(battery.level * 100),
+          }));
+        });
+      });
     }
-  }, [isTracking, lastLocationTime, enforceStrictMode, onLocationLost]);
+  };
 
-  const startLocationTracking = useCallback(() => {
-    if (isTracking) return;
+  const checkLocationPermission = async () => {
+    setIsCheckingPermission(true);
 
-    setIsTracking(true);
-    setError(null);
+    try {
+      if (!navigator.permissions) {
+        // Fallback for browsers without permissions API
+        setLocationStatus((prev) => ({
+          ...prev,
+          hasPermission: "geolocation" in navigator,
+          error: null,
+        }));
+        return;
+      }
 
-    locationService.startLocationTracking(
-      trackingOptions,
-      (location) => {
-        setCurrentLocation(location);
-        setLastLocationTime(new Date());
-        setLocationStreak((prev) => prev + 1);
-        onLocationAvailable?.(location);
+      const permission = await navigator.permissions.query({
+        name: "geolocation",
+      });
+
+      setLocationStatus((prev) => ({
+        ...prev,
+        hasPermission: permission.state === "granted",
+        error:
+          permission.state === "denied" ? "Location permission denied" : null,
+      }));
+
+      if (permission.state === "denied") {
+        handlePermissionDenied();
+      }
+
+      // Listen for permission changes
+      permission.addEventListener("change", () => {
+        setLocationStatus((prev) => ({
+          ...prev,
+          hasPermission: permission.state === "granted",
+          error:
+            permission.state === "denied" ? "Location permission denied" : null,
+        }));
+
+        if (permission.state === "denied") {
+          handlePermissionDenied();
+        }
+      });
+    } catch (error) {
+      console.error("Error checking location permission:", error);
+      setLocationStatus((prev) => ({
+        ...prev,
+        error: "Unable to check location permissions",
+      }));
+    } finally {
+      setIsCheckingPermission(false);
+    }
+  };
+
+  const handlePermissionDenied = () => {
+    setShowPermissionDialog(true);
+    onPermissionDenied?.();
+
+    // Log permission denial
+    logLocationEvent("permission_denied", {
+      userId: user?.id,
+      timestamp: new Date().toISOString(),
+    });
+  };
+
+  const requestLocationPermission = async () => {
+    try {
+      const position = await new Promise<GeolocationPosition>(
+        (resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          });
+        }
+      );
+
+      setLocationStatus((prev) => ({
+        ...prev,
+        hasPermission: true,
+        isEnabled: true,
+        accuracy: position.coords.accuracy,
+        lastUpdate: new Date(),
+        error: null,
+      }));
+
+      setShowPermissionDialog(false);
+      startLocationTracking();
+    } catch (error: any) {
+      console.error("Error requesting location permission:", error);
+
+      let errorMessage = "Unable to access location";
+      if (error.code === error.PERMISSION_DENIED) {
+        errorMessage =
+          "Location permission denied. Please enable location access in your browser settings.";
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        errorMessage =
+          "Location information is unavailable. Please check your GPS settings.";
+      } else if (error.code === error.TIMEOUT) {
+        errorMessage = "Location request timed out. Please try again.";
+      }
+
+      setLocationStatus((prev) => ({
+        ...prev,
+        error: errorMessage,
+      }));
+
+      // If permission is still denied after request, show enforcement dialog
+      if (error.code === error.PERMISSION_DENIED) {
+        setShowPermissionDialog(true);
+      }
+    }
+  };
+
+  const startLocationTracking = () => {
+    if (watchIdRef.current) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const locationData = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: new Date().toISOString(),
+          speed: position.coords.speed,
+          heading: position.coords.heading,
+          altitude: position.coords.altitude,
+        };
+
+        setLocationStatus((prev) => ({
+          ...prev,
+          isEnabled: true,
+          accuracy: position.coords.accuracy,
+          lastUpdate: new Date(),
+          error: null,
+        }));
+
+        setConsecutiveFailures(0);
+        lastLocationRef.current = locationData;
+        onLocationUpdate?.(locationData);
+
+        // Send location to server
+        sendLocationToServer(locationData);
+
+        // Reset location lost dialog
+        setShowLocationLostDialog(false);
       },
       (error) => {
         console.error("Location tracking error:", error);
-        setError(error.message);
+        setConsecutiveFailures((prev) => prev + 1);
 
-        if (error.message.includes("spoofing")) {
-          onSpoofingDetected?.();
-        } else if (error.message.includes("permission")) {
-          onPermissionRevoked?.();
-        } else {
-          onLocationLost?.();
+        let errorMessage = "Location tracking failed";
+        if (error.code === error.PERMISSION_DENIED) {
+          errorMessage = "Location permission revoked";
+          handlePermissionDenied();
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          errorMessage = "GPS signal lost";
+        } else if (error.code === error.TIMEOUT) {
+          errorMessage = "Location request timed out";
+        }
+
+        setLocationStatus((prev) => ({
+          ...prev,
+          error: errorMessage,
+        }));
+
+        // If location is lost for too long, show enforcement
+        if (consecutiveFailures >= 3) {
+          handleLocationLost();
         }
       },
-    );
-  }, [
-    isTracking,
-    trackingOptions,
-    onLocationAvailable,
-    onSpoofingDetected,
-    onPermissionRevoked,
-    onLocationLost,
-  ]);
-
-  const stopLocationTracking = useCallback(() => {
-    locationService.stopLocationTracking();
-    setIsTracking(false);
-    if (locationTimeoutRef.current) {
-      clearInterval(locationTimeoutRef.current);
-    }
-  }, []);
-
-  const handleCriticalLocationLoss = async () => {
-    // In a real app, this would trigger:
-    // 1. Auto-logout the rider
-    // 2. Reassign active deliveries
-    // 3. Notify admin
-    // 4. Send alert to rider
-
-    console.error(
-      "Critical location loss detected - triggering emergency protocols",
-    );
-
-    // For now, just show critical error
-    setError(
-      "CRITICAL: GPS signal lost. Rider app access suspended until location is restored.",
-    );
-  };
-
-  const requestPermission = async () => {
-    try {
-      setError(null);
-      await locationService.requestLocation();
-      const status = await locationService.checkPermission();
-      setPermissionStatus(status);
-
-      if (status.granted) {
-        startLocationTracking();
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: requireContinuousTracking ? 10000 : 30000, // More frequent updates for active deliveries
       }
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : "Failed to get location permission";
-      setError(errorMessage);
-    }
-  };
-
-  const getStatusDisplay = () => {
-    if (!permissionStatus) return null;
-
-    if (permissionStatus.granted && isTracking && currentLocation) {
-      const timeSinceUpdate = lastLocationTime
-        ? new Date().getTime() - lastLocationTime.getTime()
-        : Infinity;
-
-      const isRecent = timeSinceUpdate < 60000; // 1 minute
-
-      return (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <span className="text-sm text-green-700">
-              Location tracking active
-            </span>
-            {isRecent && (
-              <Badge variant="secondary" className="text-xs">
-                Live
-              </Badge>
-            )}
-          </div>
-
-          <div className="text-xs text-gray-600 space-y-1">
-            <div>Last update: {lastLocationTime?.toLocaleTimeString()}</div>
-            <div>
-              Accuracy:{" "}
-              {currentLocation.accuracy
-                ? `${Math.round(currentLocation.accuracy)}m`
-                : "Unknown"}
-            </div>
-            <div>Streak: {locationStreak} updates</div>
-          </div>
-        </div>
-      );
-    }
-
-    if (permissionStatus.denied) {
-      return (
-        <div className="flex items-center gap-2">
-          <XCircle className="h-4 w-4 text-red-500" />
-          <span className="text-sm text-red-700">
-            Location permission denied
-          </span>
-        </div>
-      );
-    }
-
-    if (permissionStatus.prompt) {
-      return (
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-yellow-500" />
-          <span className="text-sm text-yellow-700">
-            Location permission required
-          </span>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  const getConnectionStatus = () => {
-    const indicators = [];
-
-    // Network status
-    indicators.push(
-      <div key="network" className="flex items-center gap-1">
-        {networkStatus ? (
-          <Wifi className="h-3 w-3 text-green-500" />
-        ) : (
-          <WifiOff className="h-3 w-3 text-red-500" />
-        )}
-        <span className="text-xs">{networkStatus ? "Online" : "Offline"}</span>
-      </div>,
     );
 
-    // GPS status
-    if (isTracking) {
-      indicators.push(
-        <div key="gps" className="flex items-center gap-1">
-          <MapPin className="h-3 w-3 text-green-500" />
-          <span className="text-xs">GPS Active</span>
-        </div>,
-      );
+    // Set timeout for location updates
+    if (requireContinuousTracking) {
+      locationTimeoutRef.current = setTimeout(() => {
+        if (
+          !lastLocationRef.current ||
+          Date.now() - new Date(lastLocationRef.current.timestamp).getTime() >
+            60000
+        ) {
+          handleLocationLost();
+        }
+      }, 60000); // 1 minute timeout for active deliveries
     }
+  };
 
-    // Battery warning
-    if (batteryWarningShown) {
-      indicators.push(
-        <div key="battery" className="flex items-center gap-1">
-          <Battery className="h-3 w-3 text-yellow-500" />
-          <span className="text-xs">Battery Warning</span>
-        </div>,
-      );
+  const handleLocationLost = () => {
+    setShowLocationLostDialog(true);
+    onLocationLost?.();
+
+    logLocationEvent("location_lost", {
+      userId: user?.id,
+      lastLocation: lastLocationRef.current,
+      consecutiveFailures,
+      timestamp: new Date().toISOString(),
+    });
+
+    // For active deliveries, this should trigger auto-reassign or logout
+    if (requireContinuousTracking) {
+      // Trigger emergency protocols
+      triggerEmergencyProtocol();
     }
+  };
 
-    return indicators;
+  const triggerEmergencyProtocol = async () => {
+    try {
+      // Notify admin
+      await fetch("/api/admin/rider-location-alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          riderId: user?.id,
+          alertType: "gps_lost_during_delivery",
+          lastLocation: lastLocationRef.current,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+
+      // Auto-logout after 5 minutes of no location
+      setTimeout(async () => {
+        if (
+          !lastLocationRef.current ||
+          Date.now() - new Date(lastLocationRef.current.timestamp).getTime() >
+            300000
+        ) {
+          await logout();
+          router.push("/auth/login?reason=gps_required");
+        }
+      }, 300000); // 5 minutes
+    } catch (error) {
+      console.error("Error triggering emergency protocol:", error);
+    }
+  };
+
+  const sendLocationToServer = async (locationData: any) => {
+    try {
+      await fetch("/api/riders/location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(locationData),
+      });
+    } catch (error) {
+      console.error("Error sending location to server:", error);
+    }
+  };
+
+  const logLocationEvent = async (eventType: string, data: any) => {
+    try {
+      await fetch("/api/riders/location/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventType, ...data }),
+      });
+    } catch (error) {
+      console.error("Error logging location event:", error);
+    }
+  };
+
+  const cleanup = () => {
+    if (watchIdRef.current) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (permissionCheckIntervalRef.current) {
+      clearInterval(permissionCheckIntervalRef.current);
+      permissionCheckIntervalRef.current = null;
+    }
+    if (locationTimeoutRef.current) {
+      clearTimeout(locationTimeoutRef.current);
+      locationTimeoutRef.current = null;
+    }
+  };
+
+  const getAccuracyColor = (accuracy: number | null) => {
+    if (!accuracy) return "text-gray-500";
+    if (accuracy <= 10) return "text-green-600";
+    if (accuracy <= 50) return "text-yellow-600";
+    return "text-red-600";
+  };
+
+  const getBatteryColor = (level: number) => {
+    if (level >= 50) return "text-green-600";
+    if (level >= 20) return "text-yellow-600";
+    return "text-red-600";
   };
 
   return (
-    <Card className={className}>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2">
-          <MapPin className="h-5 w-5" />
-          Location Tracking Status
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Status Display */}
-        {getStatusDisplay()}
+    <>
+      {/* Permission Required Dialog */}
+      {showPermissionDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-red-600">
+                <Shield className="h-5 w-5" />
+                Location Access Required
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Location access is mandatory for delivery riders. This allows
+                  us to:
+                  <ul className="mt-2 ml-4 list-disc text-sm">
+                    <li>Assign you to nearby delivery requests</li>
+                    <li>Track your location during deliveries</li>
+                    <li>Ensure customer safety and order accuracy</li>
+                    <li>Calculate accurate delivery times</li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
 
-        {/* Connection Indicators */}
-        <div className="flex flex-wrap gap-3 text-xs">
-          {getConnectionStatus()}
+              <div className="flex gap-2">
+                <Button onClick={requestLocationPermission} className="flex-1">
+                  Enable Location Access
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPermissionDialog(false)}
+                  className="flex-1"
+                >
+                  Try Again Later
+                </Button>
+              </div>
+
+              <p className="text-xs text-gray-500 text-center">
+                Without location access, you cannot go online or accept
+                deliveries.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Location Lost Dialog */}
+      {showLocationLostDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-orange-600">
+                <AlertTriangle className="h-5 w-5" />
+                GPS Signal Lost
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Your GPS signal has been lost. This may affect delivery
+                  assignments and tracking.
+                  {requireContinuousTracking &&
+                    " Active deliveries require continuous GPS tracking."}
+                </AlertDescription>
+              </Alert>
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-600">Network Status</p>
+                  <div className="flex items-center gap-1">
+                    {locationStatus.isOnline ? (
+                      <Wifi className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <WifiOff className="h-4 w-4 text-red-500" />
+                    )}
+                    <span>
+                      {locationStatus.isOnline ? "Online" : "Offline"}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-gray-600">Battery Level</p>
+                  <span
+                    className={getBatteryColor(locationStatus.batteryLevel)}
+                  >
+                    {locationStatus.batteryLevel}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => {
+                    setShowLocationLostDialog(false);
+                    requestLocationPermission();
+                  }}
+                  className="flex-1"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry GPS
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowLocationLostDialog(false)}
+                  className="flex-1"
+                >
+                  Continue
+                </Button>
+              </div>
+
+              {requireContinuousTracking && (
+                <p className="text-xs text-red-600 text-center">
+                  ⚠️ GPS required for active delivery. System will auto-logout
+                  in 5 minutes if unresolved.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Status Indicator */}
+      <div className={`p-3 rounded-lg border ${className}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-3 h-3 rounded-full ${
+                locationStatus.hasPermission && locationStatus.isEnabled
+                  ? "bg-green-500 animate-pulse"
+                  : locationStatus.hasPermission
+                    ? "bg-yellow-500"
+                    : "bg-red-500"
+              }`}
+            />
+
+            <div>
+              <p className="text-sm font-medium">
+                {locationStatus.hasPermission && locationStatus.isEnabled
+                  ? "GPS Active"
+                  : locationStatus.hasPermission
+                    ? "GPS Available"
+                    : "GPS Required"}
+              </p>
+              <div className="flex items-center gap-4 text-xs text-gray-600">
+                {locationStatus.accuracy && (
+                  <span className={getAccuracyColor(locationStatus.accuracy)}>
+                    ±{Math.round(locationStatus.accuracy)}m
+                  </span>
+                )}
+                {locationStatus.lastUpdate && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(locationStatus.lastUpdate).toLocaleTimeString()}
+                  </span>
+                )}
+                <span className={getBatteryColor(locationStatus.batteryLevel)}>
+                  <Battery className="h-3 w-3 inline mr-1" />
+                  {locationStatus.batteryLevel}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {isCheckingPermission && (
+            <RefreshCw className="h-4 w-4 animate-spin text-gray-400" />
+          )}
         </div>
 
-        {/* Progress for location streak */}
-        {isTracking && locationStreak > 0 && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs text-gray-600">
-              <span>Location Update Streak</span>
-              <span>{locationStreak}</span>
-            </div>
-            <Progress
-              value={Math.min(locationStreak * 10, 100)}
-              className="h-2"
-            />
-          </div>
-        )}
-
-        {/* Error Display */}
-        {error && (
-          <Alert variant={locationTimeoutWarning ? "default" : "destructive"}>
+        {locationStatus.error && (
+          <Alert className="mt-3">
             <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Permission Request */}
-        {permissionStatus?.prompt && !isTracking && (
-          <div className="space-y-3">
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                Location access is mandatory for delivery riders. This allows us
-                to:
-                <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li>Track your location during deliveries</li>
-                  <li>Assign nearby orders efficiently</li>
-                  <li>Ensure customer safety and order accuracy</li>
-                  <li>Provide real-time ETAs</li>
-                </ul>
-              </AlertDescription>
-            </Alert>
-
-            <Button
-              onClick={requestPermission}
-              className="w-full"
-              disabled={!networkStatus}
-            >
-              <MapPin className="h-4 w-4 mr-2" />
-              Enable Location Tracking
-            </Button>
-          </div>
-        )}
-
-        {/* Permission Instructions */}
-        {permissionStatus?.denied && (
-          <div className="space-y-3">
-            <Alert>
-              <Settings className="h-4 w-4" />
-              <AlertDescription>
-                <div className="space-y-2">
-                  <p>
-                    Location permission is required to use the rider app. To
-                    enable:
-                  </p>
-                  <div className="text-xs space-y-1">
-                    <p>
-                      <strong>iOS:</strong> Settings → Privacy & Security →
-                      Location Services → [Browser] → Allow
-                    </p>
-                    <p>
-                      <strong>Android:</strong> Settings → Apps → [Browser] →
-                      Permissions → Location → Allow
-                    </p>
-                  </div>
-                  <p className="text-xs text-yellow-600 mt-2">
-                    Note: "Allow all the time" permission may be required for
-                    background tracking.
-                  </p>
-                </div>
-              </AlertDescription>
-            </Alert>
-
-            <Button
-              variant="outline"
-              onClick={requestPermission}
-              className="w-full"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Check Permission Again
-            </Button>
-          </div>
-        )}
-
-        {/* Battery Optimization Warning */}
-        {batteryWarningShown && (
-          <Alert>
-            <Battery className="h-4 w-4" />
-            <AlertDescription>
-              Battery optimization may be affecting location accuracy. For best
-              performance:
-              <ul className="list-disc list-inside mt-2 space-y-1 text-xs">
-                <li>Disable battery optimization for this app</li>
-                <li>Keep GPS/location services enabled</li>
-                <li>Ensure background app refresh is allowed</li>
-              </ul>
+            <AlertDescription className="text-sm">
+              {locationStatus.error}
             </AlertDescription>
           </Alert>
         )}
-
-        {/* Network Warning */}
-        {!networkStatus && (
-          <Alert>
-            <WifiOff className="h-4 w-4" />
-            <AlertDescription>
-              No internet connection detected. Location tracking requires
-              network access for real-time updates.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Debug Info (only in development) */}
-        {process.env.NODE_ENV === "development" && currentLocation && (
-          <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-            <div>Lat: {currentLocation.latitude.toFixed(6)}</div>
-            <div>Lng: {currentLocation.longitude.toFixed(6)}</div>
-            <div>Accuracy: {currentLocation.accuracy}m</div>
-            <div>Speed: {currentLocation.speed?.toFixed(1)} m/s</div>
-            <div>
-              Timestamp: {new Date(currentLocation.timestamp).toLocaleString()}
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+    </>
   );
 }

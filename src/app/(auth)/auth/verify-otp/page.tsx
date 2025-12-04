@@ -14,6 +14,7 @@ import {
 import { OTPInput } from "@/components/auth/OTPInput";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { DeviceSelectionModal } from "@/components/auth/DeviceSelectionModal";
 import {
   ShoppingCart,
   ArrowLeft,
@@ -32,6 +33,8 @@ export default function VerifyOTPPage() {
   const [resendTimer, setResendTimer] = useState(30);
   const [canResend, setCanResend] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
+  const [showDeviceSelection, setShowDeviceSelection] = useState(false);
+  const [existingDevices, setExistingDevices] = useState<any[]>([]);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -92,6 +95,13 @@ export default function VerifyOTPPage() {
       const result = await response.json();
 
       if (!response.ok) {
+        // Handle device selection required (409 Conflict)
+        if (response.status === 409 && result.requiresDeviceSelection) {
+          setExistingDevices(result.existingDevices || []);
+          setShowDeviceSelection(true);
+          setIsLoading(false);
+          return;
+        }
         throw new Error(result.message || "OTP verification failed");
       }
 
@@ -193,6 +203,22 @@ export default function VerifyOTPPage() {
     if (value.length === 4) {
       handleOTPSubmit(value);
     }
+  };
+
+  const handleDeviceSelect = async (deviceId: string) => {
+    // After device logout, retry the OTP verification
+    setShowDeviceSelection(false);
+    setExistingDevices([]);
+    // Retry OTP verification with the same OTP
+    if (otp.length === 4) {
+      await handleOTPSubmit(otp);
+    }
+  };
+
+  const handleDeviceSelectionCancel = () => {
+    setShowDeviceSelection(false);
+    setExistingDevices([]);
+    setError("Login cancelled. Please try again.");
   };
 
   // For login/register flow, require phone and role parameters
@@ -388,6 +414,16 @@ export default function VerifyOTPPage() {
           </Card>
         </div>
       </div>
+
+      {/* Device Selection Modal */}
+      {showDeviceSelection && (
+        <DeviceSelectionModal
+          devices={existingDevices}
+          onDeviceSelect={handleDeviceSelect}
+          onCancel={handleDeviceSelectionCancel}
+          isLoading={isLoading}
+        />
+      )}
     </div>
   );
 }

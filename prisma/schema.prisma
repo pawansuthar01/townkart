@@ -18,6 +18,12 @@ enum UserRole {
   ADMIN
 }
 
+enum StoreApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum OrderStatus {
   ORDER_PLACED
   STORE_ASSIGNED
@@ -175,8 +181,9 @@ model Store {
   operatingHours    Json?    // {monday: {open: "09:00", close: "21:00"}, ...}
 
   // Status & Verification
-  isActive          Boolean  @default(true)
-  isVerified        Boolean  @default(false)
+   isActive          Boolean  @default(true)
+   isVerified        Boolean  @default(false)
+   applicationStatus StoreApplicationStatus @default(PENDING)
 
   // Performance Metrics
   averageRating     Float    @default(0)

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,25 +63,43 @@ interface Product {
 }
 
 export default function ProductHomePage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [sortBy, setSortBy] = useState("featured");
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [categories, setCategories] = useState<any[]>([]);
 
   const { addItem } = useCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
 
+  // Fetch categories
+  const {
+    data: categoriesData,
+    isLoading: categoriesLoading,
+    error: categoriesError,
+  } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const response = await fetch("/api/categories");
+      const data = await response.json();
+      if (data.success) {
+        return data.categories || [];
+      }
+      throw new Error(data.message || "Failed to fetch categories");
+    },
+  });
+
+  const categories = categoriesData || [];
+
   // Fetch products
-  const fetchProducts = async (page = 1) => {
-    try {
-      setLoading(true);
+  const {
+    data: productsData,
+    isLoading: productsLoading,
+    error: productsError,
+  } = useQuery({
+    queryKey: ["products", searchQuery, selectedCategory, sortBy, currentPage],
+    queryFn: async () => {
       const params = new URLSearchParams({
-        page: page.toString(),
+        page: currentPage.toString(),
         limit: "24",
         sortBy,
       });
@@ -92,39 +111,19 @@ export default function ProductHomePage() {
       const data = await response.json();
 
       if (data.success) {
-        setProducts(data.data);
-        setTotalPages(data.pagination?.totalPages || 1);
-        setCurrentPage(page);
-      } else {
-        setError(data.message || "Failed to fetch products");
+        return {
+          products: data.data,
+          totalPages: data.pagination?.totalPages || 1,
+        };
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch products");
-    } finally {
-      setLoading(false);
-    }
-  };
+      throw new Error(data.message || "Failed to fetch products");
+    },
+  });
 
-  // Fetch categories
-  const fetchCategories = async () => {
-    try {
-      const response = await fetch("/api/categories");
-      const data = await response.json();
-      if (data.success) {
-        setCategories(data.categories || []);
-      }
-    } catch (error) {
-      console.error("Failed to fetch categories:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchCategories();
-  }, []);
-
-  useEffect(() => {
-    fetchProducts(1);
-  }, [searchQuery, selectedCategory, sortBy]);
+  const products = productsData?.products || [];
+  const totalPages = productsData?.totalPages || 1;
+  const loading = productsLoading || categoriesLoading;
+  const error = productsError?.message || categoriesError?.message;
 
   const handleAddToCart = (product: Product) => {
     addItem({
@@ -244,7 +243,7 @@ export default function ProductHomePage() {
               >
                 All Products
               </button>
-              {categories.slice(0, 8).map((category) => (
+              {categories.slice(0, 8).map((category: any) => (
                 <button
                   key={category.id}
                   onClick={() => setSelectedCategory(category.name)}
@@ -292,10 +291,7 @@ export default function ProductHomePage() {
               Failed to load products
             </h3>
             <p className="text-gray-600 mb-6">{error}</p>
-            <Button
-              onClick={() => fetchProducts(currentPage)}
-              variant="outline"
-            >
+            <Button onClick={() => window.location.reload()} variant="outline">
               Try Again
             </Button>
           </div>
@@ -335,7 +331,7 @@ export default function ProductHomePage() {
 
             {/* Products Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 mb-12">
-              {products.map((product) => (
+              {products.map((product: any) => (
                 <Card
                   key={product.id}
                   className="group hover:shadow-2xl transition-all duration-500 border-0 bg-white overflow-hidden hover:-translate-y-2"
@@ -479,7 +475,7 @@ export default function ProductHomePage() {
               <div className="flex justify-center items-center gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => fetchProducts(currentPage - 1)}
+                  onClick={() => setCurrentPage(currentPage - 1)}
                   disabled={currentPage === 1}
                   className="px-4 py-2"
                 >
@@ -493,7 +489,7 @@ export default function ProductHomePage() {
                     <Button
                       key={page}
                       variant={page === currentPage ? "default" : "outline"}
-                      onClick={() => fetchProducts(page)}
+                      onClick={() => setCurrentPage(page)}
                       className="px-4 py-2 min-w-[44px]"
                     >
                       {page}
@@ -503,7 +499,7 @@ export default function ProductHomePage() {
 
                 <Button
                   variant="outline"
-                  onClick={() => fetchProducts(currentPage + 1)}
+                  onClick={() => setCurrentPage(currentPage + 1)}
                   disabled={currentPage === totalPages}
                   className="px-4 py-2"
                 >

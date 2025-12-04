@@ -164,332 +164,285 @@ export default function RiderProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Rider Profile
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Manage your delivery information
-              </p>
-            </div>
-            {!isEditing ? (
+      {/* Mobile App Header Actions */}
+      <div className="px-4 py-4 bg-white border-b">
+        <div className="flex items-center justify-between">
+          {!isEditing ? (
+            <Button
+              onClick={() => setIsEditing(true)}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              <Edit className="h-4 w-4" />
+              Edit
+            </Button>
+          ) : (
+            <div className="flex gap-2">
               <Button
-                onClick={() => setIsEditing(true)}
+                variant="outline"
+                size="sm"
+                onClick={handleCancel}
+                disabled={isLoading}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={isLoading}
                 className="flex items-center gap-2"
               >
-                <Edit className="h-4 w-4" />
-                Edit Profile
+                <Save className="h-4 w-4" />
+                {isLoading ? "Saving..." : "Save"}
               </Button>
-            ) : (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={handleCancel}
-                  disabled={isLoading}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSave}
-                  disabled={isLoading}
-                  className="flex items-center gap-2"
-                >
-                  <Save className="h-4 w-4" />
-                  {isLoading ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Profile Sidebar */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardContent className="p-6">
-                <div className="text-center">
-                  <div className="relative inline-block">
-                    <Avatar className="w-24 h-24 mx-auto mb-4">
-                      <AvatarImage src={profileImage || undefined} />
-                      <AvatarFallback className="text-2xl">
-                        {formData.fullName.charAt(0)?.toUpperCase() || "R"}
-                      </AvatarFallback>
-                    </Avatar>
-                    {isEditing && (
-                      <label className="absolute bottom-0 right-0 bg-townkart-primary text-white p-2 rounded-full cursor-pointer hover:bg-townkart-primary/90 transition-colors">
-                        <Camera className="h-4 w-4" />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageChange}
-                          className="hidden"
-                        />
-                      </label>
-                    )}
-                  </div>
+      <div className="space-y-6">
+        {/* Profile Header Card */}
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center">
+              <div className="relative inline-block mb-4">
+                <Avatar className="w-20 h-20 mx-auto">
+                  <AvatarImage src={profileImage || undefined} />
+                  <AvatarFallback className="text-xl">
+                    {formData.fullName.charAt(0)?.toUpperCase() || "R"}
+                  </AvatarFallback>
+                </Avatar>
+                {isEditing && (
+                  <label className="absolute bottom-0 right-0 bg-townkart-primary text-white p-2 rounded-full cursor-pointer hover:bg-townkart-primary/90 transition-colors">
+                    <Camera className="h-4 w-4" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
 
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    {formData.fullName || "Rider"}
-                  </h2>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                {formData.fullName || "Rider"}
+              </h2>
 
-                  <Badge variant="secondary" className="mb-4">
-                    Delivery Rider
-                  </Badge>
+              <Badge variant="secondary" className="mb-4">
+                Delivery Rider
+              </Badge>
 
-                  <div className="space-y-3 text-sm text-gray-600">
-                    <div className="flex items-center justify-center gap-2">
-                      <Mail className="h-4 w-4" />
-                      <span>{formData.email}</span>
-                    </div>
-                    {formData.phoneNumber && (
-                      <div className="flex items-center justify-center gap-2">
-                        <Phone className="h-4 w-4" />
-                        <span>{formData.phoneNumber}</span>
-                      </div>
-                    )}
-                  </div>
+              <div className="flex justify-center space-x-6 text-sm text-gray-600">
+                <div className="flex items-center gap-1">
+                  <Mail className="h-4 w-4" />
+                  <span>{formData.email}</span>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Rider Stats */}
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle className="text-lg">Delivery Stats</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Status</span>
-                  <Badge
-                    variant="default"
-                    className="bg-green-100 text-green-800"
-                  >
-                    Active
-                  </Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Verification</span>
-                  <Badge
-                    variant="default"
-                    className="bg-blue-100 text-blue-800"
-                  >
-                    Verified
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Personal Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Personal Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName">Full Name</Label>
-                    {isEditing ? (
-                      <Input
-                        id="fullName"
-                        value={formData.fullName}
-                        onChange={(e) =>
-                          handleInputChange("fullName", e.target.value)
-                        }
-                        placeholder="Enter your full name"
-                      />
-                    ) : (
-                      <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md">
-                        {formData.fullName || "Not provided"}
-                      </p>
-                    )}
+                {formData.phoneNumber && (
+                  <div className="flex items-center gap-1">
+                    <Phone className="h-4 w-4" />
+                    <span>{formData.phoneNumber}</span>
                   </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email Address</Label>
+        {/* Main Content */}
+        <div className="space-y-6">
+          {/* Personal Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Personal Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Full Name</Label>
+                  {isEditing ? (
+                    <Input
+                      id="fullName"
+                      value={formData.fullName}
+                      onChange={(e) =>
+                        handleInputChange("fullName", e.target.value)
+                      }
+                      placeholder="Enter your full name"
+                    />
+                  ) : (
                     <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md">
-                      {formData.email}
+                      {formData.fullName || "Not provided"}
                     </p>
-                    <p className="text-xs text-gray-500">
-                      Email cannot be changed
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="phoneNumber">Phone Number</Label>
-                    {isEditing ? (
-                      <Input
-                        id="phoneNumber"
-                        value={formData.phoneNumber}
-                        onChange={(e) =>
-                          handleInputChange("phoneNumber", e.target.value)
-                        }
-                        placeholder="Enter your phone number"
-                      />
-                    ) : (
-                      <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md">
-                        {formData.phoneNumber || "Not provided"}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="emergencyContact">Emergency Contact</Label>
-                    {isEditing ? (
-                      <Input
-                        id="emergencyContact"
-                        value={formData.emergencyContact}
-                        onChange={(e) =>
-                          handleInputChange("emergencyContact", e.target.value)
-                        }
-                        placeholder="Enter emergency contact"
-                      />
-                    ) : (
-                      <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md">
-                        {formData.emergencyContact || "Not provided"}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Vehicle Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Bike className="h-5 w-5" />
-                  Vehicle Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="vehicleType">Vehicle Type</Label>
-                    {isEditing ? (
-                      <select
-                        id="vehicleType"
-                        value={formData.vehicleType}
-                        onChange={(e) =>
-                          handleInputChange("vehicleType", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-townkart-primary focus:border-transparent"
-                      >
-                        <option value="">Select vehicle type</option>
-                        <option value="bicycle">Bicycle</option>
-                        <option value="motorcycle">Motorcycle</option>
-                        <option value="scooter">Scooter</option>
-                        <option value="car">Car</option>
-                      </select>
-                    ) : (
-                      <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md capitalize">
-                        {formData.vehicleType || "Not provided"}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="vehicleNumber">Vehicle Number</Label>
-                    {isEditing ? (
-                      <Input
-                        id="vehicleNumber"
-                        value={formData.vehicleNumber}
-                        onChange={(e) =>
-                          handleInputChange("vehicleNumber", e.target.value)
-                        }
-                        placeholder="Enter vehicle number"
-                      />
-                    ) : (
-                      <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md uppercase">
-                        {formData.vehicleNumber || "Not provided"}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="licenseNumber">
-                      Driving License Number
-                    </Label>
-                    {isEditing ? (
-                      <Input
-                        id="licenseNumber"
-                        value={formData.licenseNumber}
-                        onChange={(e) =>
-                          handleInputChange("licenseNumber", e.target.value)
-                        }
-                        placeholder="Enter driving license number"
-                      />
-                    ) : (
-                      <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md uppercase">
-                        {formData.licenseNumber || "Not provided"}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Delivery Settings */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
-                  Delivery Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <h3 className="font-medium text-gray-900">Working Hours</h3>
-                    <p className="text-sm text-gray-600">
-                      Set your availability
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    Configure
-                  </Button>
+                  )}
                 </div>
 
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <h3 className="font-medium text-gray-900">Service Areas</h3>
-                    <p className="text-sm text-gray-600">
-                      Manage delivery zones
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    Configure
-                  </Button>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md">
+                    {formData.email}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Email cannot be changed
+                  </p>
                 </div>
 
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <h3 className="font-medium text-gray-900">
-                      Payment Methods
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      Bank account details
+                <div className="space-y-2">
+                  <Label htmlFor="phoneNumber">Phone Number</Label>
+                  {isEditing ? (
+                    <Input
+                      id="phoneNumber"
+                      value={formData.phoneNumber}
+                      onChange={(e) =>
+                        handleInputChange("phoneNumber", e.target.value)
+                      }
+                      placeholder="Enter your phone number"
+                    />
+                  ) : (
+                    <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md">
+                      {formData.phoneNumber || "Not provided"}
                     </p>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    Configure
-                  </Button>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="emergencyContact">Emergency Contact</Label>
+                  {isEditing ? (
+                    <Input
+                      id="emergencyContact"
+                      value={formData.emergencyContact}
+                      onChange={(e) =>
+                        handleInputChange("emergencyContact", e.target.value)
+                      }
+                      placeholder="Enter emergency contact"
+                    />
+                  ) : (
+                    <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md">
+                      {formData.emergencyContact || "Not provided"}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Vehicle Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bike className="h-5 w-5" />
+                Vehicle Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="vehicleType">Vehicle Type</Label>
+                  {isEditing ? (
+                    <select
+                      id="vehicleType"
+                      value={formData.vehicleType}
+                      onChange={(e) =>
+                        handleInputChange("vehicleType", e.target.value)
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-townkart-primary focus:border-transparent"
+                    >
+                      <option value="">Select vehicle type</option>
+                      <option value="bicycle">Bicycle</option>
+                      <option value="motorcycle">Motorcycle</option>
+                      <option value="scooter">Scooter</option>
+                      <option value="car">Car</option>
+                    </select>
+                  ) : (
+                    <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md capitalize">
+                      {formData.vehicleType || "Not provided"}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="vehicleNumber">Vehicle Number</Label>
+                  {isEditing ? (
+                    <Input
+                      id="vehicleNumber"
+                      value={formData.vehicleNumber}
+                      onChange={(e) =>
+                        handleInputChange("vehicleNumber", e.target.value)
+                      }
+                      placeholder="Enter vehicle number"
+                    />
+                  ) : (
+                    <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md uppercase">
+                      {formData.vehicleNumber || "Not provided"}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="licenseNumber">Driving License Number</Label>
+                  {isEditing ? (
+                    <Input
+                      id="licenseNumber"
+                      value={formData.licenseNumber}
+                      onChange={(e) =>
+                        handleInputChange("licenseNumber", e.target.value)
+                      }
+                      placeholder="Enter driving license number"
+                    />
+                  ) : (
+                    <p className="text-gray-900 font-medium py-2 px-3 bg-gray-50 rounded-md uppercase">
+                      {formData.licenseNumber || "Not provided"}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Delivery Settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="h-5 w-5" />
+                Delivery Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <h3 className="font-medium text-gray-900">Working Hours</h3>
+                  <p className="text-sm text-gray-600">Set your availability</p>
+                </div>
+                <Button variant="outline" size="sm">
+                  Configure
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <h3 className="font-medium text-gray-900">Service Areas</h3>
+                  <p className="text-sm text-gray-600">Manage delivery zones</p>
+                </div>
+                <Button variant="outline" size="sm">
+                  Configure
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <h3 className="font-medium text-gray-900">Payment Methods</h3>
+                  <p className="text-sm text-gray-600">Bank account details</p>
+                </div>
+                <Button variant="outline" size="sm">
+                  Configure
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

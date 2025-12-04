@@ -103,7 +103,7 @@ export function MapView({
         latitude: deliveryData.customer.address.latitude,
         longitude: deliveryData.customer.address.longitude,
       },
-      color: "#f59e0b",
+      color: "#39B54A", // townkart-accent
       strokeWeight: 4,
     });
   }
@@ -166,7 +166,7 @@ export function MapView({
                 <div className="text-center">
                   <div className="text-2xl font-bold text-gray-900">
                     {formatDistanceRemaining(
-                      deliveryData.delivery.distanceRemaining,
+                      deliveryData.delivery.distanceRemaining
                     )}
                   </div>
                   <div className="text-sm text-gray-600">Distance</div>
@@ -207,7 +207,7 @@ export function MapView({
                 className="flex-1"
                 onClick={() =>
                   window.open(
-                    `https://wa.me/${deliveryData.rider.phone.replace(/\s+/g, "")}`,
+                    `https://wa.me/${deliveryData.rider.phone.replace(/\s+/g, "")}`
                   )
                 }
               >
@@ -225,7 +225,7 @@ export function MapView({
 // Hook for using delivery tracking
 export function useDeliveryTracking(deliveryId: string) {
   const [trackingData, setTrackingData] = useState<DeliveryTrackingData | null>(
-    null,
+    null
   );
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
