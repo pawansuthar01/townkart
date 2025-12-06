@@ -124,7 +124,11 @@ export class OTPService {
       | "DEVICE_LOGOUT" = "LOGIN"
   ): Promise<{ success: boolean; message: string; channels: string[] }> {
     try {
+      console.log(
+        `[OTP] Starting OTP send for ${phoneNumber}, purpose: ${purpose}, email: ${email}`
+      );
       const settings = await this.getAdminOTPSettings();
+      console.log(`[OTP] Settings loaded:`, settings);
 
       // Check cooldown period
       const recentOTP = await prisma.oTP.findFirst({
@@ -139,20 +143,21 @@ export class OTPService {
         },
       });
 
-      // if (recentOTP) {
-      //   const timeLeft = Math.ceil(
-      //     (recentOTP.createdAt.getTime() +
-      //       settings.cooldown_minutes * 60 * 1000 -
-      //       Date.now()) /
-      //       1000 /
-      //       60
-      //   );
-      //   return {
-      //     success: false,
-      //     message: `Please wait ${timeLeft} minutes before requesting another OTP`,
-      //     channels: [],
-      //   };
-      // }
+      if (recentOTP) {
+        const timeLeft = Math.ceil(
+          (recentOTP.createdAt.getTime() +
+            settings.cooldown_minutes * 60 * 1000 -
+            Date.now()) /
+            1000 /
+            60
+        );
+        console.log(`[OTP] Cooldown active, ${timeLeft} minutes remaining`);
+        return {
+          success: false,
+          message: `Please wait ${timeLeft} minutes before requesting another OTP`,
+          channels: [],
+        };
+      }
 
       // Check max attempts
       const recentAttempts = await prisma.oTP.count({
@@ -194,13 +199,19 @@ export class OTPService {
       const deliveryResults: OTPDeliveryResult[] = [];
       const channels: string[] = [];
 
+      console.log(
+        `[OTP] Template generated, delivery method: ${settings.delivery_method}`
+      );
+
       // Send based on delivery method and enabled channels with retry logic
       if (settings.delivery_method === "sms" && settings.sms_enabled) {
+        console.log(`[OTP] Sending SMS...`);
         const smsResult = await this.sendWithRetry(
           () => this.sendSMS(phoneNumber, template.sms, purpose),
-          settings.retry_attempts,
+          settings.max_attempts,
           "SMS"
         );
+        console.log(`[OTP] SMS result:`, smsResult);
         deliveryResults.push(smsResult);
         if (smsResult.success) channels.push("SMS");
 
@@ -228,11 +239,7 @@ export class OTPService {
           deliveryResults.push(emailResult);
           if (emailResult.success) channels.push("Email");
         }
-      } else if (
-        settings.delivery_method === "email" &&
-        settings.email_enabled &&
-        email
-      ) {
+      } else if (settings.email_enabled && email) {
         const emailResult = await this.sendWithRetry(
           () =>
             this.sendEmail(
@@ -241,25 +248,30 @@ export class OTPService {
               template.email.text,
               template.email.html
             ),
-          settings.retry_attempts,
+          settings.max_attempts,
           "Email"
         );
         deliveryResults.push(emailResult);
         if (emailResult.success) channels.push("Email");
       } else if (settings.delivery_method === "both") {
+        console.log(
+          `[OTP] Delivery method 'both' - SMS enabled: ${settings.sms_enabled}, Email enabled: ${settings.email_enabled}, Email provided: ${!!email}`
+        );
         const promises = [];
 
-        if (settings.sms_enabled) {
+        if (settings.sms_enabled && phoneNumber) {
+          console.log(`[OTP] Adding SMS to delivery queue`);
           promises.push(
             this.sendWithRetry(
               () => this.sendSMS(phoneNumber, template.sms, purpose),
-              settings.retry_attempts,
+              settings.max_attempts,
               "SMS"
             )
           );
         }
 
         if (settings.email_enabled && email) {
+          console.log(`[OTP] Adding Email to delivery queue`);
           promises.push(
             this.sendWithRetry(
               () =>
@@ -269,13 +281,24 @@ export class OTPService {
                   template.email.text,
                   template.email.html
                 ),
-              settings.retry_attempts,
+              settings.max_attempts,
               "Email"
             )
           );
         }
 
+        if (settings.whatsapp_enabled && phoneNumber) {
+          promises.push(
+            this.sendWithRetry(
+              () => this.sendWhatsApp(phoneNumber, template.sms, purpose),
+              settings.max_attempts,
+              "WhatsApp"
+            )
+          );
+        }
+        console.log(`[OTP] Executing ${promises.length} delivery promises`);
         const results = await Promise.all(promises);
+        console.log(`[OTP] Delivery results:`, results);
         deliveryResults.push(...results);
         results.forEach((result) => {
           if (result.success) channels.push(result.channel);
@@ -309,13 +332,51 @@ export class OTPService {
         },
       });
 
+      // Log notifications for production monitoring
+      for (const result of deliveryResults) {
+        await (prisma as any).notificationLog.create({
+          data: {
+            type: "OTP",
+            channel: result.channel.toLowerCase(),
+            recipient:
+              result.channel.toLowerCase() === "email"
+                ? email || phoneNumber
+                : phoneNumber,
+            status: result.success ? "SENT" : "FAILED",
+            errorMessage: result.error || undefined,
+            provider:
+              result.channel.toLowerCase() === "sms"
+                ? "MSG91"
+                : result.channel.toLowerCase() === "email"
+                  ? "RESEND"
+                  : result.channel.toLowerCase() === "whatsapp"
+                    ? "MSG91"
+                    : undefined,
+            messageId: result.messageId || undefined,
+            metadata: {
+              purpose,
+              otpId: otpRecord.id,
+              retryCount: result.retryCount,
+              template: "otp_template",
+            },
+            sentAt: result.success ? new Date() : undefined,
+          },
+        });
+      }
+
+      console.log(
+        `[OTP] OTP send completed. Success: ${channels.length > 0}, Channels: ${channels.join(", ")}`
+      );
       return {
-        success: true,
-        message: `OTP sent successfully via ${channels.join(", ")}`,
+        success: channels.length > 0,
+        message:
+          channels.length > 0
+            ? `OTP sent successfully via ${channels.join(", ")}`
+            : "Failed to send OTP to any channel",
         channels,
       };
     } catch (error) {
-      console.error("Error sending OTP:", error);
+      console.error("[OTP] Error sending OTP:", error);
       return {
         success: false,
         message: "Failed to send OTP. Please try again.",
@@ -368,7 +429,7 @@ export class OTPService {
     phoneNumber: string,
     message: string,
     purpose: string
-  ): Promise<void> {
+  ): Promise<string | void> {
     try {
       // Check if MSG91 credentials are available
       const apiKey = process.env.MSG91_API_KEY || process.env.SMS_API_KEY;
@@ -380,7 +441,10 @@ export class OTPService {
         console.log(
           `[MOCK SMS] Please configure MSG91_API_KEY or SMS_API_KEY in your .env file`
         );
-        return;
+        console.log(
+          `[MOCK SMS] For production, get API key from https://msg91.com`
+        );
+        return "mock_sms_sent";
       }
 
       // Clean phone number (remove +91 if present, MSG91 expects 10 digit number)
@@ -455,14 +519,15 @@ export class OTPService {
         console.log(
           `[MOCK EMAIL] Please configure RESEND_API_KEY in your .env file`
         );
-        return;
+        console.log(`[MOCK EMAIL] Get API key from https://resend.com`);
+        return "mock_email_sent";
       }
 
       const { Resend } = await import("resend");
       const resend = new Resend(apiKey);
 
       const data = await resend.emails.send({
-        from: "TownKart <noreply@townkart.com>",
+        from: "TownKart <townKart@townkart.pawansuthar.in>",
         to: [email],
         subject: subject,
         html: html,
@@ -487,15 +552,20 @@ export class OTPService {
   ): Promise<string | void> {
     try {
       const authKey = process.env.MSG91_WHATSAPP_AUTH_KEY;
-      const senderNumber = process.env.MSG91_WHATSAPP_SENDER_NUMBER;
-      const templateName = process.env.MSG91_WHATSAPP_TEMPLATE_NAME;
+      const senderNumber = process.env.MSG91_WHATSAPP_INTEGRATED_NUMBER;
+      const templateName = process.env.MSG91_WHATSAPP_TEMPLATE_OTP_NAME;
       const namespace = process.env.MSG91_WHATSAPP_NAMESPACE;
       const buttonUrl =
-        process.env.MSG91_WHATSAPP_BUTTON_URL || "https://townkart.com"; // your button link
+        process.env.MSG91_WHATSAPP_BUTTON_URL ||
+        "https://townkart.pawansuthar.in";
 
       if (!authKey || !senderNumber || !templateName || !namespace) {
         console.log(`[MOCK WhatsApp] Missing WhatsApp ENV keys`);
-        return;
+        console.log(`[MOCK WhatsApp] Message to ${phoneNumber}: ${message}`);
+        console.log(
+          `[MOCK WhatsApp] Configure MSG91 WhatsApp credentials for production`
+        );
+        return "mock_whatsapp_sent";
       }
 
       const otp = message.match(/\d{4,6}/)?.[0];

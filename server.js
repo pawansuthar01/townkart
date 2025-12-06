@@ -15,12 +15,6 @@ app
       handle(req, res, parsedUrl);
     });
 
-    // Handle WebSocket upgrades for Next.js HMR
-    server.on("upgrade", (req, socket, head) => {
-      const parsedUrl = parse(req.url, true);
-      handle(req, socket, head, parsedUrl);
-    });
-
     // Initialize WebSocket server
     try {
       wsServer.initialize(server);

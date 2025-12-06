@@ -72,7 +72,7 @@ export class ResilientLocationService {
   async startResilientTracking(
     trackingOptions: any,
     onLocationUpdate: (location: LocationData) => void,
-    onError?: (error: Error) => void,
+    onError?: (error: Error) => void
   ): Promise<void> {
     this.state.isTracking = true;
 
@@ -90,7 +90,7 @@ export class ResilientLocationService {
       },
       (error) => {
         this.handleLocationError(error, onError);
-      },
+      }
     );
 
     // Start background sync if enabled
@@ -123,7 +123,7 @@ export class ResilientLocationService {
   // Handle location updates with offline queuing
   private async handleLocationUpdate(
     location: LocationData,
-    onLocationUpdate: (location: LocationData) => void,
+    onLocationUpdate: (location: LocationData) => void
   ): Promise<void> {
     // Always call the original callback
     onLocationUpdate(location);
@@ -151,7 +151,7 @@ export class ResilientLocationService {
   // Handle location errors with retry logic
   private handleLocationError(
     error: Error,
-    onError?: (error: Error) => void,
+    onError?: (error: Error) => void
   ): void {
     console.error("Location tracking error:", error);
 
@@ -166,14 +166,14 @@ export class ResilientLocationService {
       this.state.retryCount++;
       this.state.backoffDelay = Math.min(
         this.state.backoffDelay * 2,
-        this.options.maxBackoffDelay,
+        this.options.maxBackoffDelay
       );
 
       setTimeout(() => {
         // Retry location tracking
         if (this.state.isTracking) {
           console.log(
-            `Retrying location tracking (attempt ${this.state.retryCount})`,
+            `Retrying location tracking (attempt ${this.state.retryCount})`
           );
           // Note: In a real implementation, you'd restart the tracking
         }
@@ -181,8 +181,8 @@ export class ResilientLocationService {
     } else {
       onError?.(
         new Error(
-          `Location tracking failed after ${this.state.maxRetries} retries`,
-        ),
+          `Location tracking failed after ${this.state.maxRetries} retries`
+        )
       );
     }
   }
@@ -218,7 +218,7 @@ export class ResilientLocationService {
 
       // Clear synced locations
       this.state.pendingLocations = this.state.pendingLocations.slice(
-        locationsToSync.length,
+        locationsToSync.length
       );
       this.state.lastSuccessfulSync = new Date();
       this.state.retryCount = 0;
@@ -264,7 +264,7 @@ export class ResilientLocationService {
 
   // Sync batch of locations to server
   private async syncLocationBatchToServer(
-    locations: LocationData[],
+    locations: LocationData[]
   ): Promise<void> {
     const response = await fetch("/api/riders/location/batch", {
       method: "POST",
@@ -340,7 +340,7 @@ export class ResilientLocationService {
     try {
       localStorage.setItem(
         "pending_locations",
-        JSON.stringify(this.state.pendingLocations),
+        JSON.stringify(this.state.pendingLocations)
       );
     } catch (error) {
       console.warn("Failed to persist pending locations:", error);
@@ -363,12 +363,12 @@ export class ResilientLocationService {
           this.state.pendingLocations.length > this.options.offlineQueueSize
         ) {
           this.state.pendingLocations = this.state.pendingLocations.slice(
-            -this.options.offlineQueueSize,
+            -this.options.offlineQueueSize
           );
         }
 
         console.log(
-          `Restored ${pendingLocations.length} pending locations from storage`,
+          `Restored ${pendingLocations.length} pending locations from storage`
         );
       }
     } catch (error) {
@@ -378,7 +378,8 @@ export class ResilientLocationService {
 
   // Initialize event listeners
   private initializeEventListeners(): void {
-    // Handle page visibility changes (app going to background)
+    if (typeof window === "undefined") return;
+
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         console.log("App went to background");

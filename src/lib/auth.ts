@@ -7,6 +7,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { RateLimiter } from "@/middleware/rateLimit";
 import { DeviceTracker } from "@/middleware/deviceTracking";
+import { DeviceManager } from "@/lib/deviceManager";
+import { LocationService } from "@/lib/locationService";
 
 // Utility functions
 export const hashPassword = async (password: string): Promise<string> => {
@@ -52,10 +54,72 @@ export const verifyRefreshToken = (token: string): any => {
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // 24 hours
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+    CredentialsProvider({
+      id: "otp",
+      name: "otp",
+      credentials: {
+        phoneNumber: { label: "Phone Number", type: "text" },
+        otp: { label: "OTP", type: "text" },
+        deviceInfo: { label: "Device Info", type: "text" },
+      },
+      async authorize(credentials) {
+        console.log("🔐 OTP authorize called with:", {
+          hasPhoneNumber: !!credentials?.phoneNumber,
+          phoneNumber: credentials?.phoneNumber,
+        });
+
+        if (!credentials?.phoneNumber) {
+          console.log("❌ No phone number provided");
+          return null;
+        }
+
+        // Find user by phone number (OTP already verified by API)
+        const user = await prisma.user.findUnique({
+          where: { phoneNumber: credentials.phoneNumber },
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            userRoles: true,
+            activeRole: true,
+            phoneVerified: true,
+            isActive: true,
+          },
+        });
+
+        console.log("👤 User lookup result:", {
+          userFound: !!user,
+          userId: user?.id,
+          isActive: user?.isActive,
+          phoneVerified: user?.phoneVerified,
+        });
+
+        if (!user || !user.isActive) {
+          console.log("❌ User not found or not active");
+          return null;
+        }
+
+        console.log("✅ OTP authorize returning user:", user.id);
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.fullName,
+          roles: user.userRoles,
+          activeRole: user.activeRole,
+          phoneVerified: user.phoneVerified,
+          isActive: user.isActive,
+        } as any;
+      },
     }),
     CredentialsProvider({
       name: "credentials",
@@ -63,6 +127,7 @@ export const authOptions: NextAuthOptions = {
         identifier: { label: "Email or Phone Number", type: "text" },
         password: { label: "Password", type: "password" },
         rememberMe: { label: "Remember Me", type: "boolean" },
+        deviceInfo: { label: "Device Info", type: "text" },
       },
       async authorize(credentials) {
         if (!credentials?.identifier || !credentials?.password) {
@@ -70,7 +135,6 @@ export const authOptions: NextAuthOptions = {
         }
 
         // Determine if identifier is email or phone number
-        const isEmail = credentials.identifier.includes("@");
 
         const user = await prisma.user.findFirst({
           where: {
@@ -93,6 +157,8 @@ export const authOptions: NextAuthOptions = {
           user.password
         );
         if (!isPasswordValid) {
+          // Check if user is admin for rate limiting
+
           // Log failed login attempt using RateLimiter
           await RateLimiter.recordLoginAttempt(
             credentials.identifier,
@@ -105,6 +171,8 @@ export const authOptions: NextAuthOptions = {
 
           return null;
         }
+
+        // Check if user is admin for special handling
 
         // Log successful login using RateLimiter
         await RateLimiter.recordLoginAttempt(
@@ -142,71 +210,27 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days (default)
-  },
-  jwt: {
-    maxAge: 30 * 24 * 60 * 60, // 30 days (default)
-  },
   pages: {
     signIn: "/auth/login",
     error: "/auth/error",
   },
   callbacks: {
-    async jwt({ token, user }) {
-      console.log("🔐 JWT callback triggered", {
-        hasUser: !!user,
-        tokenSub: token.sub,
-        userId: user?.id,
-      });
+    async jwt({ token, user, trigger, session }) {
+      // If user just signed in, set initial token data
       if (user) {
-        token.sub = user.id; // Ensure user ID is set in token
-        token.roles = (user as any).roles;
+        token.id = user.id;
+        token.phoneNumber = (user as any).phoneNumber;
         token.activeRole = (user as any).activeRole;
-        token.rememberMe = (user as any).rememberMe;
-
-        // Set expiry based on rememberMe
-        const now = Math.floor(Date.now() / 1000);
-        if (token.rememberMe) {
-          // 30 days for remember me
-          token.exp = now + 30 * 24 * 60 * 60;
-        } else {
-          // 24 hours for regular login
-          token.exp = now + 24 * 60 * 60;
-        }
-
-        console.log("✅ JWT token updated with user data", {
-          sub: token.sub,
-          roles: token.roles,
-          activeRole: token.activeRole,
-          rememberMe: token.rememberMe,
-          exp: token.exp,
-        });
+        token.roles = (user as any).roles;
+        token.phoneVerified = (user as any).phoneVerified;
+        token.isActive = (user as any).isActive;
       }
-      return token;
-    },
-    async session({ session, token }) {
-      console.log("🎫 Session callback triggered", {
-        hasToken: !!token,
-        tokenSub: token?.sub,
-      });
-      if (token) {
-        // Set basic user info from token first
-        session.user.id = token.sub!;
-        session.user.name = token.name;
-        session.user.email = token.email;
-        (session.user as any).image = token.picture;
-        (session.user as any).roles = token.roles;
-        (session.user as any).activeRole = token.activeRole;
 
-        console.log("Setting session user id:", token.sub);
-
-        // Fetch complete user data with all relations
+      // Always fetch fresh user data for token (or on update trigger)
+      if (token.sub) {
         try {
-          console.log("🔍 Fetching complete user data for session:", token.sub);
-          const user = await prisma.user.findUnique({
-            where: { id: token.sub! },
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.sub },
             include: {
               customerProfile: true,
               riderProfile: true,
@@ -226,7 +250,7 @@ export const authOptions: NextAuthOptions = {
               },
               addresses: true,
               orders: {
-                take: 5, // Last 5 orders
+                take: 5,
                 orderBy: { createdAt: "desc" },
               },
               reviews: {
@@ -267,66 +291,53 @@ export const authOptions: NextAuthOptions = {
             },
           });
 
-          if (user) {
-            console.log(
-              "✅ Found user:",
-              user.fullName,
-              "Role:",
-              user.activeRole
-            );
-            console.log("📊 StoreStaff count:", user.storeStaff?.length || 0);
+          if (dbUser) {
+            // Store all user data in token
+            token.phoneNumber = dbUser.phoneNumber;
+            token.activeRole = dbUser.activeRole;
+            token.roles = dbUser.userRoles;
+            token.phoneVerified = dbUser.phoneVerified;
+            token.isActive = dbUser.isActive;
+            token.email = dbUser.email;
+            token.name = dbUser.fullName;
+            token.profileImageUrl = dbUser.profileImageUrl;
+            token.emailVerified = dbUser.emailVerified;
+            token.lastLoginAt = dbUser.lastLoginAt;
+            token.lastLoginIP = dbUser.lastLoginIP;
+            token.lastLoginDevice = dbUser.lastLoginDevice;
+            token.createdAt = dbUser.createdAt;
+            token.updatedAt = dbUser.updatedAt;
 
-            // Basic user info
-            session.user.id = user.id;
-            session.user.name = user.fullName;
-            session.user.email = user.email;
-            (session.user as any).image = user.profileImageUrl;
-
-            // Complete user data
-            (session.user as any).phoneNumber = user.phoneNumber;
-            (session.user as any).userRoles = user.userRoles;
-            (session.user as any).activeRole = user.activeRole;
-            (session.user as any).profileImageUrl = user.profileImageUrl;
-            (session.user as any).emailVerified = user.emailVerified;
-            (session.user as any).phoneVerified = user.phoneVerified;
-            (session.user as any).isActive = user.isActive;
-            (session.user as any).lastLoginAt = user.lastLoginAt;
-            (session.user as any).lastLoginIP = user.lastLoginIP;
-            (session.user as any).lastLoginDevice = user.lastLoginDevice;
-            (session.user as any).createdAt = user.createdAt;
-            (session.user as any).updatedAt = user.updatedAt;
-
-            // Relations data - cast to any to access included relations
-            const fullUser = user as any;
-            (session.user as any).customerProfile = fullUser.customerProfile;
-            (session.user as any).riderProfile = fullUser.riderProfile;
-            (session.user as any).storeStaff = fullUser.storeStaff;
-            (session.user as any).managedStores = fullUser.managedStores;
-            (session.user as any).addresses = fullUser.addresses;
-            (session.user as any).recentOrders = fullUser.orders;
-            (session.user as any).recentReviews = fullUser.reviews;
-            (session.user as any).unreadNotifications = fullUser.notifications;
-            (session.user as any).wallet = fullUser.wallet;
-            (session.user as any).wishlistItems = fullUser.wishlistItems;
-            (session.user as any).recentSessions = fullUser.sessions;
-            (session.user as any).devices = fullUser.devices;
-            (session.user as any).recentLoginAttempts = fullUser.loginAttempts;
+            // Relations data
+            (token as any).customerProfile = dbUser.customerProfile;
+            (token as any).riderProfile = dbUser.riderProfile;
+            (token as any).storeStaff = dbUser.storeStaff;
+            (token as any).managedStores = dbUser.managedStores;
+            (token as any).addresses = dbUser.addresses;
+            (token as any).recentOrders = dbUser.orders;
+            (token as any).recentReviews = dbUser.reviews;
+            (token as any).unreadNotifications = dbUser.notifications;
+            (token as any).wallet = dbUser.wallet;
+            (token as any).wishlistItems = dbUser.wishlistItems;
+            (token as any).recentSessions = dbUser.sessions;
+            (token as any).devices = dbUser.devices;
+            (token as any).recentLoginAttempts = dbUser.loginAttempts;
 
             // Counts
-            (session.user as any).stats = {
-              totalOrders: fullUser._count.orders,
-              totalReviews: fullUser._count.reviews,
-              totalWishlistItems: fullUser._count.wishlistItems,
-              totalAddresses: fullUser._count.addresses,
+            (token as any).stats = {
+              totalOrders: dbUser._count.orders,
+              totalReviews: dbUser._count.reviews,
+              totalWishlistItems: dbUser._count.wishlistItems,
+              totalAddresses: dbUser._count.addresses,
             };
 
             // Store-specific data for STORE_MANAGER
             if (
-              fullUser.activeRole === "STORE_MANAGER" &&
-              fullUser.storeStaff?.length > 0
+              dbUser.activeRole === "STORE_MANAGER" &&
+              dbUser.storeStaff?.length > 0
             ) {
-              const storeStaff = fullUser.storeStaff[0];
-              (session.user as any).storeData = {
+              const storeStaff = dbUser.storeStaff[0];
+              (token as any).storeData = {
                 storeId: storeStaff.storeId,
                 store: storeStaff.store,
                 role: storeStaff.role,
@@ -335,25 +346,65 @@ export const authOptions: NextAuthOptions = {
             }
           }
         } catch (error) {
-          console.error(
-            "Error fetching complete user data for session:",
-            error
-          );
+          console.error("Error fetching user data for token:", error);
         }
       }
-      console.log("🎯 Final session user data:", {
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-        activeRole: (session.user as any).activeRole,
-        hasStoreData: !!(session.user as any).storeData,
-        phoneNumber: (session.user as any).phoneNumber,
+
+      return token;
+    },
+    async session({ session, token }) {
+      console.log("🎫 Session callback triggered", {
+        hasToken: !!token,
+        userId: token?.sub,
       });
+
+      if (token?.sub) {
+        // Set all user data from token (no database call needed)
+        session.user.id = token.id as string;
+        session.user.name = token.name as string;
+        session.user.email = token.email as string;
+        (session.user as any).phoneNumber = token.phoneNumber;
+        (session.user as any).userRoles = token.roles;
+        (session.user as any).activeRole = token.activeRole;
+        (session.user as any).profileImageUrl =
+          (token as any).profileImageUrl || "";
+        (session.user as any).emailVerified = (token as any).emailVerified;
+        (session.user as any).phoneVerified = token.phoneVerified;
+        (session.user as any).isActive = token.isActive;
+        (session.user as any).lastLoginAt = (token as any).lastLoginAt;
+        (session.user as any).lastLoginIP = (token as any).lastLoginIP;
+        (session.user as any).lastLoginDevice = (token as any).lastLoginDevice;
+        (session.user as any).createdAt = (token as any).createdAt;
+        (session.user as any).updatedAt = (token as any).updatedAt;
+
+        // Relations data from token
+        session.user.customerProfile = (token as any).customerProfile;
+        session.user.riderProfile = (token as any).riderProfile;
+        session.user.storeStaff = (token as any).storeStaff;
+        session.user.managedStores = (token as any).managedStores;
+        session.user.addresses = (token as any).addresses;
+        session.user.recentOrders = (token as any).recentOrders;
+        session.user.recentReviews = (token as any).recentReviews;
+        session.user.unreadNotifications = (token as any).unreadNotifications;
+        session.user.wallet = (token as any).wallet;
+        session.user.wishlistItems = (token as any).wishlistItems;
+        session.user.recentSessions = (token as any).recentSessions;
+        session.user.devices = (token as any).devices;
+        session.user.recentLoginAttempts = (token as any).recentLoginAttempts;
+        session.user.stats = (token as any).stats;
+        session.user.storeData = (token as any).storeData;
+      }
+
       return session;
     },
   },
   events: {
     async signIn({ user, account, isNewUser }) {
+      console.log("🔐 Sign in event triggered", {
+        userId: user.id,
+        provider: account?.provider,
+      });
+
       if (account?.provider === "google") {
         try {
           // Check if user exists with this email
@@ -379,12 +430,12 @@ export const authOptions: NextAuthOptions = {
               },
             });
 
-            (user as any).id = newUser.id;
+            user.id = newUser.id;
             (user as any).roles = ["CUSTOMER"];
             (user as any).activeRole = "CUSTOMER";
           } else {
             // Update existing user with Google info if needed
-            (user as any).id = existingUser.id;
+            user.id = existingUser.id;
             (user as any).roles = existingUser.userRoles;
             (user as any).activeRole = existingUser.activeRole;
           }
@@ -392,18 +443,43 @@ export const authOptions: NextAuthOptions = {
           console.error("Error during Google sign in:", error);
         }
       }
+
       // Track device and session information for all sign ins
-      if ((user as any).id) {
+      if (user.id) {
         console.log(
-          `User ${(user as any).id} signed in via ${account?.provider || "credentials"}`
+          `User ${user.id} signed in via ${account?.provider || "credentials"}`
         );
       }
     },
-    async signOut({ token }) {
-      // Clean up sessions if needed
+    async signOut({ session, token }) {
+      console.log("🚪 Sign out event triggered", {
+        sessionId: session?.id,
+        userId: token?.sub,
+      });
+
+      // Database cleanup is handled by /api/auth/logout API
+      // This event is just for logging
       if (token?.sub) {
-        console.log(`User ${token.sub} signed out`);
+        console.log(`User ${token.sub} signed out (NextAuth event)`);
       }
+    },
+    async createUser({ user }) {
+      console.log("👤 Create user event triggered", { userId: user.id });
+    },
+    async updateUser({ user }) {
+      console.log("📝 Update user event triggered", { userId: user.id });
+    },
+    async linkAccount({ user, account, profile }) {
+      console.log("🔗 Link account event triggered", {
+        userId: user.id,
+        provider: account.provider,
+      });
+    },
+    async session({ session, token }) {
+      console.log("🎫 Session event triggered", {
+        sessionId: session.id,
+        userId: token?.sub,
+      });
     },
   },
 };

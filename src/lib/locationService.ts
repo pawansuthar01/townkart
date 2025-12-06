@@ -78,8 +78,35 @@ export class LocationService {
   static async lookupIP(ip: string): Promise<any> {
     try {
       const url = `https://ipapi.co/${ip}/json/`;
-      const res = await fetch(url);
-      return await res.json();
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "TownKart/1.0",
+        },
+      });
+
+      if (!res.ok) {
+        // Handle rate limiting or other HTTP errors
+        console.warn(
+          `IP lookup failed for ${ip}: ${res.status} ${res.statusText}`
+        );
+        return null;
+      }
+
+      const text = await res.text();
+      if (!text || text.trim() === "") {
+        console.warn(`IP lookup returned empty response for ${ip}`);
+        return null;
+      }
+
+      try {
+        return JSON.parse(text);
+      } catch (parseError) {
+        console.error(
+          `IP lookup returned invalid JSON for ${ip}:`,
+          text.substring(0, 100)
+        );
+        return null;
+      }
     } catch (err) {
       console.error("IP lookup failed:", err);
       return null;

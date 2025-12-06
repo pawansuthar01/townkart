@@ -19,12 +19,13 @@ import {
   Send,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useSession, signIn } from "next-auth/react";
 
 export default function VerifyOTPPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useAuth();
-
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const { data: session, status } = useSession();
   // Get phone number from URL params or user data
   const phoneNumber = searchParams.get("phone") || user?.phoneNumber || "";
   // Determine purpose based on user state
@@ -45,8 +46,63 @@ export default function VerifyOTPPage() {
   const [otpSent, setOtpSent] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
   const [otpExpiry, setOtpExpiry] = useState<Date | null>(null);
+  const [deviceInfo, setDeviceInfo] = useState<any>(null);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Detect device information
+  useEffect(() => {
+    const detectDevice = () => {
+      const ua = navigator.userAgent;
+      const isMobile =
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          ua
+        );
+      const isTablet = /iPad|Android(?=.*\bMobile\b)|Tablet/i.test(ua);
+
+      let deviceType = "desktop";
+      if (isTablet) deviceType = "tablet";
+      else if (isMobile) deviceType = "mobile";
+
+      // Generate device fingerprint
+      const fingerprint = btoa(
+        navigator.userAgent +
+          screen.width +
+          screen.height +
+          new Date().getTime()
+      ).substring(0, 32);
+
+      const deviceData = {
+        deviceId: fingerprint,
+        deviceName: `${deviceType.charAt(0).toUpperCase() + deviceType.slice(1)} Device`,
+        deviceType,
+        os: getOS(ua),
+        browser: getBrowser(ua),
+        fingerprint,
+      };
+
+      setDeviceInfo(deviceData);
+    };
+
+    const getOS = (ua: string) => {
+      if (ua.includes("Windows")) return "Windows";
+      if (ua.includes("Mac")) return "macOS";
+      if (ua.includes("Linux")) return "Linux";
+      if (ua.includes("Android")) return "Android";
+      if (ua.includes("iOS")) return "iOS";
+      return "Unknown";
+    };
+
+    const getBrowser = (ua: string) => {
+      if (ua.includes("Chrome")) return "Chrome";
+      if (ua.includes("Firefox")) return "Firefox";
+      if (ua.includes("Safari")) return "Safari";
+      if (ua.includes("Edge")) return "Edge";
+      return "Unknown";
+    };
+
+    detectDevice();
+  }, []);
 
   // Auto-focus first input
   useEffect(() => {
@@ -66,9 +122,6 @@ export default function VerifyOTPPage() {
     return () => clearInterval(interval);
   }, [resendTimer]);
 
-  // Check if OTP is expired
-  const isOtpExpired = otpExpiry && new Date() > otpExpiry;
-
   const handleSendOTP = async () => {
     if (!phoneNumber) {
       setError("Phone number is required");
@@ -86,6 +139,7 @@ export default function VerifyOTPPage() {
           phoneNumber,
           purpose,
           action: "send",
+          deviceInfo,
         }),
       });
 
@@ -108,8 +162,8 @@ export default function VerifyOTPPage() {
   };
 
   const handleVerifyOTP = async () => {
-    if (otp.length !== 6) {
-      setError("Please enter a valid 6-digit OTP");
+    if (otp.length !== 4) {
+      setError("Please enter a valid 4-digit OTP");
       return;
     }
 
@@ -125,6 +179,7 @@ export default function VerifyOTPPage() {
           otp,
           purpose,
           action: "verify",
+          deviceInfo,
         }),
       });
 
@@ -132,6 +187,19 @@ export default function VerifyOTPPage() {
 
       if (data.success) {
         setSuccess("Phone number verified successfully!");
+
+        // Sign in with NextAuth to update session only for LOGIN/REGISTER
+        if (data.data?.accessToken) {
+          try {
+            await signIn("otp", {
+              phoneNumber,
+              otp,
+              redirect: false,
+            });
+          } catch (signInError) {
+            console.error("Sign in error:", signInError);
+          }
+        }
 
         // Redirect after successful verification
         setTimeout(() => {
@@ -205,14 +273,14 @@ export default function VerifyOTPPage() {
             <p className="text-gray-600 mt-2">
               {otpSent ? (
                 <>
-                  We've sent a 6-digit code to
+                  We've sent a 4-digit code to
                   <br />
                   <span className="font-semibold text-gray-900">
                     +91 {phoneNumber.slice(-4).padStart(10, "*")}
                   </span>
                 </>
               ) : (
-                "We'll send a 6-digit verification code to your registered phone number"
+                "We'll send a 4-digit verification code to your registered phone number"
               )}
             </p>
           </CardHeader>
@@ -222,7 +290,7 @@ export default function VerifyOTPPage() {
             {otpSent && (
               <div className="space-y-4">
                 <div className="flex justify-center space-x-2 flex-wrap gap-y-2">
-                  {Array.from({ length: 6 }, (_, index) => (
+                  {Array.from({ length: 4 }, (_, index) => (
                     <Input
                       key={index}
                       ref={(el) => {
@@ -286,11 +354,13 @@ export default function VerifyOTPPage() {
             {otpSent ? (
               <Button
                 onClick={handleVerifyOTP}
-                disabled={otp.length !== 6 || isLoading}
+                disabled={otp.length !== 4 || isLoading}
                 className="w-full townkart-gradient hover:opacity-90 text-white font-semibold py-3 h-auto"
                 size="lg"
               >
-                {isLoading ? (
+                {isAuthLoading ? (
+                  <>loading</>
+                ) : isLoading ? (
                   <>
                     <LoadingSpinner className="mr-2 h-4 w-4" />
                     Verifying...

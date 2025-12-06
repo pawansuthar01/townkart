@@ -329,7 +329,7 @@ export const NOTIFICATION_TEMPLATES: Record<
     message:
       "You've been invited to join TownKart as a {{role}}. Click here to complete your registration.",
     priority: "high",
-    channels: ["email"], // Primarily email for invitations
+    channels: ["in_app", "email", "whatsapp", "sms"], // Support all channels for invitations
     variables: ["role", "invitationUrl", "expiresAt", "message"],
     actions: [
       {
@@ -466,6 +466,227 @@ export class NotificationManager {
     }
   }
 
+  // Send external notifications directly (for invitations to non-registered users)
+  async sendExternalInvitation(
+    email: string,
+    phone: string | null,
+    channels: ("email" | "whatsapp" | "sms")[],
+    invitationData: {
+      role: string;
+      invitationUrl: string;
+      expiresAt: string;
+      message?: string;
+    }
+  ): Promise<{ channel: string; success: boolean; error?: string }[]> {
+    const results: { channel: string; success: boolean; error?: string }[] = [];
+    const roleDisplay =
+      invitationData.role === "store_manager" ? "Store Manager" : "Rider";
+
+    // Send email
+    if (channels.includes("email")) {
+      const startTime = Date.now();
+      let messageId: string | undefined;
+      let errorMessage: string | undefined;
+
+      try {
+        const emailSubject = `Invitation to join TownKart as ${roleDisplay}`;
+        const emailMessage = `You've been invited to join TownKart as a ${roleDisplay.toLowerCase()}.
+
+${invitationData.message ? `Message: ${invitationData.message}` : ""}
+
+This invitation expires on ${invitationData.expiresAt}.`;
+
+        const emailSent = await this.sendExternalEmail(
+          email,
+          emailSubject,
+          emailMessage,
+          undefined,
+          [{ label: "Accept Invitation", url: invitationData.invitationUrl }]
+        );
+
+        if (emailSent) {
+          results.push({ channel: "email", success: true });
+        } else {
+          errorMessage = "Email service unavailable or domain not verified";
+          results.push({
+            channel: "email",
+            success: false,
+            error: errorMessage,
+          });
+        }
+      } catch (error: any) {
+        errorMessage = error.message;
+        results.push({
+          channel: "email",
+          success: false,
+          error: errorMessage,
+        });
+      }
+
+      // Log to database
+      await this.logNotification({
+        type: "invitation",
+        channel: "email",
+        recipient: email,
+        status: results[results.length - 1].success ? "sent" : "failed",
+        errorMessage,
+        provider: "Resend",
+        messageId,
+        sentAt: results[results.length - 1].success ? new Date() : undefined,
+        metadata: {
+          role: invitationData.role,
+          invitationUrl: invitationData.invitationUrl,
+          processingTime: Date.now() - startTime,
+        },
+      });
+    }
+
+    // Send WhatsApp
+    if (channels.includes("whatsapp") && phone) {
+      const startTime = Date.now();
+      let messageId: string | undefined;
+      let errorMessage: string | undefined;
+
+      try {
+        const whatsappNotification = {
+          id: `invitation_external_${Date.now()}`,
+          userId: "system",
+          type: "invitation" as const,
+          title: "You're Invited to Join TownKart",
+          message: `You've been invited to join TownKart as a ${roleDisplay.toLowerCase()}. Click here to complete your registration.`,
+          priority: "high" as const,
+          channels: ["whatsapp"] as NotificationChannel[],
+          data: {
+            role: roleDisplay.toLowerCase(),
+            invitationUrl: invitationData.invitationUrl,
+            expiresAt: invitationData.expiresAt,
+            message: invitationData.message || "",
+            phone,
+          },
+          read: false,
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        };
+
+        await this.sendWhatsApp(whatsappNotification);
+        results.push({ channel: "whatsapp", success: true });
+      } catch (error: any) {
+        errorMessage = error.message;
+        results.push({
+          channel: "whatsapp",
+          success: false,
+          error: errorMessage,
+        });
+      }
+
+      // Log to database
+      await this.logNotification({
+        type: "invitation",
+        channel: "whatsapp",
+        recipient: phone,
+        status: results[results.length - 1].success ? "sent" : "failed",
+        errorMessage,
+        provider: "MSG91",
+        messageId,
+        sentAt: results[results.length - 1].success ? new Date() : undefined,
+        metadata: {
+          role: invitationData.role,
+          invitationUrl: invitationData.invitationUrl,
+          processingTime: Date.now() - startTime,
+          template: this.getWhatsAppTemplateName("invitation"),
+        },
+      });
+    }
+
+    // Send SMS
+    if (channels.includes("sms") && phone) {
+      const startTime = Date.now();
+      let messageId: string | undefined;
+      let errorMessage: string | undefined;
+
+      try {
+        const smsNotification = {
+          id: `invitation_external_${Date.now()}`,
+          userId: "system",
+          type: "invitation" as const,
+          title: "TownKart Invitation",
+          message: `TownKart Invitation: You've been invited to join as ${roleDisplay}. Accept: ${invitationData.invitationUrl}. Expires: ${invitationData.expiresAt}`,
+          priority: "high" as const,
+          channels: ["sms"] as NotificationChannel[],
+          data: { phone },
+          read: false,
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        };
+
+        await this.sendSMS(smsNotification);
+        results.push({ channel: "sms", success: true });
+      } catch (error: any) {
+        errorMessage = error.message;
+        results.push({
+          channel: "sms",
+          success: false,
+          error: errorMessage,
+        });
+      }
+
+      // Log to database
+      await this.logNotification({
+        type: "invitation",
+        channel: "sms",
+        recipient: phone,
+        status: results[results.length - 1].success ? "sent" : "failed",
+        errorMessage,
+        provider: "MSG91",
+        messageId,
+        sentAt: results[results.length - 1].success ? new Date() : undefined,
+        metadata: {
+          role: invitationData.role,
+          invitationUrl: invitationData.invitationUrl,
+          processingTime: Date.now() - startTime,
+          dltTemplateId: process.env.MSG91_DLT_TEMPLATE_ID,
+        },
+      });
+    }
+
+    return results;
+  }
+
+  // Log notification to database
+  private async logNotification(data: {
+    type: string;
+    channel: string;
+    recipient: string;
+    status: "sent" | "failed" | "pending";
+    errorMessage?: string;
+    provider?: string;
+    messageId?: string;
+    cost?: number;
+    metadata?: any;
+    sentAt?: Date;
+  }): Promise<void> {
+    try {
+      // Use type assertion for now until Prisma client is regenerated
+      await (prisma as any).notificationLog.create({
+        data: {
+          type: data.type,
+          channel: data.channel,
+          recipient: data.recipient,
+          status: data.status,
+          errorMessage: data.errorMessage,
+          provider: data.provider,
+          messageId: data.messageId,
+          cost: data.cost,
+          metadata: data.metadata,
+          sentAt: data.sentAt,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to log notification:", error);
+      // Don't throw - logging failure shouldn't break notification sending
+    }
+  }
+
   // Send external email (for invitations, etc.) using Resend
   async sendExternalEmail(
     email: string,
@@ -475,7 +696,20 @@ export class NotificationManager {
     actions?: Array<{ label: string; url: string }>
   ): Promise<boolean> {
     try {
-      const resend = new Resend(process.env.RESEND_API_KEY);
+      const resendApiKey = process.env.RESEND_API_KEY;
+
+      if (!resendApiKey) {
+        console.warn(
+          "[EMAIL] RESEND_API_KEY not configured - email sending disabled"
+        );
+        console.warn("[EMAIL] To enable email notifications:");
+        console.warn("[EMAIL] 1. Sign up at https://resend.com");
+        console.warn("[EMAIL] 2. Add RESEND_API_KEY to your .env file");
+        console.warn("[EMAIL] 3. Verify your domain in Resend dashboard");
+        return false;
+      }
+
+      const resend = new Resend(resendApiKey);
 
       const htmlContent =
         html ||
@@ -521,24 +755,52 @@ export class NotificationManager {
             </div>
 
             <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
-              <p>© 2024 TownKart. All rights reserved.</p>
+              <p>© 2025 TownKart. All rights reserved.</p>
             </div>
           </body>
         </html>
       `;
 
+      const fromEmail = process.env.RESEND_FROM_EMAIL || "noreply@townkart.com";
+      const fromName = process.env.RESEND_FROM_NAME || "TownKart";
+
       const data = await resend.emails.send({
-        from: "TownKart <noreply@townkart.com>",
+        from: `${fromName} <${fromEmail}>`,
         to: [email],
         subject: subject,
         html: htmlContent,
         text: `${subject}\n\n${message}`,
       });
 
-      console.log("Email sent successfully:", data);
+      console.log("✅ Email sent successfully:", data);
       return true;
-    } catch (error) {
-      console.error("Failed to send external email:", error);
+    } catch (error: any) {
+      console.error("❌ Failed to send external email:", error);
+
+      // Log specific error details for debugging
+      if (error.message) {
+        console.error("Error message:", error.message);
+      }
+      if (error.statusCode) {
+        console.error("Status code:", error.statusCode);
+      }
+
+      // Provide helpful error messages for common issues
+      if (error.statusCode === 403) {
+        console.error("❌ DOMAIN VERIFICATION REQUIRED:");
+        console.error("❌ The sending domain is not verified in Resend.");
+        console.error("❌ To fix this:");
+        console.error("❌ 1. Go to https://resend.com/domains");
+        console.error("❌ 2. Add and verify your domain (townkart.com)");
+        console.error("❌ 3. Or use a verified domain in RESEND_FROM_EMAIL");
+        console.error(
+          "❌ 4. For development, use: noreply@your-verified-domain.com"
+        );
+      } else if (error.statusCode === 401) {
+        console.error("❌ INVALID API KEY:");
+        console.error("❌ Check your RESEND_API_KEY in .env file");
+      }
+
       return false;
     }
   }
@@ -1045,10 +1307,253 @@ export class NotificationManager {
     }
   }
 
+  // Get WhatsApp template name based on notification type
+  private getWhatsAppTemplateName(notificationType: NotificationType): string {
+    const templateMap: Record<NotificationType, string> = {
+      invitation:
+        process.env.MSG91_WHATSAPP_TEMPLATE_INVITATION_V2_NAME ||
+        "townkart_invitation_v2",
+      order_status_update:
+        process.env.MSG91_WHATSAPP_TEMPLATE_ORDER_UPDATE_NAME ||
+        "townkart_order_update",
+      delivery_assigned:
+        process.env.MSG91_WHATSAPP_TEMPLATE_DELIVERY_NAME ||
+        "townkart_delivery",
+      delivery_started:
+        process.env.MSG91_WHATSAPP_TEMPLATE_DELIVERY_NAME ||
+        "townkart_delivery",
+      delivery_completed:
+        process.env.MSG91_WHATSAPP_TEMPLATE_DELIVERY_NAME ||
+        "townkart_delivery",
+      payment_received:
+        process.env.MSG91_WHATSAPP_TEMPLATE_PAYMENT_NAME || "townkart_payment",
+      payment_failed:
+        process.env.MSG91_WHATSAPP_TEMPLATE_PAYMENT_NAME || "townkart_payment",
+      rider_location_update:
+        process.env.MSG91_WHATSAPP_TEMPLATE_GENERAL_NAME || "townkart_general",
+      rider_location_alert:
+        process.env.MSG91_WHATSAPP_TEMPLATE_GENERAL_NAME || "townkart_general",
+      rider_delivery_offer:
+        process.env.MSG91_WHATSAPP_TEMPLATE_DELIVERY_NAME ||
+        "townkart_delivery",
+      merchant_order_ready:
+        process.env.MSG91_WHATSAPP_TEMPLATE_ORDER_UPDATE_NAME ||
+        "townkart_order_update",
+      customer_support:
+        process.env.MSG91_WHATSAPP_TEMPLATE_GENERAL_NAME || "townkart_general",
+      promotional:
+        process.env.MSG91_WHATSAPP_TEMPLATE_GENERAL_NAME || "townkart_general",
+      system_alert:
+        process.env.MSG91_WHATSAPP_TEMPLATE_GENERAL_NAME || "townkart_general",
+      admin_manual:
+        process.env.MSG91_WHATSAPP_TEMPLATE_GENERAL_NAME || "townkart_general",
+      store_manual:
+        process.env.MSG91_WHATSAPP_TEMPLATE_GENERAL_NAME || "townkart_general",
+    };
+
+    return (
+      templateMap[notificationType] ||
+      process.env.MSG91_WHATSAPP_TEMPLATE_GENERAL_NAME ||
+      "townkart_general"
+    );
+  }
+
   private async sendWhatsApp(notification: Notification): Promise<void> {
-    // Implement WhatsApp sending (Twilio, etc.)
-    console.log("Sending WhatsApp:", notification.message);
-    // This would integrate with WhatsApp API
+    console.log("📱 Sending WhatsApp:", notification.title);
+    console.log("📱 Notification type:", notification.type);
+
+    try {
+      const authKey = process.env.MSG91_WHATSAPP_AUTH_KEY;
+      const templateName = this.getWhatsAppTemplateName(notification.type);
+      const namespace =
+        process.env.MSG91_WHATSAPP_NAMESPACE ||
+        "0a0d82ce_9390_423d_85f0_2c79dbeb5ae7";
+      const integratedNumber =
+        process.env.MSG91_WHATSAPP_INTEGRATED_NUMBER || "919784740736";
+
+      console.log("📱 Using template:", templateName);
+      console.log("📱 Using namespace:", namespace);
+      console.log("📱 Using integrated number:", integratedNumber);
+
+      // Validate template exists
+      if (!templateName || templateName === "townkart_general") {
+        console.warn(
+          "⚠️  Using fallback template. Make sure templates are configured in MSG91:"
+        );
+        console.warn("⚠️  - townkart_invitation_v2 (for invitations)");
+        console.warn("⚠️  - townkart_order_update (for orders)");
+        console.warn("⚠️  - townkart_delivery (for deliveries)");
+        console.warn("⚠️  - townkart_payment (for payments)");
+        console.warn("⚠️  - townkart_general (fallback)");
+      }
+
+      if (!authKey) {
+        console.log(`[MOCK WhatsApp] Message: ${notification.message}`);
+        console.log(
+          `[MOCK WhatsApp] Please configure MSG91_WHATSAPP_AUTH_KEY in your .env file`
+        );
+        return;
+      }
+
+      // Find user phone number
+      let recipientPhone: string;
+      if (notification.data?.phone) {
+        // External phone (for invitations)
+        recipientPhone = notification.data.phone;
+      } else {
+        // Registered user
+        const user = await prisma.user.findUnique({
+          where: { id: notification.userId },
+          select: { phoneNumber: true },
+        });
+        if (!user?.phoneNumber) {
+          throw new Error("User phone number not found");
+        }
+        recipientPhone = user.phoneNumber;
+      }
+
+      // Clean phone number (ensure it starts with country code)
+      const cleanPhone = recipientPhone.startsWith("+91")
+        ? recipientPhone
+        : `+91${recipientPhone.replace(/^\+91/, "").replace(/\D/g, "")}`;
+
+      if (cleanPhone.length !== 13 || !cleanPhone.startsWith("+91")) {
+        throw new Error("Invalid phone number format. Must be +91XXXXXXXXXX");
+      }
+
+      // Prepare WhatsApp template message using the new MSG91 API format
+      let components: any = {};
+
+      // Template components based on notification type
+      switch (notification.type) {
+        case "invitation":
+          components = {
+            body_1: {
+              type: "text",
+              value: notification.data?.role || "team member",
+            },
+            body_2: {
+              type: "text",
+              value: notification.data?.expiresAt || "24 hours",
+            },
+            button_1: {
+              subtype: "url",
+              type: "text",
+              value: notification.data?.invitationUrl || "#",
+            },
+          };
+          break;
+
+        case "order_status_update":
+          components = {
+            body_1: {
+              type: "text",
+              value: `Order ${notification.data?.orderId || ""} status: ${notification.data?.status || ""}`,
+            },
+            body_2: {
+              type: "text",
+              value: notification.message,
+            },
+          };
+          break;
+
+        case "delivery_assigned":
+        case "delivery_started":
+        case "delivery_completed":
+          components = {
+            body_1: {
+              type: "text",
+              value: `Order ${notification.data?.orderId || ""}`,
+            },
+            body_2: {
+              type: "text",
+              value: notification.message,
+            },
+          };
+          break;
+
+        case "payment_received":
+        case "payment_failed":
+          components = {
+            body_1: {
+              type: "text",
+              value: `Payment ${notification.data?.amount ? `₹${notification.data.amount}` : ""}`,
+            },
+            body_2: {
+              type: "text",
+              value: notification.message,
+            },
+          };
+          break;
+
+        default:
+          // Generic template for other notifications
+          components = {
+            body_1: {
+              type: "text",
+              value: notification.message,
+            },
+          };
+          break;
+      }
+
+      const whatsappData = {
+        integrated_number: integratedNumber,
+        content_type: "template",
+        payload: {
+          messaging_product: "whatsapp",
+          type: "template",
+          template: {
+            name: templateName,
+            language: {
+              code: "en",
+              policy: "deterministic",
+            },
+            namespace: namespace,
+            to_and_components: [
+              {
+                to: [cleanPhone],
+                components: components,
+              },
+            ],
+          },
+        },
+      };
+
+      const response = await fetch(
+        `https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/`,
+        {
+          method: "POST",
+          headers: {
+            authkey: authKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(whatsappData),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
+        console.error("WhatsApp API Error:", {
+          status: response.status,
+          statusText: response.statusText,
+          result: result,
+        });
+        throw new Error(
+          result.message ||
+            result.error ||
+            `WhatsApp API error: ${response.status}`
+        );
+      }
+
+      console.log(
+        `✅ WhatsApp message sent successfully via MSG91: ${result.requestId || result.messageId || "Success"}`
+      );
+    } catch (error) {
+      console.error("Failed to send WhatsApp message:", error);
+      throw error;
+    }
   }
 
   private interpolate(template: string, data: Record<string, any>): string {

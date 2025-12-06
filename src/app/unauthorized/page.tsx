@@ -12,10 +12,63 @@ import {
 } from "@/components/ui/card";
 import { Shield, Home, LogOut, AlertTriangle, Phone } from "lucide-react";
 import { signOut } from "next-auth/react";
+import { useState } from "react";
 
 export default function UnauthorizedPage() {
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      // Call comprehensive logout API that handles database cleanup
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error("Logout API failed");
+      }
+
+      // Clear NextAuth session cookies explicitly
+      const cookiesToClear = [
+        "next-auth.session-token",
+        "next-auth.callback-url",
+        "__Secure-next-auth.session-token",
+        "next-auth.pkce.code_verifier",
+        "next-auth.pkce.state",
+      ];
+
+      cookiesToClear.forEach((cookieName) => {
+        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname};`;
+        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; secure; samesite=lax;`;
+      });
+
+      // Force redirect to clear all client-side session state
+      window.location.replace("/");
+    } catch (error) {
+      console.error("Logout failed:", error);
+
+      // Emergency logout - clear all possible auth cookies
+      document.cookie.split(";").forEach((cookie) => {
+        const name = cookie.split("=")[0].trim();
+        if (
+          name.includes("auth") ||
+          name.includes("session") ||
+          name.includes("token")
+        ) {
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        }
+      });
+
+      window.location.replace("/");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   const getContent = () => {
     switch (reason) {
@@ -98,10 +151,11 @@ export default function UnauthorizedPage() {
             <Button
               className="w-full"
               variant="outline"
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={handleLogout}
+              disabled={isLoggingOut}
             >
               <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
+              {isLoggingOut ? "Signing Out..." : "Sign Out"}
             </Button>
           </div>
         </CardContent>

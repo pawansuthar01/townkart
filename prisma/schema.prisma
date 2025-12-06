@@ -144,6 +144,7 @@ model User {
   supportTickets    SupportTicket[]
   sentInvitations   Invitation[]    @relation("SentInvitations")
   usedInvitations   Invitation[]    @relation("UsedInvitations")
+  accounts          Account[]
 
   @@map("users")
 }
@@ -631,32 +632,63 @@ model OTP {
 }
 
 model Session {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+   id            String   @id @default(cuid())
+   userId        String
+   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Session details
-  sessionToken  String   @unique
-  accessToken   String?  @unique
-  refreshToken  String?  @unique
+   // NextAuth required fields
+   sessionToken  String   @unique
+   expires       DateTime
 
-  // Device tracking
-  deviceId      String?
-  device        Device?  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+   // Custom fields for our system
+   accessToken   String?  @unique
+   refreshToken  String?  @unique
 
-  // Session metadata
-  ipAddress     String?
-  userAgent     String?
-  location      Json?    // {country, city, region}
-  isActive      Boolean  @default(true)
+   // Device tracking
+   deviceId      String?
+   device        Device?  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
-  // Timestamps
-  expiresAt     DateTime
-  lastActivity  DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+   // Session metadata
+   ipAddress     String?
+   userAgent     String?
+   location      Json?    // {country, city, region}
+   isActive      Boolean  @default(true)
 
-  @@map("sessions")
+   // Timestamps
+   lastActivity  DateTime @default(now())
+   createdAt     DateTime @default(now())
+   updatedAt     DateTime @updatedAt
+
+   @@map("sessions")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
 }
 
 model Device {
@@ -1861,23 +1893,109 @@ model Invitation {
   usedBy          String?          // User ID who used the invitation
   usedByUser      User?            @relation("UsedInvitations", fields: [usedBy], references: [id])
   message         String?          // Optional message from inviter
+
+  // Enhanced invitation data
+  storeId         String?          // For STORE_MANAGER invitations
+  serviceAreas    Json?            // Array of service area IDs for RIDER invitations
+  stores          Json?            // Array of store IDs for RIDER invitations
+
+  // Notification preferences
+  notificationChannels Json?       // Array of notification channels: ["EMAIL", "WHATSAPP"]
+
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+
+  // Relations
+  application     Application?
 
   @@map("invitations")
 }
 
+
+// Notification Logs for Production Monitoring
+model NotificationLog {
+  id            String   @id @default(cuid())
+  type          String   // notification type (invitation, order, etc.)
+  channel       String   // email, whatsapp, sms, push, in_app
+  recipient     String   // email address, phone number, or user ID
+  status        String   // sent, failed, pending
+  errorMessage  String?  // error details if failed
+  provider      String?  // MSG91, Resend, FCM, etc.
+  messageId     String?  // external provider message ID
+  cost          Float?   // cost of sending (if applicable)
+  metadata      Json?    // additional data (template used, etc.)
+  sentAt        DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([type, status])
+  @@index([channel, createdAt])
+  @@index([recipient])
+  @@map("notification_logs")
+}
+
+// Application System for Invitation-based Registration
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model Application {
+   id              String            @id @default(cuid())
+   invitationId    String            @unique
+   invitation      Invitation        @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+
+   // Personal Information
+   fullName        String
+   email           String
+   phoneNumber     String
+   password        String // Hashed password
+
+   // Role and Assignment
+   role            UserRole
+
+   // Rider Specific Data
+   vehicleType     String?
+   vehicleNumber   String?
+   licenseNumber   String?
+   emergencyContact String?
+   emergencyPhone  String?
+
+   // Store Manager Specific Data
+   storeId         String?
+
+   // Documents (file paths)
+   documents       Json? // { aadharCard: "filename", panCard: "filename", ... }
+
+   // Application Status
+   status          ApplicationStatus @default(PENDING)
+   submittedAt     DateTime          @default(now())
+   reviewedAt      DateTime?
+   reviewedBy      String? // Admin user ID
+   reviewNotes     String?
+
+   // Account Creation
+   userId          String? @unique // Created user ID after approval
+   approvedAt      DateTime?
+
+   createdAt       DateTime          @default(now())
+   updatedAt       DateTime          @updatedAt
+
+   @@map("applications")
+}
+
 // System Settings for Platform Management
 model SystemSetting {
-  id          String   @id @default(cuid())
-  category    String   // e.g., "platform", "payment", "delivery", "security"
-  key         String   // Setting key within category
-  value       String   // JSON string of the setting value
-  description String?  // Human-readable description
-  isPublic    Boolean  @default(false) // Whether setting is visible to non-admin users
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+   id          String   @id @default(cuid())
+   category    String   // e.g., "platform", "payment", "delivery", "security"
+   key         String   // Setting key within category
+   value       String   // JSON string of the setting value
+   description String?  // Human-readable description
+   isPublic    Boolean  @default(false) // Whether setting is visible to non-admin users
+   createdAt   DateTime @default(now())
+   updatedAt   DateTime @updatedAt
 
-  @@unique([category, key])
-  @@map("system_settings")
+   @@unique([category, key])
+   @@map("system_settings")
 }

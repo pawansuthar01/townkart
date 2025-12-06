@@ -64,8 +64,8 @@ export class RBAC {
       storeId?: string;
       orderId?: string;
       deliveryId?: string;
-    },
-  ): Promise<boolean> {
+    }
+  ): boolean {
     // Admin has all permissions
     if (userRoles.includes("ADMIN")) {
       return true;
@@ -78,12 +78,12 @@ export class RBAC {
 
       // Check for exact permission match
       const hasExactPermission = permissions.some(
-        (perm) => perm.resource === resource && perm.action === action,
+        (perm) => perm.resource === resource && perm.action === action
       );
 
       // Check for wildcard permissions
       const hasWildcardPermission = permissions.some(
-        (perm) => perm.resource === "*" || perm.action === "*",
+        (perm) => perm.resource === "*" || perm.action === "*"
       );
 
       if (hasExactPermission || hasWildcardPermission) {
@@ -91,7 +91,9 @@ export class RBAC {
       }
 
       // Check for contextual permissions
-      if (this.hasContextualPermission(role, resource, action, context)) {
+      if (
+        this.hasContextualPermission(role, resource, action, context) as any
+      ) {
         return true;
       }
     }
@@ -111,7 +113,7 @@ export class RBAC {
       storeId?: string;
       orderId?: string;
       deliveryId?: string;
-    },
+    }
   ): Promise<boolean> {
     if (!context) return false;
 
@@ -201,7 +203,7 @@ export class RBAC {
       storeId?: string;
       orderId?: string;
       deliveryId?: string;
-    },
+    }
   ): Promise<{ authorized: boolean; user?: any; error?: string }> {
     try {
       // Get token from Authorization header
@@ -240,7 +242,7 @@ export class RBAC {
         this.hasPermission(user.userRoles, perm.resource, perm.action, {
           userId: user.id,
           ...context,
-        }),
+        })
       );
 
       if (!hasPermission) {
@@ -272,8 +274,8 @@ export class RBAC {
       (perm, index, self) =>
         index ===
         self.findIndex(
-          (p) => p.resource === perm.resource && p.action === perm.action,
-        ),
+          (p) => p.resource === perm.resource && p.action === perm.action
+        )
     );
   }
 }
@@ -287,7 +289,7 @@ export async function withRBAC(
     storeId?: string;
     orderId?: string;
     deliveryId?: string;
-  },
+  }
 ) {
   const auth = await RBAC.authorize(request, requiredPermissions, context);
 

@@ -134,6 +134,31 @@ export async function GET(request: NextRequest) {
           isActive: true,
           lastLoginAt: true,
           createdAt: true,
+          sessions: {
+            where: {
+              isActive: true,
+            },
+            select: {
+              id: true,
+              deviceId: true,
+              device: {
+                select: {
+                  deviceName: true,
+                  deviceType: true,
+                  os: true,
+                  browser: true,
+                  lastIP: true,
+                  lastLoginAt: true,
+                },
+              },
+              lastActivity: true,
+              ipAddress: true,
+              userAgent: true,
+            },
+            orderBy: {
+              lastActivity: "desc",
+            },
+          },
         },
         orderBy: {
           createdAt: "desc",
@@ -155,6 +180,18 @@ export async function GET(request: NextRequest) {
           status: user.isActive ? "ACTIVE" : "INACTIVE",
           joinDate: user.createdAt.toISOString().split("T")[0],
           lastLogin: user.lastLoginAt?.toISOString().split("T")[0] || "Never",
+          isLoggedIn: user.sessions.length > 0,
+          devices: user.sessions.map((session) => ({
+            id: session.id,
+            deviceId: session.deviceId,
+            deviceName: session.device?.deviceName || "Unknown Device",
+            deviceType: session.device?.deviceType || "unknown",
+            os: session.device?.os || "Unknown",
+            browser: session.device?.browser || "Unknown",
+            ipAddress: session.ipAddress || session.device?.lastIP || "Unknown",
+            lastActivity: session.lastActivity.toISOString(),
+            location: null, // TODO: Add location data if needed
+          })),
         })),
         pagination: {
           page,

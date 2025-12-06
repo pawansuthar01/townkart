@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Mail, Check, X, Filter, Copy, ExternalLink } from "lucide-react";
 
 interface Invitation {
@@ -47,6 +48,10 @@ interface Invitation {
   status: string;
   expiresAt: string;
   createdAt: string;
+  storeId?: string;
+  serviceAreas?: string[];
+  stores?: string[];
+  notificationChannels?: string[];
   invitedByUser?: {
     fullName: string;
     email: string;
@@ -69,14 +74,46 @@ export default function AdminInvitationsPage() {
     role: "RIDER",
     message: "",
     expiresInHours: 24,
+    storeId: "",
+    serviceAreas: [] as string[],
+    stores: [] as string[],
+    notificationChannels: ["EMAIL"] as string[],
   });
+  const [serviceAreas, setServiceAreas] = useState<any[]>([]);
+  const [stores, setStores] = useState<any[]>([]);
   const [creating, setCreating] = useState(false);
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [filterRole, setFilterRole] = useState("ALL");
 
   useEffect(() => {
     fetchInvitations();
+    fetchServiceAreas();
+    fetchStores();
   }, [filterStatus, filterRole]);
+
+  const fetchServiceAreas = async () => {
+    try {
+      const response = await fetch("/api/admin/service-areas");
+      if (response.ok) {
+        const data = await response.json();
+        setServiceAreas(data.data || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch service areas:", error);
+    }
+  };
+
+  const fetchStores = async () => {
+    try {
+      const response = await fetch("/api/admin/stores?limit=1000");
+      if (response.ok) {
+        const data = await response.json();
+        setStores(data.data || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch stores:", error);
+    }
+  };
 
   const fetchInvitations = async () => {
     try {
@@ -124,6 +161,10 @@ export default function AdminInvitationsPage() {
         role: "RIDER",
         message: "",
         expiresInHours: 24,
+        storeId: "",
+        serviceAreas: [],
+        stores: [],
+        notificationChannels: ["EMAIL"],
       });
       fetchInvitations();
     } catch (error: any) {
@@ -161,6 +202,28 @@ export default function AdminInvitationsPage() {
     setSuccess("Link copied to clipboard!");
   };
 
+  const getAssignmentDisplay = (invitation: Invitation) => {
+    if (invitation.role === "STORE_MANAGER" && invitation.storeId) {
+      const store = stores.find((s) => s.id === invitation.storeId);
+      return store ? `${store.name} (${store.code})` : "Store assigned";
+    } else if (invitation.role === "RIDER") {
+      const assignments = [];
+      if (invitation.serviceAreas && invitation.serviceAreas.length > 0) {
+        const areaNames = invitation.serviceAreas
+          .map((id) => serviceAreas.find((a) => a.id === id)?.name)
+          .filter(Boolean);
+        if (areaNames.length > 0) {
+          assignments.push(`${areaNames.length} service area(s)`);
+        }
+      }
+      if (invitation.stores && invitation.stores.length > 0) {
+        assignments.push(`${invitation.stores.length} store(s)`);
+      }
+      return assignments.length > 0 ? assignments.join(", ") : "No assignments";
+    }
+    return "No assignments";
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "PENDING":
@@ -178,6 +241,37 @@ export default function AdminInvitationsPage() {
     }
   };
 
+  const getNotificationStatusDisplay = (invitation: Invitation) => {
+    if (
+      !invitation.notificationChannels ||
+      invitation.notificationChannels.length === 0
+    ) {
+      return <span className="text-gray-500 text-sm">No notifications</span>;
+    }
+
+    const channels = invitation.notificationChannels.map((channel) => {
+      switch (channel) {
+        case "EMAIL":
+          return "📧";
+        case "WHATSAPP":
+          return "💬";
+        case "SMS":
+          return "📱";
+        default:
+          return channel;
+      }
+    });
+
+    return (
+      <div className="flex items-center gap-1">
+        <span className="text-sm">{channels.join(" ")}</span>
+        <Badge variant="default" className="text-xs">
+          {invitation.notificationChannels.length} sent
+        </Badge>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -192,7 +286,7 @@ export default function AdminInvitationsPage() {
               Send Invitation
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Send Invitation</DialogTitle>
               <DialogDescription>
@@ -235,9 +329,16 @@ export default function AdminInvitationsPage() {
                 <Label htmlFor="role">Role</Label>
                 <Select
                   value={createForm.role}
-                  onValueChange={(value) =>
-                    setCreateForm((prev) => ({ ...prev, role: value }))
-                  }
+                  onValueChange={(value) => {
+                    setCreateForm((prev) => ({
+                      ...prev,
+                      role: value,
+                      storeId: "",
+                      serviceAreas: [],
+                      stores: [],
+                      notificationChannels: ["EMAIL"],
+                    }));
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -248,6 +349,97 @@ export default function AdminInvitationsPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {createForm.role === "STORE_MANAGER" && (
+                <div>
+                  <Label htmlFor="storeId">Store</Label>
+                  <Select
+                    value={createForm.storeId}
+                    onValueChange={(value) =>
+                      setCreateForm((prev) => ({ ...prev, storeId: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a store" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stores.map((store) => (
+                        <SelectItem key={store.id} value={store.id}>
+                          {store.name} ({store.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {createForm.role === "RIDER" && (
+                <>
+                  <div>
+                    <Label>Service Areas (Optional)</Label>
+                    <div className="max-h-40 overflow-y-auto border rounded-md p-3 space-y-2">
+                      {serviceAreas.map((area) => (
+                        <div
+                          key={area.id}
+                          className="flex items-center space-x-2"
+                        >
+                          <Checkbox
+                            id={`service-area-${area.id}`}
+                            checked={createForm.serviceAreas.includes(area.id)}
+                            onCheckedChange={(checked) => {
+                              setCreateForm((prev) => ({
+                                ...prev,
+                                serviceAreas: checked
+                                  ? [...prev.serviceAreas, area.id]
+                                  : prev.serviceAreas.filter(
+                                      (id) => id !== area.id
+                                    ),
+                              }));
+                            }}
+                          />
+                          <Label
+                            htmlFor={`service-area-${area.id}`}
+                            className="text-sm"
+                          >
+                            {area.name} ({area.city})
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label>Stores (Optional)</Label>
+                    <div className="max-h-40 overflow-y-auto border rounded-md p-3 space-y-2">
+                      {stores.map((store) => (
+                        <div
+                          key={store.id}
+                          className="flex items-center space-x-2"
+                        >
+                          <Checkbox
+                            id={`store-${store.id}`}
+                            checked={createForm.stores.includes(store.id)}
+                            onCheckedChange={(checked) => {
+                              setCreateForm((prev) => ({
+                                ...prev,
+                                stores: checked
+                                  ? [...prev.stores, store.id]
+                                  : prev.stores.filter((id) => id !== store.id),
+                              }));
+                            }}
+                          />
+                          <Label
+                            htmlFor={`store-${store.id}`}
+                            className="text-sm"
+                          >
+                            {store.name} ({store.code})
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
               <div>
                 <Label htmlFor="message">Message (Optional)</Label>
                 <Input
@@ -261,6 +453,85 @@ export default function AdminInvitationsPage() {
                   }
                   placeholder="Personal message to include in invitation"
                 />
+              </div>
+
+              <div>
+                <Label>Notification Channels</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="email-channel"
+                      checked={createForm.notificationChannels.includes(
+                        "EMAIL"
+                      )}
+                      onCheckedChange={(checked) => {
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          notificationChannels: checked
+                            ? [...prev.notificationChannels, "EMAIL"]
+                            : prev.notificationChannels.filter(
+                                (c) => c !== "EMAIL"
+                              ),
+                        }));
+                      }}
+                    />
+                    <Label htmlFor="email-channel" className="text-sm">
+                      📧 Email
+                    </Label>
+                  </div>
+                  {createForm.phone && (
+                    <>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="whatsapp-channel"
+                          checked={createForm.notificationChannels.includes(
+                            "WHATSAPP"
+                          )}
+                          onCheckedChange={(checked) => {
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              notificationChannels: checked
+                                ? [...prev.notificationChannels, "WHATSAPP"]
+                                : prev.notificationChannels.filter(
+                                    (c) => c !== "WHATSAPP"
+                                  ),
+                            }));
+                          }}
+                        />
+                        <Label htmlFor="whatsapp-channel" className="text-sm">
+                          💬 WhatsApp
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="sms-channel"
+                          checked={createForm.notificationChannels.includes(
+                            "SMS"
+                          )}
+                          onCheckedChange={(checked) => {
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              notificationChannels: checked
+                                ? [...prev.notificationChannels, "SMS"]
+                                : prev.notificationChannels.filter(
+                                    (c) => c !== "SMS"
+                                  ),
+                            }));
+                          }}
+                        />
+                        <Label htmlFor="sms-channel" className="text-sm">
+                          📱 SMS
+                        </Label>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Select how you want to send the invitation. WhatsApp and SMS
+                  require a phone number. In-app notifications are not available
+                  for invitations since the recipient doesn't have an account
+                  yet.
+                </p>
               </div>
               <div>
                 <Label htmlFor="expiresInHours">Expires in (hours)</Label>
@@ -370,11 +641,14 @@ export default function AdminInvitationsPage() {
                 <TableRow>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Assignment</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Notifications</TableHead>
                   <TableHead>Sent By</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Expires</TableHead>
                   <TableHead>Actions</TableHead>
+                  <TableHead>Url</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -397,7 +671,13 @@ export default function AdminInvitationsPage() {
                         ? "Store Manager"
                         : invitation.role}
                     </TableCell>
+                    <TableCell className="text-sm text-gray-600">
+                      {getAssignmentDisplay(invitation)}
+                    </TableCell>
                     <TableCell>{getStatusBadge(invitation.status)}</TableCell>
+                    <TableCell>
+                      {getNotificationStatusDisplay(invitation)}
+                    </TableCell>
                     <TableCell>
                       {invitation.invitedByUser?.fullName || "System"}
                     </TableCell>
@@ -434,19 +714,24 @@ export default function AdminInvitationsPage() {
                           </>
                         )}
                         {invitation.status === "APPROVED" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              copyToClipboard(
-                                `${window.location.origin}/auth/register?token=${invitation.id}`
-                              )
-                            }
-                          >
-                            <Copy className="w-3 h-3 mr-1" />
-                            Copy Link
-                          </Button>
+                          <div className="text-sm text-gray-500">Approved</div>
                         )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            copyToClipboard(
+                              `${window.location.origin}/auth/register?token=${invitation.id}`
+                            )
+                          }
+                        >
+                          <Copy className="w-3 h-3 mr-1" />
+                          Copy Link
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>

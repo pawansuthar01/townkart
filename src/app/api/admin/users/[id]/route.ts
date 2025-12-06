@@ -15,53 +15,83 @@ export async function PUT(
     }
 
     const userId = params.id;
-    const { fullName, email, phoneNumber, role } = await request.json();
+    const { status, role, storeId, serviceAreaId } = await request.json();
 
-    if (!fullName || !email || !phoneNumber || !role) {
+    if (!status || !role) {
       return NextResponse.json(
-        { success: false, message: "All fields are required" },
+        { success: false, message: "Status and role are required" },
         { status: 400 }
       );
     }
 
-    // Check if email/phone is already used by another user
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [{ email }, { phoneNumber }],
-        NOT: { id: userId },
-      },
-    });
-
-    if (existingUser) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Email or phone already used by another user",
+    // Start a transaction to handle role-specific updates
+    const result = await prisma.$transaction(async (tx) => {
+      // Update user basic info
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: {
+          isActive: status === "ACTIVE",
+          activeRole: role as "CUSTOMER" | "STORE_MANAGER" | "RIDER" | "ADMIN",
+          userRoles: [role],
         },
-        { status: 400 }
-      );
-    }
+      });
 
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        fullName,
-        email,
-        phoneNumber,
-        activeRole: role as "CUSTOMER" | "STORE_MANAGER" | "RIDER" | "ADMIN",
-        userRoles: [role],
-      },
+      // Handle role-specific assignments
+      if (role === "STORE_MANAGER" && storeId) {
+        // Update store manager relationship
+        await tx.store.update({
+          where: { id: storeId },
+          data: { managerId: userId },
+        });
+      } else if (role === "RIDER" && serviceAreaId) {
+        // Create rider profile if it doesn't exist
+        const riderProfile = await tx.riderProfile.upsert({
+          where: { userId },
+          update: {
+            isActive: true,
+            isVerified: false,
+          },
+          create: {
+            userId,
+            city: "", // Will be updated based on service area
+            isAvailable: false,
+            isActive: true,
+            isVerified: false,
+          },
+        });
+
+        // Create rider zone assignment
+        await tx.riderZoneAssignment.upsert({
+          where: { riderId: riderProfile.id },
+          update: {
+            serviceAreaId,
+            assignedZones: [],
+            isCurrentlyValid: true,
+            lastValidation: new Date(),
+          },
+          create: {
+            riderId: riderProfile.id,
+            serviceAreaId,
+            assignedZones: [],
+            isCurrentlyValid: true,
+            lastValidation: new Date(),
+          },
+        });
+      }
+
+      return user;
     });
 
     return NextResponse.json({
       success: true,
       message: "User updated successfully",
       user: {
-        id: user.id,
-        name: user.fullName,
-        email: user.email,
-        phone: user.phoneNumber,
-        role: user.activeRole,
+        id: result.id,
+        name: result.fullName,
+        email: result.email,
+        phone: result.phoneNumber,
+        role: result.activeRole,
+        status: result.isActive ? "ACTIVE" : "INACTIVE",
       },
     });
   } catch (error: any) {

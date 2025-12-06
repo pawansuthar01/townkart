@@ -16,6 +16,15 @@ import {
   MapPin,
   Bell,
   Mail,
+  FileText,
+  Truck,
+  Monitor,
+  Smartphone,
+  Clock,
+  User,
+  Globe,
+  Cog,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,9 +35,19 @@ const adminNavItems = [
     icon: LayoutDashboard,
   },
   {
+    title: "Analytics",
+    href: "/admin/analytics",
+    icon: BarChart3,
+  },
+  {
     title: "Users",
     href: "/admin/users",
     icon: Users,
+  },
+  {
+    title: "Applications",
+    href: "/admin/applications",
+    icon: FileText,
   },
   {
     title: "Invitations",
@@ -61,6 +80,21 @@ const adminNavItems = [
     icon: MapPin,
   },
   {
+    title: "Delivery Monitoring",
+    href: "/admin/delivery-monitoring",
+    icon: Truck,
+  },
+  {
+    title: "Delivery Charges",
+    href: "/admin/delivery-charges",
+    icon: CreditCard,
+  },
+  {
+    title: "Service Areas",
+    href: "/admin/service-areas",
+    icon: Globe,
+  },
+  {
     title: "Offers",
     href: "/admin/offers",
     icon: Gift,
@@ -71,14 +105,34 @@ const adminNavItems = [
     icon: Bell,
   },
   {
-    title: "Analytics",
-    href: "/admin/analytics",
-    icon: BarChart3,
+    title: "Notification Logs",
+    href: "/admin/notification-logs",
+    icon: Clock,
   },
   {
-    title: "Settings",
-    href: "/admin/settings",
+    title: "Notification Settings",
+    href: "/admin/notification-settings",
     icon: Settings,
+  },
+  {
+    title: "Devices",
+    href: "/admin/devices",
+    icon: Smartphone,
+  },
+  {
+    title: "OTP Metrics",
+    href: "/admin/otp-metrics",
+    icon: Shield,
+  },
+  {
+    title: "Profile",
+    href: "/admin/profile",
+    icon: User,
+  },
+  {
+    title: "System Settings",
+    href: "/admin/system-settings",
+    icon: Cog,
   },
 ];
 
@@ -109,7 +163,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="p-6 border-b border-gray-200 md:hidden">
+          <div className="p-6 border-b border-gray-200 ">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Shield className="h-8 w-8 text-blue-600" />
@@ -119,7 +173,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
               </div>
               <button
                 onClick={onClose}
-                className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
+                className=" p-2 hover:bg-gray-100 rounded-lg"
               >
                 ✕
               </button>

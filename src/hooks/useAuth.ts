@@ -37,7 +37,31 @@ export const useAuth = () => {
   };
 
   const logout = async () => {
+    try {
+      console.log("🚪 Starting logout process...");
+      // Call logout API for database cleanup first
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const result = await response.json();
+      console.log("Logout API response:", result);
+
+      if (!response.ok) {
+        console.warn("Logout API returned error:", result);
+      }
+    } catch (error) {
+      console.warn("Logout API call failed:", error);
+      // Continue with signOut even if API fails
+    }
+
+    // Then sign out from NextAuth
+    console.log("🔐 Calling NextAuth signOut...");
     await signOut({ callbackUrl: "/" });
+    console.log("✅ Logout process completed");
   };
 
   const register = async (userData: {

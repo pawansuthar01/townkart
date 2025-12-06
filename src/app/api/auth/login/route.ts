@@ -1,107 +1,110 @@
 import { NextRequest, NextResponse } from "next/server";
+import { signIn } from "next-auth/react";
 import { prisma } from "@/lib/prisma";
-import { generateAccessToken, generateRefreshToken } from "@/lib/auth";
-import { loginSchema } from "@/lib/validation";
-import { RateLimiter } from "@/middleware/rateLimit";
-import { OTPService } from "@/lib/otpService";
+import { DeviceTracker, LoginContext } from "@/middleware/deviceTracking";
+import { LocationService } from "@/lib/locationService";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { phoneNumber: identifier } = loginSchema.parse(body);
+    const { phoneNumber, deviceInfo } = await request.json();
 
-    // Get client IP for rate limiting
-    const clientIP = await RateLimiter.getClientIP(request);
-    const userAgent = request.headers.get("user-agent");
-
-    // Check rate limiting
-    const rateLimitResult = await RateLimiter.checkLoginAttempts(
-      identifier,
-      clientIP,
-      request,
-    );
-
-    if (!rateLimitResult.allowed) {
-      const retryAfter = rateLimitResult.blockUntil
-        ? Math.ceil((rateLimitResult.blockUntil.getTime() - Date.now()) / 1000)
-        : undefined;
-
-      return RateLimiter.createRateLimitResponse(
-        `Too many login attempts. ${rateLimitResult.remainingAttempts} attempts remaining.`,
-        retryAfter,
+    if (!phoneNumber) {
+      return NextResponse.json(
+        { success: false, message: "Phone number is required" },
+        { status: 400 }
       );
     }
 
-    // Add progressive delay if needed
-    if (rateLimitResult.delayMs) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, rateLimitResult.delayMs),
-      );
-    }
+    // Get client information
+    const clientIP =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      request.headers.get("x-real-ip") ||
+      request.headers.get("x-client-ip") ||
+      "127.0.0.1";
+    const userAgent = request.headers.get("user-agent") || "";
 
-    // Check if user exists (by phone or email)
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [{ phoneNumber: identifier }, { email: identifier }],
-      },
+    // Parse device info
+    const parsedDeviceInfo = {
+      deviceId:
+        deviceInfo?.deviceId ||
+        DeviceTracker.generateDeviceFingerprint(request),
+      deviceName: deviceInfo?.deviceName,
+      deviceType:
+        deviceInfo?.deviceType || DeviceTracker.getDeviceType(userAgent),
+      os: deviceInfo?.os || DeviceTracker.getOS(userAgent),
+      browser: deviceInfo?.browser || DeviceTracker.getBrowser(userAgent),
+      fingerprint: deviceInfo?.fingerprint,
+      batteryLevel: deviceInfo?.batteryLevel,
+    };
+
+    // Get location information
+    const locationInfo = await LocationService.getLocationInfoFromIP(clientIP);
+
+    const loginContext: LoginContext = {
+      deviceInfo: parsedDeviceInfo,
+      locationInfo,
+      userAgent,
+    };
+
+    // Check if user exists
+    const user = await prisma.user.findUnique({
+      where: { phoneNumber },
       select: {
         id: true,
         phoneNumber: true,
-        email: true,
-        fullName: true,
-        userRoles: true,
-        activeRole: true,
+        isActive: true,
         phoneVerified: true,
       },
     });
-
+    console.log("user", user);
     if (!user) {
       return NextResponse.json(
         { success: false, message: "User not found. Please register first." },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
-    // Send OTP using the new service
-    const result = await OTPService.sendOTP(
-      user.phoneNumber,
-      user.email,
-      "LOGIN",
-    );
-
-    if (!result.success) {
-      return NextResponse.json(
-        { success: false, message: result.message },
-        { status: 429 },
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: result.message,
-      data: {
-        phoneNumber: user.phoneNumber,
-        otpSent: true,
-        channels: result.channels,
-      },
-    });
-  } catch (error: any) {
-    console.error("Login error:", error);
-
-    if (error.name === "ZodError") {
+    if (!user.isActive) {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid input data",
-          errors: error.errors,
+          message: "Account is deactivated. Please contact support.",
         },
-        { status: 400 },
+        { status: 403 }
       );
     }
 
+    if (!user.phoneVerified) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Phone number not verified. Please verify first.",
+        },
+        { status: 403 }
+      );
+    }
+
+    // Log the login attempt
+    await DeviceTracker.logDeviceLogin(
+      user.id,
+      parsedDeviceInfo.deviceId,
+      "LOGIN_ATTEMPT",
+      loginContext,
+      "LOW",
+      ["OTP login initiated"]
+    );
+
+    return NextResponse.json({
+      success: true,
+      message: "Login initiated. Please verify OTP.",
+      userId: user.id,
+      deviceInfo: parsedDeviceInfo,
+    });
+  } catch (error: any) {
+    console.error("Login API error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

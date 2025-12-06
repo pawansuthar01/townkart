@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     console.error("Get profile error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -101,7 +101,7 @@ export async function PUT(request: NextRequest) {
       if (!user?.password) {
         return NextResponse.json(
           { error: "Password not set. Use password reset instead." },
-          { status: 400 },
+          { status: 400 }
         );
       }
 
@@ -130,6 +130,7 @@ export async function PUT(request: NextRequest) {
         profileImageUrl: updatedUser.profileImageUrl,
         updatedAt: updatedUser.updatedAt,
       },
+      refreshSession: true, // Client should refresh session to get updated data
     });
   } catch (error: any) {
     console.error("Update profile error:", error);
@@ -140,13 +141,13 @@ export async function PUT(request: NextRequest) {
           error: "Validation error",
           details: error.errors,
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

@@ -32,7 +32,7 @@ export function LoginForm() {
 
   const router = useRouter();
   const { data: session, status } = useSession();
-
+  console.log(session, status);
   // Redirect if already logged in
   useEffect(() => {
     if (status === "authenticated" && session?.user) {
@@ -80,10 +80,11 @@ export function LoginForm() {
         }
         return;
       }
-
+      console.log(result);
       if (result?.ok) {
         // Get session to check user role and verification status
         const session = await getSession();
+        console.log(session);
         const activeRole = (session?.user as any)?.activeRole;
         const phoneVerified = (session?.user as any)?.phoneVerified;
         const phoneNumber = (session?.user as any)?.phoneNumber;
@@ -91,7 +92,7 @@ export function LoginForm() {
         // If phone not verified, redirect to verification
         if (!phoneVerified) {
           router.push(
-            `/auth/verify-otp?phone=${encodeURIComponent(phoneNumber || "")}&purpose=LOGIN`
+            `/verify-otp?phone=${encodeURIComponent(phoneNumber || "")}&purpose=LOGIN`
           );
           return;
         }

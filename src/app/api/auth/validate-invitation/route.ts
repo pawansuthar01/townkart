@@ -7,59 +7,57 @@ export async function GET(request: NextRequest) {
     const token = searchParams.get("token");
 
     if (!token) {
-      return NextResponse.json(
-        { valid: false, message: "Token is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Token is required" }, { status: 400 });
     }
 
+    // Find the invitation
     const invitation = await prisma.invitation.findUnique({
       where: { token },
     });
 
     if (!invitation) {
       return NextResponse.json(
-        { valid: false, message: "Invalid invitation token" },
-        { status: 400 }
+        { error: "Invalid invitation token" },
+        { status: 404 }
       );
     }
 
-    if (invitation.status !== "APPROVED") {
-      return NextResponse.json(
-        {
-          valid: false,
-          message:
-            invitation.status === "PENDING"
-              ? "Invitation is pending approval"
-              : invitation.status === "REJECTED"
-                ? "Invitation has been rejected"
-                : "Invitation is no longer valid",
-        },
-        { status: 400 }
-      );
-    }
-
+    // Check if invitation is expired
     if (invitation.expiresAt < new Date()) {
       return NextResponse.json(
-        { valid: false, message: "Invitation has expired" },
+        { error: "Invitation has expired" },
         { status: 400 }
       );
     }
 
+    // Check if invitation is already used
+    if (invitation.status !== "PENDING") {
+      return NextResponse.json(
+        { error: "Invitation has already been used" },
+        { status: 400 }
+      );
+    }
+
+    // Return invitation data (without sensitive info)
+    const invitationData = {
+      id: invitation.id,
+      invitedEmail: invitation.invitedEmail,
+      invitedPhone: invitation.invitedPhone,
+      role: invitation.role,
+      serviceAreas: invitation.serviceAreas,
+      stores: invitation.stores,
+      message: invitation.message,
+      expiresAt: invitation.expiresAt.toISOString(),
+    };
+
     return NextResponse.json({
-      valid: true,
-      invitation: {
-        id: invitation.id,
-        role: invitation.role,
-        invitedEmail: invitation.invitedEmail,
-        message: invitation.message,
-        expiresAt: invitation.expiresAt,
-      },
+      success: true,
+      invitation: invitationData,
     });
   } catch (error) {
     console.error("Error validating invitation:", error);
     return NextResponse.json(
-      { valid: false, message: "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

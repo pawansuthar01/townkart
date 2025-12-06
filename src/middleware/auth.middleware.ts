@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DeviceManager } from "@/lib/deviceManager";
+import { RBAC } from "./rbac";
 
 async function validateRiderSession(session: any): Promise<boolean> {
   try {
@@ -12,7 +13,7 @@ async function validateRiderSession(session: any): Promise<boolean> {
         userId: session.user.id,
         sessionToken: session.sessionToken,
         isActive: true,
-        expiresAt: {
+        expires: {
           gt: new Date(),
         },
       },
@@ -98,8 +99,6 @@ export async function authMiddleware(request: NextRequest) {
       );
     }
 
-    // TODO: Re-enable session validation after proper testing
-    // For now, skip validation to avoid blocking valid requests
     const activeRole = (session.user as any).activeRole || "CUSTOMER";
 
     // Add user info to headers for use in API routes
@@ -130,8 +129,11 @@ export function roleBasedAccessControl(
   activeRole: string,
   requiredPermissions: string[]
 ): boolean {
-  // Import RBAC dynamically to avoid circular dependencies
-  const { RBAC } = require("@/middleware/rbac");
+  console.log("Checking permissions:", {
+    userRoles,
+    activeRole,
+    requiredPermissions,
+  });
 
   // Check if user has the active role
   if (!userRoles.includes(activeRole)) {
@@ -146,7 +148,6 @@ export function roleBasedAccessControl(
   // Check permissions using RBAC system
   // Convert string permissions to RBAC format (assuming format like "manage_users")
   const rbacPermissions = requiredPermissions.map((perm) => {
-    // Split permission into resource and action (e.g., "manage_users" -> resource: "users", action: "manage")
     const parts = perm.split("_");
     if (parts.length >= 2) {
       const action = parts[0];
@@ -156,7 +157,6 @@ export function roleBasedAccessControl(
     return { resource: perm, action: "*" };
   });
 
-  // Check if user has all required permissions
   return rbacPermissions.every((perm) =>
     RBAC.hasPermission(userRoles, perm.resource, perm.action)
   );
@@ -258,7 +258,6 @@ export async function adminOnlyMiddleware(request: NextRequest) {
   try {
     // Get session using NextAuth
     const session = await getServerSession(authOptions);
-
     if (!session || !session.user) {
       return NextResponse.json(
         { success: false, message: "Authentication required" },
@@ -266,7 +265,7 @@ export async function adminOnlyMiddleware(request: NextRequest) {
       );
     }
 
-    const userRoles = (session.user as any).roles || [];
+    const userRoles = (session.user as any).userRoles || [];
     const activeRole = (session.user as any).activeRole || "";
 
     if (!roleBasedAccessControl(userRoles, activeRole, ["manage_users"])) {
@@ -309,6 +308,7 @@ export const routeMiddleware: Record<
 };
 
 // Main middleware function
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 

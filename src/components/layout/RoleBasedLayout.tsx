@@ -35,7 +35,7 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
   if (isAuthPage) {
     return <>{children}</>;
   }
-  console.log(userRole);
+
   // Show loading state
   if (status === "loading") {
     return (
@@ -87,7 +87,7 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
               isOpen={sidebarOpen}
               onClose={() => setSidebarOpen(false)}
             />
-            <main className="flex-1 md:ml-64">{children}</main>
+            <main className="flex-1 px-6 py-2 pt-24 md:pt-28">{children}</main>
           </div>
         </div>
       );

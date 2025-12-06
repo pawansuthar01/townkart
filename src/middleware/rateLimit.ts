@@ -15,6 +15,13 @@ const LOGIN_RATE_LIMIT: RateLimitConfig = {
   progressiveDelay: true,
 };
 
+const ADMIN_LOGIN_RATE_LIMIT: RateLimitConfig = {
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxAttempts: 60, // Higher limit for admins
+  blockDurationMs: 10 * 60 * 1000, // 10 minutes block (shorter for admins)
+  progressiveDelay: false, // No progressive delay for admins
+};
+
 export class RateLimiter {
   static async getClientIP(request: NextRequest): Promise<string> {
     // Try to get real IP from various headers
@@ -39,7 +46,7 @@ export class RateLimiter {
   static async checkLoginAttempts(
     identifier: string,
     ipAddress: string,
-    request: NextRequest,
+    request: NextRequest
   ): Promise<{
     allowed: boolean;
     remainingAttempts: number;
@@ -61,7 +68,7 @@ export class RateLimiter {
     });
 
     const failedAttempts = recentAttempts.filter(
-      (attempt: any) => !attempt.success,
+      (attempt: any) => !attempt.success
     );
     const totalAttempts = recentAttempts.length;
 
@@ -72,8 +79,7 @@ export class RateLimiter {
       failedAttempts.length >= LOGIN_RATE_LIMIT.maxAttempts
     ) {
       const blockUntil = new Date(
-        lastFailedAttempt.createdAt.getTime() +
-          LOGIN_RATE_LIMIT.blockDurationMs,
+        lastFailedAttempt.createdAt.getTime() + LOGIN_RATE_LIMIT.blockDurationMs
       );
 
       if (now < blockUntil) {
@@ -88,7 +94,7 @@ export class RateLimiter {
     // Calculate remaining attempts
     const remainingAttempts = Math.max(
       0,
-      LOGIN_RATE_LIMIT.maxAttempts - failedAttempts.length,
+      LOGIN_RATE_LIMIT.maxAttempts - failedAttempts.length
     );
 
     // Calculate progressive delay if enabled
@@ -111,7 +117,7 @@ export class RateLimiter {
     userAgent: string | null,
     success: boolean,
     failureReason?: string,
-    userId?: string,
+    userId?: string
   ): Promise<any> {
     try {
       const attempt = await prisma.loginAttempt.create({
@@ -134,7 +140,7 @@ export class RateLimiter {
 
   static async createRateLimitResponse(
     message: string,
-    retryAfter?: number,
+    retryAfter?: number
   ): Promise<NextResponse> {
     const response = NextResponse.json(
       {
@@ -142,7 +148,7 @@ export class RateLimiter {
         message,
         retryAfter,
       },
-      { status: 429 },
+      { status: 429 }
     );
 
     if (retryAfter) {

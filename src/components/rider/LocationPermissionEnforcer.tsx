@@ -19,6 +19,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { resilientLocationService } from "@/services/resilient-location.service";
 
 interface LocationStatus {
   hasPermission: boolean;
@@ -59,19 +60,17 @@ export function LocationPermissionEnforcer({
 
   const [showPermissionDialog, setShowPermissionDialog] = useState(false);
   const [showLocationLostDialog, setShowLocationLostDialog] = useState(false);
-  const [consecutiveFailures, setConsecutiveFailures] = useState(0);
   const [isCheckingPermission, setIsCheckingPermission] = useState(false);
 
-  const watchIdRef = useRef<number | null>(null);
   const permissionCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const locationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastLocationRef = useRef<any>(null);
+  const locationStateUnsubscribeRef = useRef<(() => void) | null>(null);
 
   // Check location permission on mount
   useEffect(() => {
     checkLocationPermission();
     setupPermissionMonitoring();
     setupBatteryMonitoring();
+    setupResilientLocationTracking();
 
     return () => {
       cleanup();
@@ -117,6 +116,27 @@ export function LocationPermissionEnforcer({
         });
       });
     }
+  };
+
+  const setupResilientLocationTracking = () => {
+    // Subscribe to resilient location service state changes
+    locationStateUnsubscribeRef.current =
+      resilientLocationService.onStateChange((state) => {
+        setLocationStatus((prev) => ({
+          ...prev,
+          isOnline: state.isOnline,
+        }));
+      });
+
+    // Configure the resilient service
+    resilientLocationService.configure({
+      maxRetries: 5,
+      initialBackoffDelay: 1000,
+      maxBackoffDelay: 30000,
+      offlineQueueSize: 100,
+      syncInterval: 30000,
+      enableBackgroundSync: true,
+    });
   };
 
   const checkLocationPermission = async () => {
@@ -232,83 +252,72 @@ export function LocationPermissionEnforcer({
     }
   };
 
-  const startLocationTracking = () => {
-    if (watchIdRef.current) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-    }
+  const startLocationTracking = async () => {
+    try {
+      await resilientLocationService.startResilientTracking(
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: requireContinuousTracking ? 10000 : 30000,
+        },
+        (location) => {
+          // Handle successful location updates
+          setLocationStatus((prev) => ({
+            ...prev,
+            isEnabled: true,
+            accuracy: location.accuracy,
+            lastUpdate: new Date(),
+            error: null,
+          }));
 
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (position) => {
-        const locationData = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          timestamp: new Date().toISOString(),
-          speed: position.coords.speed,
-          heading: position.coords.heading,
-          altitude: position.coords.altitude,
-        };
+          onLocationUpdate?.(location);
+          setShowLocationLostDialog(false);
+        },
+        (error) => {
+          // Handle location errors
+          console.error("Resilient location tracking error:", error);
 
-        setLocationStatus((prev) => ({
-          ...prev,
-          isEnabled: true,
-          accuracy: position.coords.accuracy,
-          lastUpdate: new Date(),
-          error: null,
-        }));
+          let errorMessage = "Location tracking failed";
+          if (error.message.includes("permission")) {
+            errorMessage = "Location permission revoked";
+            handlePermissionDenied();
+          } else if (error.message.includes("unavailable")) {
+            errorMessage = "GPS signal lost";
+          } else if (error.message.includes("timeout")) {
+            errorMessage = "Location request timed out";
+          }
 
-        setConsecutiveFailures(0);
-        lastLocationRef.current = locationData;
-        onLocationUpdate?.(locationData);
+          setLocationStatus((prev) => ({
+            ...prev,
+            error: errorMessage,
+          }));
 
-        // Send location to server
-        sendLocationToServer(locationData);
-
-        // Reset location lost dialog
-        setShowLocationLostDialog(false);
-      },
-      (error) => {
-        console.error("Location tracking error:", error);
-        setConsecutiveFailures((prev) => prev + 1);
-
-        let errorMessage = "Location tracking failed";
-        if (error.code === error.PERMISSION_DENIED) {
-          errorMessage = "Location permission revoked";
-          handlePermissionDenied();
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          errorMessage = "GPS signal lost";
-        } else if (error.code === error.TIMEOUT) {
-          errorMessage = "Location request timed out";
+          // Check if we should show location lost dialog
+          const state = resilientLocationService.getState();
+          if (state.retryCount >= 3) {
+            handleLocationLost();
+          }
         }
+      );
 
-        setLocationStatus((prev) => ({
-          ...prev,
-          error: errorMessage,
-        }));
-
-        // If location is lost for too long, show enforcement
-        if (consecutiveFailures >= 3) {
-          handleLocationLost();
-        }
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: requireContinuousTracking ? 10000 : 30000, // More frequent updates for active deliveries
+      // Set timeout for continuous tracking
+      if (requireContinuousTracking) {
+        setTimeout(() => {
+          const state = resilientLocationService.getState();
+          if (
+            !state.lastSuccessfulSync ||
+            Date.now() - state.lastSuccessfulSync.getTime() > 60000
+          ) {
+            handleLocationLost();
+          }
+        }, 60000);
       }
-    );
-
-    // Set timeout for location updates
-    if (requireContinuousTracking) {
-      locationTimeoutRef.current = setTimeout(() => {
-        if (
-          !lastLocationRef.current ||
-          Date.now() - new Date(lastLocationRef.current.timestamp).getTime() >
-            60000
-        ) {
-          handleLocationLost();
-        }
-      }, 60000); // 1 minute timeout for active deliveries
+    } catch (error) {
+      console.error("Failed to start resilient location tracking:", error);
+      setLocationStatus((prev) => ({
+        ...prev,
+        error: "Failed to start location tracking",
+      }));
     }
   };
 
@@ -316,10 +325,12 @@ export function LocationPermissionEnforcer({
     setShowLocationLostDialog(true);
     onLocationLost?.();
 
+    const state = resilientLocationService.getState();
     logLocationEvent("location_lost", {
       userId: user?.id,
-      lastLocation: lastLocationRef.current,
-      consecutiveFailures,
+      lastSuccessfulSync: state.lastSuccessfulSync,
+      retryCount: state.retryCount,
+      pendingLocationsCount: state.pendingLocations.length,
       timestamp: new Date().toISOString(),
     });
 
@@ -332,6 +343,8 @@ export function LocationPermissionEnforcer({
 
   const triggerEmergencyProtocol = async () => {
     try {
+      const state = resilientLocationService.getState();
+
       // Notify admin
       await fetch("/api/admin/rider-location-alerts", {
         method: "POST",
@@ -339,17 +352,18 @@ export function LocationPermissionEnforcer({
         body: JSON.stringify({
           riderId: user?.id,
           alertType: "gps_lost_during_delivery",
-          lastLocation: lastLocationRef.current,
+          lastSuccessfulSync: state.lastSuccessfulSync,
+          pendingLocationsCount: state.pendingLocations.length,
           timestamp: new Date().toISOString(),
         }),
       });
 
       // Auto-logout after 5 minutes of no location
       setTimeout(async () => {
+        const currentState = resilientLocationService.getState();
         if (
-          !lastLocationRef.current ||
-          Date.now() - new Date(lastLocationRef.current.timestamp).getTime() >
-            300000
+          !currentState.lastSuccessfulSync ||
+          Date.now() - currentState.lastSuccessfulSync.getTime() > 300000
         ) {
           await logout();
           router.push("/auth/login?reason=gps_required");
@@ -357,18 +371,6 @@ export function LocationPermissionEnforcer({
       }, 300000); // 5 minutes
     } catch (error) {
       console.error("Error triggering emergency protocol:", error);
-    }
-  };
-
-  const sendLocationToServer = async (locationData: any) => {
-    try {
-      await fetch("/api/riders/location", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(locationData),
-      });
-    } catch (error) {
-      console.error("Error sending location to server:", error);
     }
   };
 
@@ -385,17 +387,18 @@ export function LocationPermissionEnforcer({
   };
 
   const cleanup = () => {
-    if (watchIdRef.current) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
+    // Stop resilient location tracking
+    resilientLocationService.stopResilientTracking();
+
+    // Unsubscribe from state changes
+    if (locationStateUnsubscribeRef.current) {
+      locationStateUnsubscribeRef.current();
+      locationStateUnsubscribeRef.current = null;
     }
+
     if (permissionCheckIntervalRef.current) {
       clearInterval(permissionCheckIntervalRef.current);
       permissionCheckIntervalRef.current = null;
-    }
-    if (locationTimeoutRef.current) {
-      clearTimeout(locationTimeoutRef.current);
-      locationTimeoutRef.current = null;
     }
   };
 

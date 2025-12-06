@@ -27,9 +27,7 @@ export function AdminHeader({ onMenuClick, isMenuOpen }: AdminHeaderProps) {
   };
 
   return (
-    <header
-      className={`bg-white shadow-sm border-b sticky top-0 z-50 ${isMenuOpen ? "md:ml-64" : ""}`}
-    >
+    <header className={`bg-white fixed shadow-sm border-b w-full z-50`}>
       <div className="px-4 py-3">
         {/* Mobile-first layout */}
         <div className="flex items-center justify-between">
@@ -37,7 +35,7 @@ export function AdminHeader({ onMenuClick, isMenuOpen }: AdminHeaderProps) {
           <div className="flex items-center space-x-3">
             <button
               onClick={onMenuClick}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors md:hidden"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               aria-label="Toggle menu"
             >
               {isMenuOpen ? (

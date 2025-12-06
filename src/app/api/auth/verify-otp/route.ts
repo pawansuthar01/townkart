@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
 
     // Check if this is a send OTP request
     if (body.action === "send") {
+      console.log(`[VERIFY-OTP] Send action requested for ${body.phoneNumber}`);
       const { phoneNumber, purpose = "LOGIN" } = body;
 
       if (!phoneNumber) {
@@ -27,12 +28,17 @@ export async function POST(request: NextRequest) {
         where: { phoneNumber },
         select: { email: true },
       });
+      console.log(
+        `[VERIFY-OTP] User lookup result:`,
+        user ? `Found user with email: ${user.email}` : "User not found"
+      );
 
       const result = await OTPService.sendOTP(
         phoneNumber,
         user?.email || null,
         purpose as any
       );
+      console.log(`[VERIFY-OTP] OTP send result:`, result);
 
       if (result.success) {
         return NextResponse.json({
@@ -144,6 +150,7 @@ export async function POST(request: NextRequest) {
         where: { id: user.id },
         data: {
           phoneVerified: true,
+          isActive: true,
         },
       });
 
@@ -264,7 +271,7 @@ export async function POST(request: NextRequest) {
       // Log registration/login
       await DeviceManager.logDeviceLogin(
         user.id,
-        loginContext.deviceInfo.deviceId,
+        device.id,
         "LOGIN",
         loginContext,
         "LOW",
@@ -311,10 +318,17 @@ export async function POST(request: NextRequest) {
         loginContext.locationInfo
       );
       if (!locationValidation.valid) {
+        // Get or create device record for logging
+        const deviceForLogging = await DeviceManager.getOrCreateDevice(
+          user.id,
+          loginContext.deviceInfo,
+          loginContext.locationInfo
+        );
+
         // Log suspicious login attempt
         await DeviceManager.logDeviceLogin(
           user.id,
-          loginContext.deviceInfo.deviceId,
+          deviceForLogging.id,
           "LOGIN",
           loginContext,
           "HIGH",
@@ -367,10 +381,17 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        // Get or create device record for logging
+        const deviceForFailedLogging = await DeviceManager.getOrCreateDevice(
+          user.id,
+          loginContext.deviceInfo,
+          loginContext.locationInfo
+        );
+
         // Log failed login attempt for other roles
         await DeviceManager.logDeviceLogin(
           user.id,
-          loginContext.deviceInfo.deviceId,
+          deviceForFailedLogging.id,
           "LOGIN",
           loginContext,
           "HIGH",
@@ -413,7 +434,7 @@ export async function POST(request: NextRequest) {
       // Log successful login
       await DeviceManager.logDeviceLogin(
         user.id,
-        loginContext.deviceInfo.deviceId,
+        device.id,
         "LOGIN",
         loginContext,
         locationValidation.distance && locationValidation.distance > 10
@@ -443,6 +464,10 @@ export async function POST(request: NextRequest) {
       (otpRecord.purpose === "LOGIN" || otpRecord.purpose === "REGISTER") &&
       user
     ) {
+      console.log(
+        `Creating session for ${otpRecord.purpose} - user: ${user.id}`
+      );
+
       // Generate tokens
       const accessToken = generateAccessToken({
         userId: user.id,
@@ -466,6 +491,10 @@ export async function POST(request: NextRequest) {
       });
 
       // Create session with device tracking
+      console.log(
+        `Creating session for user ${user.id}, device: ${device?.id}`
+      );
+
       const session = await prisma.session.create({
         data: {
           userId: user.id,
@@ -482,9 +511,17 @@ export async function POST(request: NextRequest) {
             lat: loginContext.locationInfo.lat,
             lng: loginContext.locationInfo.lng,
           },
-          expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+          expires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+          isActive: true,
         },
       });
+
+      console.log(
+        `✅ Session created successfully: ${session.id} for user ${user.id}`
+      );
+      console.log(
+        `Session details: deviceId=${session.deviceId}, ip=${session.ipAddress}`
+      );
 
       // Clean up expired OTPs for this phone number
       await prisma.oTP.deleteMany({

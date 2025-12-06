@@ -55,6 +55,9 @@ export function RegisterForm() {
     role: string;
     email: string;
     message?: string;
+    storeId?: string;
+    serviceAreas: string[];
+    stores: string[];
   } | null>(null);
   const [isValidatingToken, setIsValidatingToken] = useState(false);
 
@@ -113,6 +116,9 @@ export function RegisterForm() {
           role: data.invitation.role,
           email: data.invitation.invitedEmail,
           message: data.invitation.message,
+          storeId: data.invitation.storeId,
+          serviceAreas: data.invitation.serviceAreas,
+          stores: data.invitation.stores,
         });
         setFormData((prev) => ({
           ...prev,
@@ -257,8 +263,31 @@ export function RegisterForm() {
                   <div className="space-y-1">
                     <p className="font-medium">
                       You've been invited to join as a{" "}
-                      {invitationData.role.toLowerCase()}
+                      {invitationData.role === "STORE_MANAGER"
+                        ? "Store Manager"
+                        : invitationData.role.toLowerCase()}
                     </p>
+                    {invitationData.role === "STORE_MANAGER" &&
+                      invitationData.storeId && (
+                        <p className="text-sm">
+                          You will be managing a specific store.
+                        </p>
+                      )}
+                    {invitationData.role === "RIDER" && (
+                      <div className="text-sm">
+                        {(invitationData.serviceAreas?.length || 0) > 0 && (
+                          <p>
+                            Assigned to {invitationData.serviceAreas.length}{" "}
+                            service area(s)
+                          </p>
+                        )}
+                        {(invitationData.stores?.length || 0) > 0 && (
+                          <p>
+                            Assigned to {invitationData.stores.length} store(s)
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {invitationData.message && (
                       <p className="text-sm">{invitationData.message}</p>
                     )}

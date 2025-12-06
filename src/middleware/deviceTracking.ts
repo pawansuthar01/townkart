@@ -2,6 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { LocationService } from "@/lib/locationService";
+
+export interface DeviceInfo {
+  deviceId: string;
+  deviceName?: string;
+  deviceType: string;
+  os?: string;
+  browser?: string;
+  fingerprint?: string;
+  batteryLevel?: number;
+}
+
+export interface LoginContext {
+  deviceInfo: DeviceInfo;
+  locationInfo: {
+    ip: string;
+    country?: string;
+    city?: string;
+    region?: string;
+    latitude?: number;
+    longitude?: number;
+  };
+  userAgent: string;
+}
 
 export class DeviceTracker {
   static generateDeviceFingerprint(request: NextRequest): string {
@@ -17,12 +41,14 @@ export class DeviceTracker {
   static async trackDevice(
     userId: string,
     request: NextRequest,
-    sessionId?: string,
+    sessionId?: string
   ): Promise<void> {
     try {
       const deviceFingerprint = this.generateDeviceFingerprint(request);
       const userAgent = request.headers.get("user-agent");
       const ipAddress = await this.getClientIP(request);
+      const locationInfo =
+        await LocationService.getLocationInfoFromIP(ipAddress);
 
       // Check if device already exists
       let device = await prisma.device.findFirst({
@@ -42,8 +68,17 @@ export class DeviceTracker {
             deviceType: this.getDeviceType(userAgent),
             os: this.getOS(userAgent),
             browser: this.getBrowser(userAgent),
+            fingerprint: deviceFingerprint,
             lastIP: ipAddress,
+            lastLocation: {
+              country: locationInfo.country,
+              city: locationInfo.city,
+              region: locationInfo.region,
+              lat: locationInfo.latitude,
+              lng: locationInfo.longitude,
+            },
             loginCount: 1,
+            lastLoginAt: new Date(),
           },
         });
       } else {
@@ -52,30 +87,38 @@ export class DeviceTracker {
           where: { id: device.id },
           data: {
             lastIP: ipAddress,
+            lastLocation: {
+              country: locationInfo.country,
+              city: locationInfo.city,
+              region: locationInfo.region,
+              lat: locationInfo.latitude,
+              lng: locationInfo.longitude,
+            },
             lastLoginAt: new Date(),
             loginCount: { increment: 1 },
           },
         });
       }
 
-      // Create or update session if sessionId provided
+      // Update session with device and location info if sessionId provided
       if (sessionId && device) {
-        await prisma.session.upsert({
-          where: { id: sessionId },
-          update: {
-            deviceId: device.id,
-            ipAddress,
-            userAgent,
-            lastActivity: new Date(),
-          },
-          create: {
+        await prisma.session.updateMany({
+          where: {
             id: sessionId,
             userId,
-            sessionToken: sessionId, // This should be the actual session token
+          },
+          data: {
             deviceId: device.id,
             ipAddress,
             userAgent,
-            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+            location: {
+              country: locationInfo.country,
+              city: locationInfo.city,
+              region: locationInfo.region,
+              lat: locationInfo.latitude,
+              lng: locationInfo.longitude,
+            },
+            lastActivity: new Date(),
           },
         });
       }
@@ -89,8 +132,7 @@ export class DeviceTracker {
     return await prisma.session.findMany({
       where: {
         userId,
-        isActive: true,
-        expiresAt: { gt: new Date() },
+        expires: { gt: new Date() },
       },
       include: {
         device: true,
@@ -101,20 +143,45 @@ export class DeviceTracker {
 
   static async terminateSession(
     sessionId: string,
-    userId: string,
+    userId: string
   ): Promise<boolean> {
     try {
-      const result = await prisma.session.updateMany({
-        where: {
-          id: sessionId,
-          userId,
-          isActive: true,
-        },
+      const session = await prisma.session.findUnique({
+        where: { id: sessionId },
+        include: { device: true },
+      });
+
+      if (!session) return false;
+
+      const result = await prisma.session.update({
+        where: { id: sessionId },
         data: {
           isActive: false,
+          lastActivity: new Date(),
         },
       });
-      return result.count > 0;
+
+      // Log the logout
+      await this.logDeviceLogin(
+        userId,
+        session.deviceId || undefined,
+        "LOGOUT",
+        {
+          deviceInfo: {
+            deviceId: session.deviceId || "unknown",
+            deviceType: session.device?.deviceType || "unknown",
+          },
+          locationInfo: {
+            ip: session.ipAddress || "unknown",
+            ...(session.location as any),
+          },
+          userAgent: session.userAgent || "",
+        },
+        "LOW",
+        ["Session terminated by user"]
+      );
+
+      return !!result;
     } catch (error) {
       console.error("Session termination error:", error);
       return false;
@@ -123,23 +190,155 @@ export class DeviceTracker {
 
   static async terminateAllSessions(
     userId: string,
-    exceptSessionId?: string,
+    exceptSessionId?: string
   ): Promise<number> {
     try {
+      const sessionsToTerminate = await prisma.session.findMany({
+        where: {
+          userId,
+          ...(exceptSessionId && { id: { not: exceptSessionId } }),
+        },
+        include: { device: true },
+      });
+
       const result = await prisma.session.updateMany({
         where: {
           userId,
-          isActive: true,
           ...(exceptSessionId && { id: { not: exceptSessionId } }),
         },
         data: {
           isActive: false,
+          lastActivity: new Date(),
         },
       });
+
+      // Log logout for each terminated session
+      for (const session of sessionsToTerminate) {
+        await this.logDeviceLogin(
+          userId,
+          session.deviceId || undefined,
+          "LOGOUT",
+          {
+            deviceInfo: {
+              deviceId: session.deviceId || "unknown",
+              deviceType: session.device?.deviceType || "unknown",
+            },
+            locationInfo: {
+              ip: session.ipAddress || "unknown",
+              ...(session.location as any),
+            },
+            userAgent: session.userAgent || "",
+          },
+          "LOW",
+          ["All sessions terminated"]
+        );
+      }
+
       return result.count;
     } catch (error) {
       console.error("Terminate all sessions error:", error);
       return 0;
+    }
+  }
+
+  static async getOrCreateDevice(
+    userId: string,
+    deviceInfo: DeviceInfo,
+    locationInfo: LoginContext["locationInfo"]
+  ) {
+    let device = await prisma.device.findFirst({
+      where: {
+        userId,
+        deviceId: deviceInfo.deviceId,
+      },
+    });
+
+    if (!device) {
+      device = await prisma.device.create({
+        data: {
+          userId,
+          deviceId: deviceInfo.deviceId,
+          deviceName: deviceInfo.deviceName,
+          deviceType: deviceInfo.deviceType,
+          os: deviceInfo.os,
+          browser: deviceInfo.browser,
+          fingerprint: deviceInfo.fingerprint,
+          lastIP: locationInfo.ip,
+          lastLocation: {
+            country: locationInfo.country,
+            city: locationInfo.city,
+            region: locationInfo.region,
+            lat: locationInfo.latitude,
+            lng: locationInfo.longitude,
+          },
+          loginCount: 1,
+          lastLoginAt: new Date(),
+          batteryLevel: deviceInfo.batteryLevel,
+        },
+      });
+    } else {
+      // Update device info
+      device = await prisma.device.update({
+        where: { id: device.id },
+        data: {
+          lastIP: locationInfo.ip,
+          lastLocation: {
+            country: locationInfo.country,
+            city: locationInfo.city,
+            region: locationInfo.region,
+            lat: locationInfo.latitude,
+            lng: locationInfo.longitude,
+          },
+          lastLoginAt: new Date(),
+          loginCount: { increment: 1 },
+          batteryLevel: deviceInfo.batteryLevel,
+        },
+      });
+    }
+
+    return device;
+  }
+
+  static async logDeviceLogin(
+    userId: string,
+    deviceId: string | undefined,
+    loginType: string,
+    context: LoginContext,
+    riskLevel: string = "LOW",
+    reasons: string[] = []
+  ) {
+    // Skip logging if deviceId is not available (device not found/created)
+    if (!deviceId) {
+      console.log(
+        `Skipping device login log for ${loginType} - no device ID available`
+      );
+      return;
+    }
+
+    try {
+      await prisma.deviceLoginLog.create({
+        data: {
+          userId,
+          deviceId,
+          loginType,
+          ipAddress: context.locationInfo.ip,
+          userAgent: context.userAgent,
+          location: {
+            country: context.locationInfo.country,
+            city: context.locationInfo.city,
+            region: context.locationInfo.region,
+            lat: context.locationInfo.latitude,
+            lng: context.locationInfo.longitude,
+          },
+          deviceType: context.deviceInfo.deviceType,
+          batteryLevel: context.deviceInfo.batteryLevel,
+          riskLevel,
+          riskReasons: reasons.length > 0 ? reasons : undefined,
+          isSuspicious: riskLevel === "HIGH",
+        },
+      });
+    } catch (error) {
+      console.error("Device login logging error:", error);
     }
   }
 
@@ -161,7 +360,7 @@ export class DeviceTracker {
     return "unknown";
   }
 
-  private static getDeviceName(userAgent: string | null): string | undefined {
+  static getDeviceName(userAgent: string | null): string | undefined {
     if (!userAgent) return undefined;
 
     // Simple device name extraction
@@ -170,7 +369,7 @@ export class DeviceTracker {
     return "Desktop";
   }
 
-  private static getDeviceType(userAgent: string | null): string {
+  static getDeviceType(userAgent: string | null): string {
     if (!userAgent) return "unknown";
 
     if (
@@ -186,7 +385,7 @@ export class DeviceTracker {
     return "desktop";
   }
 
-  private static getOS(userAgent: string | null): string | undefined {
+  static getOS(userAgent: string | null): string | undefined {
     if (!userAgent) return undefined;
 
     if (userAgent.includes("Windows")) return "Windows";
@@ -197,7 +396,7 @@ export class DeviceTracker {
     return "Unknown";
   }
 
-  private static getBrowser(userAgent: string | null): string | undefined {
+  static getBrowser(userAgent: string | null): string | undefined {
     if (!userAgent) return undefined;
 
     if (userAgent.includes("Chrome")) return "Chrome";
