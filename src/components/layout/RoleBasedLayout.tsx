@@ -28,10 +28,7 @@ export function RoleBasedLayout({ children }: RoleBasedLayoutProps) {
   const [isNotFound, setIsNotFound] = useState(false);
   const userRole = (session?.user as any)?.activeRole;
 
-  const isAuthPage =
-    pathname?.startsWith("/auth/") ||
-    pathname?.startsWith("/verify-otp") ||
-    isNotFound;
+  const isAuthPage = pathname?.startsWith("/auth/") || isNotFound;
   if (isAuthPage) {
     return <>{children}</>;
   }

@@ -13,6 +13,8 @@ import {
   MapPin,
   Phone,
   RefreshCw,
+  Bike,
+  Navigation,
 } from "lucide-react";
 
 interface Order {
@@ -28,26 +30,40 @@ interface Order {
   specialInstructions?: string;
 }
 
+interface RiderLocation {
+  id: string;
+  riderId: string;
+  riderName: string;
+  phone: string;
+  latitude: number;
+  longitude: number;
+  status: string;
+  lastUpdate: string;
+  distance: number;
+}
+
 export default function StoreDashboard() {
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [newOrders, setNewOrders] = useState<Order[]>([]);
   const [historicalOrders, setHistoricalOrders] = useState<Order[]>([]);
+  const [nearbyRiders, setNearbyRiders] = useState<RiderLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch orders from API
+  // Fetch orders and nearby riders from API
   useEffect(() => {
-    const fetchOrders = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch("/api/store/orders");
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
+        // Fetch orders
+        const ordersResponse = await fetch("/api/store/orders");
+        if (ordersResponse.ok) {
+          const ordersData = await ordersResponse.json();
+          if (ordersData.success) {
             // Categorize orders
             const active: Order[] = [];
             const newOrders: Order[] = [];
             const historical: Order[] = [];
 
-            data.orders.forEach((order: Order) => {
+            ordersData.orders.forEach((order: Order) => {
               const orderTime = new Date(order.createdAt);
               const now = new Date();
               const minutesAgo =
@@ -74,21 +90,57 @@ export default function StoreDashboard() {
             setHistoricalOrders(historical);
           }
         }
+
+        // Fetch nearby riders
+        try {
+          const ridersResponse = await fetch(
+            "/api/admin/riders/locations?limit=20"
+          );
+          if (ridersResponse.ok) {
+            const ridersData = await ridersResponse.json();
+            if (ridersData.success && ridersData.data?.riders) {
+              // Filter and format nearby riders (within 10km)
+              const nearby = ridersData.data.riders
+                .filter(
+                  (rider: any) => rider.currentLocation && rider.isAvailable
+                )
+                .map((rider: any) => ({
+                  id: rider.userId,
+                  riderId: rider.userId,
+                  riderName: rider.name,
+                  phone: rider.phoneNumber,
+                  latitude: rider.currentLocation.latitude,
+                  longitude: rider.currentLocation.longitude,
+                  status: rider.isAvailable ? "AVAILABLE" : "BUSY",
+                  lastUpdate: rider.currentLocation.lastUpdate,
+                  distance: 0, // Will be calculated if store location is available
+                }))
+                .slice(0, 5); // Show top 5 nearby riders
+
+              setNearbyRiders(nearby);
+            }
+          }
+        } catch (ridersError) {
+          console.error("Error fetching nearby riders:", ridersError);
+          // Continue without riders data
+          setNearbyRiders([]);
+        }
       } catch (error) {
-        console.error("Error fetching orders:", error);
-        // Clear orders on error
+        console.error("Error fetching data:", error);
+        // Clear data on error
         setActiveOrders([]);
         setNewOrders([]);
         setHistoricalOrders([]);
+        setNearbyRiders([]);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchOrders();
+    fetchData();
 
     // Set up polling for real-time updates (can be replaced with WebSocket)
-    const interval = setInterval(fetchOrders, 30000); // Refresh every 30 seconds
+    const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(interval);
   }, []);
@@ -313,7 +365,7 @@ export default function StoreDashboard() {
                   <p className="text-2xl font-bold">
                     {
                       activeOrders.filter(
-                        (o) => o.status === "READY_FOR_PICKUP",
+                        (o) => o.status === "READY_FOR_PICKUP"
                       ).length
                     }
                   </p>
@@ -336,6 +388,57 @@ export default function StoreDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Nearby Riders */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bike className="h-5 w-5" />
+              Nearby Riders ({nearbyRiders.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {nearbyRiders.length === 0 ? (
+              <div className="text-center py-8">
+                <Bike className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-600">No riders available nearby</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {nearbyRiders.map((rider) => (
+                  <div key={rider.id} className="border rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                        <span className="font-medium text-sm">
+                          {rider.riderName}
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {rider.status}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-gray-600 space-y-1">
+                      <div className="flex items-center">
+                        <Phone className="h-3 w-3 mr-1" />
+                        {rider.phone}
+                      </div>
+                      <div className="flex items-center">
+                        <Navigation className="h-3 w-3 mr-1" />
+                        {rider.latitude.toFixed(4)},{" "}
+                        {rider.longitude.toFixed(4)}
+                      </div>
+                      <div className="text-gray-500">
+                        Updated:{" "}
+                        {new Date(rider.lastUpdate).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Orders Tabs */}
         <Tabs defaultValue="active" className="w-full">

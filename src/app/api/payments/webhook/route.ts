@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { notificationManager } from "@/lib/notificationSystem";
+import { wsServer } from "@/lib/websocket";
 
 export async function POST(request: NextRequest) {
   try {
@@ -95,6 +96,16 @@ async function handlePaymentCaptured(payment: any) {
           }
         );
 
+        // Broadcast payment success to customer via WebSocket
+        wsServer.broadcastToUser(payment.order.customerId, {
+          type: "payment_status_update",
+          orderId: payment.orderId,
+          status: "COMPLETED",
+          amount: payment.amount,
+          paymentMethod: payment.paymentMethod,
+          timestamp: new Date(),
+        });
+
         // Send notification to store
         await notificationManager.sendNotification(
           payment.order.store.managerId!,
@@ -105,6 +116,24 @@ async function handlePaymentCaptured(payment: any) {
             customerName: payment.order.customer.fullName,
           }
         );
+
+        // Broadcast new order to store via WebSocket
+        wsServer.broadcastToStore(payment.order.storeId, {
+          type: "new_order",
+          orderId: payment.orderId,
+          customerName: payment.order.customer.fullName,
+          amount: payment.amount,
+          timestamp: new Date(),
+        });
+
+        // Broadcast payment event to admins
+        wsServer.broadcastPaymentEvent({
+          orderId: payment.orderId,
+          amount: payment.amount,
+          status: "COMPLETED",
+          customerName: payment.order.customer.fullName,
+          storeName: payment.order.store.name,
+        });
       }
     }
   } catch (error) {
@@ -128,7 +157,7 @@ async function handlePaymentFailed(payment: any) {
     // Update order status
     const payment = await prisma.payment.findFirst({
       where: { gatewayOrderId: order_id },
-      include: { order: true },
+      include: { order: { include: { customer: true, store: true } } },
     });
 
     if (payment?.order) {
@@ -149,6 +178,26 @@ async function handlePaymentFailed(payment: any) {
           reason: "Payment failed",
         }
       );
+
+      // Broadcast payment failure to customer via WebSocket
+      wsServer.broadcastToUser(payment.order.customerId, {
+        type: "payment_status_update",
+        orderId: payment.orderId,
+        status: "FAILED",
+        amount: payment.amount,
+        reason: "Payment failed",
+        timestamp: new Date(),
+      });
+
+      // Broadcast payment failure to admins
+      wsServer.broadcastPaymentEvent({
+        orderId: payment.orderId,
+        amount: payment.amount,
+        status: "FAILED",
+        customerName: payment.order.customer.fullName,
+        storeName: payment.order.store.name,
+        reason: "Payment failed",
+      });
     }
   } catch (error) {
     console.error("Error handling payment failed:", error);

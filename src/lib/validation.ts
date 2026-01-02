@@ -70,6 +70,7 @@ export const verifyOtpSchema = z.object({
     })
     .optional(),
   batteryLevel: z.number().min(0).max(100).optional(),
+  logoutDevices: z.array(z.string()).optional(),
 });
 
 export const refreshTokenSchema = z.object({

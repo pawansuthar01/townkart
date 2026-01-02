@@ -8,7 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
-import { User, Mail, Phone, Edit, Save, X, Camera } from "lucide-react";
+import {
+  User,
+  Mail,
+  Phone,
+  Edit,
+  Save,
+  X,
+  Camera,
+  Shield,
+  Settings,
+  LogOut,
+} from "lucide-react";
 
 export default function CustomerProfilePage() {
   const { user, isAuthenticated } = useAuth();
@@ -26,6 +37,9 @@ export default function CustomerProfilePage() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
 
+  // Account management settings
+  const [rememberLogin, setRememberLogin] = useState(false);
+
   useEffect(() => {
     if (user) {
       setFormData({
@@ -34,8 +48,45 @@ export default function CustomerProfilePage() {
         phoneNumber: user.phoneNumber || "",
       });
       setProfileImage(user.image || null);
+
+      // Load user preferences
+      fetchUserPreferences();
     }
   }, [user]);
+
+  const fetchUserPreferences = async () => {
+    try {
+      const response = await fetch("/api/users/preferences");
+      const data = await response.json();
+
+      if (data.success) {
+        setRememberLogin(data.data.rememberLogin);
+      }
+    } catch (error) {
+      console.error("Failed to load preferences:", error);
+    }
+  };
+
+  const saveUserPreferences = async (rememberLoginValue: boolean) => {
+    try {
+      const response = await fetch("/api/users/preferences", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ rememberLogin: rememberLoginValue }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        alert("Failed to save preference");
+      }
+    } catch (error) {
+      console.error("Failed to save preferences:", error);
+      alert("Failed to save preference");
+    }
+  };
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
@@ -322,6 +373,112 @@ export default function CustomerProfilePage() {
                     </p>
                   </div>
                   <Badge variant="secondary">Not Enabled</Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Account Management */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Account Management
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <h3 className="font-medium text-gray-900">
+                      Session Management
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Manage devices and sessions that have access to your
+                      account
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => (window.location.href = "/customer/devices")}
+                  >
+                    <Shield className="h-4 w-4 mr-2" />
+                    Manage Sessions
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <h3 className="font-medium text-gray-900">
+                      Login Info Save
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Remember login information for faster access
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="rememberLogin"
+                      checked={rememberLogin}
+                      onChange={async (e) => {
+                        const newValue = e.target.checked;
+                        setRememberLogin(newValue);
+                        await saveUserPreferences(newValue);
+                      }}
+                      className="h-4 w-4 text-townkart-primary focus:ring-townkart-primary border-gray-300 rounded"
+                    />
+                    <label
+                      htmlFor="rememberLogin"
+                      className="text-sm text-gray-600"
+                    >
+                      {rememberLogin ? "Enabled" : "Disabled"}
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg border-red-200 bg-red-50">
+                  <div>
+                    <h3 className="font-medium text-red-900">Delete Account</h3>
+                    <p className="text-sm text-red-700">
+                      Permanently delete your account and all associated data
+                    </p>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled
+                    onClick={async () => {
+                      if (
+                        confirm(
+                          "Are you sure you want to delete your account? This action cannot be undone and will permanently delete all your data."
+                        )
+                      ) {
+                        try {
+                          const response = await fetch("/api/users/account", {
+                            method: "DELETE",
+                          });
+
+                          const data = await response.json();
+
+                          if (data.success) {
+                            alert(
+                              "Account deleted successfully. You will be logged out."
+                            );
+                            // Redirect to login or home page
+                            window.location.href = "/auth/login";
+                          } else {
+                            alert(data.message || "Failed to delete account");
+                          }
+                        } catch (error) {
+                          console.error("Delete account error:", error);
+                          alert("Failed to delete account");
+                        }
+                      }
+                    }}
+                  >
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Delete Account
+                  </Button>
                 </div>
               </CardContent>
             </Card>

@@ -58,13 +58,13 @@ export async function GET(request: NextRequest) {
       const totalDeliveries = rider.deliveries.length;
       const totalEarnings = rider.earningsHistory.reduce(
         (sum, earning) => sum + earning.totalEarnings,
-        0,
+        0
       );
       const averageRating =
         rider.reviews.length > 0
           ? rider.reviews.reduce(
               (sum, review) => sum + (review.riderRating || 0),
-              0,
+              0
             ) / rider.reviews.length
           : 0;
 
@@ -127,11 +127,11 @@ export async function GET(request: NextRequest) {
           .length,
         totalDeliveries: transformedRiders.reduce(
           (sum, r) => sum + r.totalDeliveries,
-          0,
+          0
         ),
         totalEarnings: transformedRiders.reduce(
           (sum, r) => sum + r.earnings,
-          0,
+          0
         ),
       },
     });
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
     console.error("Admin riders error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -167,7 +167,7 @@ export async function PUT(request: NextRequest) {
     if (!riderId || !action) {
       return NextResponse.json(
         { error: "Rider ID and action are required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -227,7 +227,7 @@ export async function PUT(request: NextRequest) {
     console.error("Admin rider action error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

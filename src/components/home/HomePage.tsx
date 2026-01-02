@@ -1281,7 +1281,7 @@ export function HomePage() {
     if (isAuthenticated && user?.activeRole && user.activeRole !== "CUSTOMER") {
       switch (user.activeRole) {
         case "ADMIN":
-          router.push("/admin");
+          router.push("/admin/dashboard");
           break;
         case "RIDER":
           router.push("/rider/rider-dashboard");

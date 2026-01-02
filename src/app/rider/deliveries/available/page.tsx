@@ -49,7 +49,7 @@ export default function AvailableDeliveriesPage() {
   const [deliveries, setDeliveries] = useState<AvailableDelivery[]>([]);
   const [loading, setLoading] = useState(true);
   const [acceptingDelivery, setAcceptingDelivery] = useState<string | null>(
-    null,
+    null
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<"distance" | "fee" | "time">("distance");
@@ -160,7 +160,7 @@ export default function AvailableDeliveriesPage() {
     const now = new Date();
     const orderTime = new Date(dateString);
     const diffInMinutes = Math.floor(
-      (now.getTime() - orderTime.getTime()) / (1000 * 60),
+      (now.getTime() - orderTime.getTime()) / (1000 * 60)
     );
 
     if (diffInMinutes < 1) return "Just now";
@@ -311,6 +311,12 @@ export default function AvailableDeliveriesPage() {
                             <p className="text-sm font-medium text-gray-900">
                               {delivery.order.customer.fullName}
                             </p>
+                            {delivery.order.customer.phoneNumber && (
+                              <p className="text-sm text-gray-600 flex items-center">
+                                <Phone className="h-3 w-3 mr-1" />
+                                {delivery.order.customer.phoneNumber}
+                              </p>
+                            )}
                             <p className="text-sm text-gray-600">
                               {delivery.order.deliveryAddress.line1},{" "}
                               {delivery.order.deliveryAddress.city}

@@ -7,7 +7,7 @@ import { join } from "path";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { applicationId: string; documentType: string } }
+  context: { params: { applicationId: string; documentType: string } }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -15,48 +15,65 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { applicationId, documentType } = params;
+    const { applicationId, documentType } = context.params;
 
-    // Get the application
-    const application = await (prisma as any).application.findUnique({
+    // ==========================
+    // 1️⃣ TRY FETCH FROM APPLICATION MODEL
+    // ==========================
+    let docSource: "application" | "store" | null = null;
+    let documents: any = null;
+
+    const application = await prisma.application.findUnique({
       where: { id: applicationId },
+      select: { documents: true },
     });
 
-    if (!application) {
+    if (application?.documents) {
+      documents = application.documents as Record<string, string>;
+      docSource = "application";
+    }
+
+    // Nothing found
+    if (!documents) {
       return NextResponse.json(
-        { error: "Application not found" },
+        { error: "No documents found for this ID" },
         { status: 404 }
       );
     }
 
-    // Check if document exists
-    const documents = (application.documents as Record<string, string>) || {};
+    // ==========================
+    // 3️⃣ RESOLVE FILE NAME
+    // ==========================
     const filename = documents[documentType];
 
     if (!filename) {
       return NextResponse.json(
-        { error: "Document not found" },
+        { error: `${documentType} document not found` },
         { status: 404 }
       );
     }
 
-    // Read the file
-    const filePath = join(process.cwd(), "uploads", "applications", filename);
+    // ==========================
+    // 4️⃣ CHOOSE CORRECT BASE DIRECTORY
+    // ==========================
+    const baseDir =
+      docSource === "application" ? "uploads/applications" : "uploads/stores";
 
+    const filePath = join(process.cwd(), baseDir, filename);
+
+    // ==========================
+    // 5️⃣ READ AND RETURN FILE
+    // ==========================
     try {
       const fileBuffer = await readFile(filePath);
 
-      // Determine content type based on file extension
-      const extension = filename.split(".").pop()?.toLowerCase();
+      // Detect file content type
+      const ext = filename.split(".").pop()?.toLowerCase();
       let contentType = "application/octet-stream";
 
-      if (extension === "pdf") {
-        contentType = "application/pdf";
-      } else if (["jpg", "jpeg"].includes(extension || "")) {
-        contentType = "image/jpeg";
-      } else if (extension === "png") {
-        contentType = "image/png";
-      }
+      if (ext === "pdf") contentType = "application/pdf";
+      if (["jpg", "jpeg"].includes(ext || "")) contentType = "image/jpeg";
+      if (ext === "png") contentType = "image/png";
 
       return new NextResponse(fileBuffer, {
         headers: {
@@ -64,15 +81,15 @@ export async function GET(
           "Content-Disposition": `attachment; filename="${filename}"`,
         },
       });
-    } catch (fileError) {
-      console.error("Error reading file:", fileError);
+    } catch (err) {
+      console.error("File read error:", err);
       return NextResponse.json(
-        { error: "File not found or corrupted" },
+        { error: "File missing or corrupted" },
         { status: 404 }
       );
     }
   } catch (error) {
-    console.error("Error downloading document:", error);
+    console.error("Download document error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

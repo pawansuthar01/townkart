@@ -273,88 +273,108 @@ export default function AdminRidersPage() {
               <CardTitle>Riders ({stats.totalRiders})</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Rider Name</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Rating</TableHead>
-                    <TableHead>Deliveries</TableHead>
-                    <TableHead>Earnings</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {riders.map((rider) => (
-                    <TableRow key={rider.id}>
-                      <TableCell className="font-medium">
-                        {rider.name}
-                      </TableCell>
-                      <TableCell>{rider.phone}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                          {rider.rating}
-                        </div>
-                      </TableCell>
-                      <TableCell>{rider.totalDeliveries}</TableCell>
-                      <TableCell>₹{rider.earnings.toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            rider.status === "AVAILABLE"
-                              ? "default"
-                              : rider.status === "BUSY"
-                                ? "secondary"
-                                : "destructive"
-                          }
-                        >
-                          {rider.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <MapPin className="h-4 w-4" />
-                          {rider.location}
-                        </div>
-                      </TableCell>
-                      <TableCell>{rider.vehicle}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          {rider.isActive ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleSuspendRider(rider.userId)}
-                              className="text-yellow-600 hover:text-yellow-700"
-                            >
-                              Suspend
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleActivateRider(rider.userId)}
-                              className="text-green-600 hover:text-green-700"
-                            >
-                              Activate
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Rider Name</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Rating
+                      </TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Deliveries
+                      </TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Earnings
+                      </TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Location
+                      </TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Vehicle
+                      </TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {riders.map((rider) => (
+                      <TableRow key={rider.id}>
+                        <TableCell className="font-medium">
+                          {rider.name}
+                        </TableCell>
+                        <TableCell>{rider.phone}</TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <div className="flex items-center gap-1">
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                            {rider.rating}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          {rider.totalDeliveries}
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          ₹{rider.earnings.toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              rider.status === "AVAILABLE"
+                                ? "default"
+                                : rider.status === "BUSY"
+                                  ? "secondary"
+                                  : "destructive"
+                            }
+                          >
+                            {rider.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <div className="flex items-center gap-1">
+                            <MapPin className="h-4 w-4" />
+                            {rider.location}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          {rider.vehicle}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button variant="ghost" size="sm">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            {rider.isActive ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleSuspendRider(rider.userId)}
+                                className="text-yellow-600 hover:text-yellow-700"
+                              >
+                                Suspend
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  handleActivateRider(rider.userId)
+                                }
+                                className="text-green-600 hover:text-green-700"
+                              >
+                                Activate
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -366,71 +386,77 @@ export default function AdminRidersPage() {
               <CardTitle>Rider Applications ({pendingRiders.length})</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Applied Date</TableHead>
-                    <TableHead>Documents</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendingRiders.map((rider) => (
-                    <TableRow key={rider.id}>
-                      <TableCell className="font-medium">
-                        {rider.name}
-                      </TableCell>
-                      <TableCell>{rider.email}</TableCell>
-                      <TableCell>{rider.phone}</TableCell>
-                      <TableCell>
-                        {new Date(rider.appliedDate).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {rider.documents.map((doc, index) => (
-                            <Badge
-                              key={index}
-                              variant="outline"
-                              className="text-xs"
-                            >
-                              {doc}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {rider.status.replace("_", " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleApproveRider(rider.id)}
-                            className="text-green-600 hover:text-green-700"
-                          >
-                            <UserCheck className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRejectRider(rider.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <UserX className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Applied Date
+                      </TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Documents
+                      </TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingRiders.map((rider) => (
+                      <TableRow key={rider.id}>
+                        <TableCell className="font-medium">
+                          {rider.name}
+                        </TableCell>
+                        <TableCell>{rider.email}</TableCell>
+                        <TableCell>{rider.phone}</TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          {new Date(rider.appliedDate).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <div className="flex flex-wrap gap-1">
+                            {rider.documents.map((doc, index) => (
+                              <Badge
+                                key={index}
+                                variant="outline"
+                                className="text-xs"
+                              >
+                                {doc}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            {rider.status.replace("_", " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleApproveRider(rider.id)}
+                              className="text-green-600 hover:text-green-700"
+                            >
+                              <UserCheck className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRejectRider(rider.id)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <UserX className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
 

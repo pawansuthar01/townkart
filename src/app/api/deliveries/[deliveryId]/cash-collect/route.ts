@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { codService } from "@/lib/codService";
 import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 /**
  * POST /api/deliveries/[deliveryId]/cash-collect - Rider records cash collection
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { deliveryId: string } },
+  { params }: { params: { deliveryId: string } }
 ) {
   try {
     // Authenticate rider
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id || !(session.user as any).roles?.includes("RIDER")) {
       return NextResponse.json(
         { error: "Unauthorized. Only riders can record cash collection." },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -26,14 +27,14 @@ export async function POST(
     if (!amount || amount <= 0) {
       return NextResponse.json(
         { error: "Valid cash amount is required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     if (!riderLocation?.latitude || !riderLocation?.longitude) {
       return NextResponse.json(
         { error: "Rider location (latitude, longitude) is required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -67,7 +68,7 @@ export async function POST(
     console.error("Cash collection error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

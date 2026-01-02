@@ -5,6 +5,7 @@ import { Providers } from "@/components/providers";
 import { RoleBasedLayout } from "@/components/layout/RoleBasedLayout";
 import { ToastProvider, ToastViewport } from "@/components/ui/toast";
 import React from "react";
+import LocationMonitor from "@/components/global/LocationMonitor";
 
 export const metadata: Metadata = {
   title: "TownKart - Local Marketplace",
@@ -103,6 +104,7 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>
+          <LocationMonitor />
           <RoleBasedLayout>{children}</RoleBasedLayout>
           <ToastProvider>
             <ToastViewport />

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { codService } from "@/lib/codService";
 import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 /**
  * POST /api/admin/cash-settlements - Process cash settlement (admin/store manager)
@@ -8,18 +9,18 @@ import { getServerSession } from "next-auth";
 export async function POST(request: NextRequest) {
   try {
     // Authenticate admin or store manager
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (
       !session?.user?.id ||
-      (!(session.user as any).roles?.includes("ADMIN") &&
-        !(session.user as any).roles?.includes("STORE_MANAGER"))
+      (!(session.user as any).userRoles?.includes("ADMIN") &&
+        !(session.user as any).userRoles?.includes("STORE_MANAGER"))
     ) {
       return NextResponse.json(
         {
           error:
             "Unauthorized. Only admins or store managers can process settlements.",
         },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
     if (!riderId || !storeId) {
       return NextResponse.json(
         { error: "Rider ID and Store ID are required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     console.error("Cash settlement error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -66,11 +67,11 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     // Authenticate admin
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id || !(session.user as any).roles?.includes("ADMIN")) {
       return NextResponse.json(
         { error: "Unauthorized. Only admins can view all settlements." },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
     console.error("Get settlements error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

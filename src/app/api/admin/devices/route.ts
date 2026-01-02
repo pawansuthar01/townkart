@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id || !session.user.roles?.includes("ADMIN")) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     console.error("Error fetching devices:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -101,7 +101,7 @@ export async function DELETE(request: NextRequest) {
     if (!session?.user?.id || !session.user.roles?.includes("ADMIN")) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -110,7 +110,7 @@ export async function DELETE(request: NextRequest) {
     if (!deviceId || !userId) {
       return NextResponse.json(
         { success: false, message: "Device ID and User ID are required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -146,7 +146,7 @@ export async function DELETE(request: NextRequest) {
     console.error("Error deactivating device:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

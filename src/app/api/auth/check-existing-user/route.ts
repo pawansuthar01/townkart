@@ -7,18 +7,19 @@ export async function POST(request: NextRequest) {
 
     if (!email && !phone) {
       return NextResponse.json(
-        { error: "Email or phone is required" },
+        { error: "Email or phone number is required" },
         { status: 400 }
       );
     }
 
-    // Check if user exists with the provided email or phone
+    // Check if user exists with the same email or phone
     const existingUser = await prisma.user.findFirst({
       where: {
         OR: [
-          email ? { email: email } : {},
-          phone ? { phoneNumber: phone } : {},
-        ].filter((condition) => Object.keys(condition).length > 0),
+          ...(email ? [{ email: email.toLowerCase() }] : []),
+          ...(phone ? [{ phoneNumber: phone }] : []),
+        ],
+        isActive: true,
       },
       select: {
         id: true,

@@ -218,50 +218,66 @@ export default function AdminProductsPage() {
           <CardTitle>Products ({filteredProducts.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Price</TableHead>
-                <TableHead>Stock</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Store</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProducts.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell>{product.sku}</TableCell>
-                  <TableCell>{product.category}</TableCell>
-                  <TableCell>₹{product.price}</TableCell>
-                  <TableCell>{product.stock}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusBadgeVariant(product.status)}>
-                      {product.status.replace("_", " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{product.store}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead className="hidden sm:table-cell">SKU</TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Category
+                  </TableHead>
+                  <TableHead className="hidden sm:table-cell">Price</TableHead>
+                  <TableHead className="hidden sm:table-cell">Stock</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden sm:table-cell">Store</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.map((product) => (
+                  <TableRow key={product.id}>
+                    <TableCell className="font-medium">
+                      {product.name}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {product.sku}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {product.category}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      ₹{product.price}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {product.stock}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusBadgeVariant(product.status)}>
+                        {product.status.replace("_", " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {product.store}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="sm">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -872,84 +872,94 @@ export default function AdminUsersPage() {
           {loading ? (
             <TableSkeleton />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Login Status</TableHead>
-                  <TableHead>Join Date</TableHead>
-                  <TableHead>Last Login</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-mono text-sm">
-                      {user.id.slice(0, 8)}...
-                    </TableCell>
-                    <TableCell className="font-medium">{user.name}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.phone}</TableCell>
-                    <TableCell>
-                      <Badge variant={getRoleBadgeVariant(user.role)}>
-                        {user.role.replace("_", " ")}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusBadgeVariant(user.status)}>
-                        {user.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={user.isLoggedIn ? "default" : "secondary"}
-                      >
-                        {user.isLoggedIn ? "Online" : "Offline"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{user.joinDate}</TableCell>
-                    <TableCell>{user.lastLogin}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewDetails(user)}
-                          title="View Details"
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="hidden sm:table-cell">ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Login Status</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Join Date
+                    </TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Last Login
+                    </TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell className="font-mono text-sm hidden sm:table-cell">
+                        {user.id.slice(0, 8)}...
+                      </TableCell>
+                      <TableCell className="font-medium">{user.name}</TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{user.phone}</TableCell>
+                      <TableCell>
+                        <Badge variant={getRoleBadgeVariant(user.role)}>
+                          {user.role.replace("_", " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusBadgeVariant(user.status)}>
+                          {user.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={user.isLoggedIn ? "default" : "secondary"}
                         >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditUser(user)}
-                          title="Edit Status & Role"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        {user.isLoggedIn && (
+                          {user.isLoggedIn ? "Online" : "Offline"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {user.joinDate}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {user.lastLogin}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleLogoutUser(user.id)}
-                            title="Logout User"
-                            className="text-orange-600 hover:text-orange-700"
+                            onClick={() => handleViewDetails(user)}
+                            title="View Details"
                           >
-                            <LogOut className="h-4 w-4" />
+                            <Eye className="h-4 w-4" />
                           </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditUser(user)}
+                            title="Edit Status & Role"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          {user.isLoggedIn && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleLogoutUser(user.id)}
+                              title="Logout User"
+                              className="text-orange-600 hover:text-orange-700"
+                            >
+                              <LogOut className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

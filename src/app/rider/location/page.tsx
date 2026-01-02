@@ -8,6 +8,8 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
 import { LiveLocationMap } from "@/components/rider/LiveLocationMap";
 import { LocationData, locationService } from "@/services/location.service";
+import { useSocket } from "@/lib/socket";
+import RiderLayout from "@/components/rider/RiderLayout";
 import {
   MapPin,
   Navigation,
@@ -31,6 +33,7 @@ interface LocationStatus {
 
 export default function RiderLocationPage() {
   const { user } = useAuth();
+  const socket = useSocket();
   const [locationData, setLocationData] = useState<LocationData | null>(null);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>({
     isTracking: false,
@@ -41,8 +44,26 @@ export default function RiderLocationPage() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [permissionStatus, setPermissionStatus] = useState<{
+    granted: boolean;
+    denied: boolean;
+    prompt: boolean;
+    unavailable: boolean;
+  } | null>(null);
+  const [accuracyWarnings, setAccuracyWarnings] = useState<string[]>([]);
 
   useEffect(() => {
+    // Check location permission on page load
+    const checkPermissions = async () => {
+      try {
+        const status = await locationService.checkPermission();
+        console.log("Location permission status:", status);
+        setPermissionStatus(status);
+      } catch (error) {
+        console.error("Failed to check location permission:", error);
+      }
+    };
+
     // Check if location tracking is enabled
     const checkTrackingStatus = async () => {
       try {
@@ -60,6 +81,7 @@ export default function RiderLocationPage() {
       }
     };
 
+    checkPermissions();
     checkTrackingStatus();
 
     // Listen for online/offline events
@@ -79,6 +101,9 @@ export default function RiderLocationPage() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
+    // Location monitoring is now handled globally by LocationMonitor component
+    // No need for page-specific auto-logout timer
+
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
@@ -88,15 +113,18 @@ export default function RiderLocationPage() {
   const getCurrentLocation = async () => {
     setIsLoading(true);
     setError(null);
+    console.log("Getting current location...");
 
     try {
       // Use the location service with accuracy validation
+      console.log("Calling locationService.requestLocation...");
       const locationData = await locationService.requestLocation({
         enableHighAccuracy: true,
         timeout: 15000, // Increased timeout for GPS
         maximumAge: 300000, // 5 minutes
         maxAccuracy: 1000, // 1km maximum accuracy
       });
+      console.log("Location received:", locationData);
 
       const newLocationData: LocationData = {
         latitude: locationData.latitude,
@@ -114,7 +142,27 @@ export default function RiderLocationPage() {
         accuracy: locationData.accuracy || 0,
       }));
 
-      // Send location to server
+      // Check accuracy and provide warnings
+      const newWarnings: string[] = [];
+      if (newLocationData.accuracy > 100) {
+        newWarnings.push(
+          "GPS accuracy is low (>100m). Move to an open area with clear sky view."
+        );
+      }
+      if (newLocationData.accuracy > 50) {
+        newWarnings.push(
+          "Consider enabling high accuracy mode in location settings."
+        );
+      }
+      if (!newLocationData.speed && locationStatus.isTracking) {
+        newWarnings.push(
+          "Speed data unavailable. Ensure GPS is enabled for movement tracking."
+        );
+      }
+
+      setAccuracyWarnings(newWarnings);
+
+      // Send location to server via API
       const response = await fetch("/api/riders/location", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -133,6 +181,15 @@ export default function RiderLocationPage() {
           errorData.message || "Failed to update location on server"
         );
       }
+
+      // Send location update via WebSocket
+      socket.sendLocationUpdate({
+        latitude: locationData.latitude,
+        longitude: locationData.longitude,
+        accuracy: locationData.accuracy,
+        speed: locationData.speed,
+        heading: locationData.heading,
+      });
 
       setIsLoading(false);
     } catch (error) {
@@ -201,43 +258,87 @@ export default function RiderLocationPage() {
     return "text-red-600";
   };
 
+  const requestLocationPermission = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log("Requesting location permission...");
+
+      // Request permission explicitly
+      const status = await locationService.requestPermission();
+      console.log("Permission request result:", status);
+      setPermissionStatus(status);
+
+      if (status.granted) {
+        console.log("Permission granted, getting location...");
+        // Permission granted, get current location
+        await getCurrentLocation();
+      } else if (status.denied) {
+        setError(
+          "Location permission was denied. Please enable location permissions in your browser settings."
+        );
+      } else if (status.unavailable) {
+        setError("Location services are not available on this device.");
+      } else {
+        console.log(
+          "Permission status unclear, trying to get location anyway..."
+        );
+        // Try to get location even if status is unclear
+        await getCurrentLocation();
+      }
+    } catch (error) {
+      console.error("Permission request failed:", error);
+      setError("Failed to request location permission. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <RiderLayout>
       {/* Mobile App Header Actions */}
-      <div className="px-4 py-4 bg-white border-b">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {locationStatus.isTracking ? (
-              <Badge variant="default" className="bg-green-100 text-green-800">
-                <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
-                Live Tracking
-              </Badge>
-            ) : (
-              <Badge variant="secondary">Tracking Off</Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={locationStatus.isTracking}
-              onCheckedChange={toggleLocationTracking}
-              className="data-[state=checked]:bg-green-500"
-            />
-            <span className="text-sm font-medium">
-              {locationStatus.isTracking ? "On" : "Off"}
-            </span>
+      <div className="sticky top-0 z-10 bg-white border-b shadow-sm">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {locationStatus.isTracking ? (
+                <Badge
+                  variant="default"
+                  className="bg-green-100 text-green-800 text-xs"
+                >
+                  <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
+                  Live Tracking
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="text-xs">
+                  Tracking Off
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={locationStatus.isTracking}
+                onCheckedChange={toggleLocationTracking}
+                className="data-[state=checked]:bg-green-500 scale-75"
+              />
+              <span className="text-sm font-medium">
+                {locationStatus.isTracking ? "On" : "Off"}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="px-4 py-6 space-y-6">
+      <div className="px-4 py-4 space-y-4">
         {/* Live Map */}
         <LiveLocationMap
           locationData={locationData}
           isTracking={locationStatus.isTracking}
-          onLocationUpdate={setLocationData}
+          onRetry={getCurrentLocation}
+          onToggleHelp={() => {}} // TODO: Implement help modal
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-4">
           {/* Location Details */}
           <Card>
             <CardHeader>
@@ -247,6 +348,54 @@ export default function RiderLocationPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Permission Status */}
+              {permissionStatus && (
+                <div className="mb-4 p-3 rounded-lg border">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {permissionStatus.granted ? (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      ) : permissionStatus.denied ? (
+                        <AlertCircle className="h-4 w-4 text-red-500" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 text-yellow-500" />
+                      )}
+                      <span className="text-sm font-medium">
+                        Location Permission
+                      </span>
+                    </div>
+                    <Badge
+                      variant={
+                        permissionStatus.granted ? "default" : "secondary"
+                      }
+                      className={
+                        permissionStatus.granted
+                          ? "bg-green-100 text-green-800"
+                          : permissionStatus.denied
+                            ? "bg-red-100 text-red-800"
+                            : "bg-yellow-100 text-yellow-800"
+                      }
+                    >
+                      {permissionStatus.granted
+                        ? "Granted"
+                        : permissionStatus.denied
+                          ? "Denied"
+                          : "Prompt"}
+                    </Badge>
+                  </div>
+                  {!permissionStatus.granted && !permissionStatus.denied && (
+                    <Button
+                      className="mt-2 w-full"
+                      size="sm"
+                      onClick={requestLocationPermission}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? "Requesting..." : "Request Permission"}
+                    </Button>
+                  )}
+                </div>
+              )}
+
               {locationData ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
@@ -299,6 +448,17 @@ export default function RiderLocationPage() {
                   <p className="text-sm text-gray-500">
                     Enable location tracking to see your live location
                   </p>
+                  {(permissionStatus?.granted || permissionStatus?.prompt) && (
+                    <Button
+                      className="mt-4"
+                      onClick={getCurrentLocation}
+                      disabled={isLoading}
+                    >
+                      {isLoading
+                        ? "Getting Location..."
+                        : "Get Current Location"}
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -409,6 +569,6 @@ export default function RiderLocationPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </RiderLayout>
   );
 }

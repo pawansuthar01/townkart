@@ -302,7 +302,7 @@ export default function RiderInvitationsPage() {
                             variant="outline"
                             onClick={() =>
                               copyToClipboard(
-                                `${window.location.origin}/auth/register?token=${invitation.id}`
+                                `${window.location.origin}/auth/invitation?token=${invitation.id}`
                               )
                             }
                           >

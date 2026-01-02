@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -14,7 +15,7 @@ export async function PUT(request: NextRequest) {
     if (typeof isAvailable !== "boolean") {
       return NextResponse.json(
         { error: "isAvailable must be a boolean" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -49,21 +50,21 @@ export async function PUT(request: NextRequest) {
         isAvailable: updatedRider.isAvailable,
         currentLat: updatedRider.currentLat,
         currentLng: updatedRider.currentLng,
-        // lastLocationUpdate: updatedRider.lastLocationUpdate, // TODO: Add to schema
+        lastLocationUpdate: updatedRider.lastLocationUpdate,
       },
     });
   } catch (error: any) {
     console.error("Update rider availability error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
         isAvailable: true,
         currentLat: true,
         currentLng: true,
-        // lastLocationUpdate: true, // TODO: Add to schema
+        lastLocationUpdate: true,
         totalDeliveries: true,
         rating: true,
       },
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
     if (!rider) {
       return NextResponse.json(
         { error: "Rider profile not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -96,7 +97,7 @@ export async function GET(request: NextRequest) {
     console.error("Get rider availability error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

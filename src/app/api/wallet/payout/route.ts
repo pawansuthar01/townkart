@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { walletManager } from "@/lib/walletManagement";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -14,14 +15,14 @@ export async function POST(request: NextRequest) {
     if (!amount || amount <= 0) {
       return NextResponse.json(
         { error: "Valid amount is required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     if (!method || !["bank_transfer", "upi", "wallet"].includes(method)) {
       return NextResponse.json(
         { error: "Valid payout method is required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     console.error("Payout request error:", error);
     return NextResponse.json(
       { error: error.message || "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

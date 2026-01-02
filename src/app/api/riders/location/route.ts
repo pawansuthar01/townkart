@@ -3,9 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
+const MAX_ACCURACY_METERS = 1000;
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+
     if (!session?.user?.id || session.user.activeRole !== "RIDER") {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
@@ -13,7 +16,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      console.error("[LOCATION_UPDATE] Invalid JSON in request body:", error);
+      return NextResponse.json(
+        { success: false, message: "Invalid JSON in request body" },
+        { status: 400 }
+      );
+    }
+
     const {
       latitude,
       longitude,
@@ -23,28 +36,43 @@ export async function POST(request: NextRequest) {
       altitude,
       batteryLevel,
       activity,
-    } = body;
+    } = body ?? {};
 
-    if (!latitude || !longitude) {
-      return NextResponse.json(
-        { success: false, message: "Latitude and longitude are required" },
-        { status: 400 }
-      );
-    }
+    console.log("[LOCATION_UPDATE] Received data:", {
+      latitude,
+      longitude,
+      accuracy,
+      hasSpeed: speed !== undefined,
+      hasHeading: heading !== undefined,
+    });
 
-    // Validate location accuracy - reject IP-based locations
-    const MAX_ACCURACY_METERS = 1000; // 1km maximum
-    if (accuracy && accuracy > MAX_ACCURACY_METERS) {
+    // ✅ 0 is valid – strict numeric check
+    if (typeof latitude !== "number" || typeof longitude !== "number") {
+      console.error("[LOCATION_UPDATE] Invalid coordinates:", {
+        latitude,
+        longitude,
+      });
       return NextResponse.json(
         {
           success: false,
-          message: `Location accuracy too low (${Math.round(accuracy)}m). Please ensure GPS is enabled and try again.`,
+          message: "Latitude and longitude are required and must be numbers",
         },
         { status: 400 }
       );
     }
 
-    // Get rider profile
+    if (typeof accuracy === "number" && accuracy > MAX_ACCURACY_METERS) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Location accuracy too low (${Math.round(
+            accuracy
+          )}m). Please enable GPS and try again.`,
+        },
+        { status: 400 }
+      );
+    }
+
     const riderProfile = await prisma.riderProfile.findUnique({
       where: { userId: session.user.id },
     });
@@ -56,37 +84,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update rider's current location
-    await prisma.riderProfile.update({
-      where: { id: riderProfile.id },
-      data: {
-        currentLat: latitude,
-        currentLng: longitude,
-        lastLocationUpdate: new Date(),
-      },
+    // ---------- ATOMIC DB OPERATIONS ----------
+    await prisma.$transaction(async (tx) => {
+      await tx.riderProfile.update({
+        where: { id: riderProfile.id },
+        data: {
+          currentLat: latitude,
+          currentLng: longitude,
+          lastLocationUpdate: new Date(),
+        },
+      });
+
+      await tx.riderLocation.create({
+        data: {
+          riderId: riderProfile.id,
+          latitude,
+          longitude,
+          accuracy: accuracy ?? null,
+          speed: speed ?? null,
+          heading: heading ?? null,
+          altitude: altitude ?? null,
+          activity: activity || "moving",
+          batteryLevel: batteryLevel ?? null,
+          createdAt: new Date(),
+        },
+      });
     });
 
-    // Create location history entry
-    await prisma.riderLocation.create({
-      data: {
-        riderId: riderProfile.id,
-        latitude,
-        longitude,
-        accuracy,
-        speed,
-        heading,
-        altitude,
-        activity: activity || "moving",
-        batteryLevel,
-      },
-    });
-
-    // Check if rider is in service area
+    // ---------- SERVICE AREA CHECK ----------
     const serviceAreas = await prisma.serviceArea.findMany({
       where: { isActive: true },
     });
 
     let inServiceArea = false;
+
     for (const area of serviceAreas) {
       const bounds = area.bounds as {
         north: number;
@@ -94,47 +125,48 @@ export async function POST(request: NextRequest) {
         east: number;
         west: number;
       };
+
       if (
-        latitude >= bounds.south &&
-        latitude <= bounds.north &&
-        longitude >= bounds.west &&
-        longitude <= bounds.east
+        latitude < bounds.south ||
+        latitude > bounds.north ||
+        longitude < bounds.west ||
+        longitude > bounds.east
       ) {
-        // Calculate distance from center
-        const distance = calculateDistance(
-          latitude,
-          longitude,
-          area.centerLat,
-          area.centerLng
-        );
-        if (distance <= area.radiusKm) {
-          inServiceArea = true;
-          break;
-        }
+        continue;
+      }
+
+      const distance = calculateDistance(
+        latitude,
+        longitude,
+        area.centerLat,
+        area.centerLng
+      );
+
+      if (Number.isFinite(distance) && distance <= area.radiusKm) {
+        inServiceArea = true;
+        break;
       }
     }
 
-    // Log location issue if outside service area
     if (!inServiceArea) {
       await prisma.riderLog.create({
         data: {
           riderId: riderProfile.id,
           eventType: "location_outside_service_area",
-          description: `Rider location update outside service area: ${latitude}, ${longitude}`,
+          description: "Rider location update outside service area",
           latitude,
           longitude,
         },
       });
     }
 
-    // Check for location spoofing (simplified check)
-    if (accuracy && accuracy > 1000) {
-      // Very low accuracy might indicate spoofing
+    // ---------- ACCURACY WARNING (LOG ONLY) ----------
+    if (typeof accuracy === "number" && accuracy > 500) {
       await prisma.riderLog.create({
         data: {
           riderId: riderProfile.id,
           eventType: "location_accuracy_warning",
-          description: `Low location accuracy detected: ${accuracy}m at ${latitude}, ${longitude}`,
+          description: `Low accuracy detected: ${accuracy}m`,
           latitude,
           longitude,
         },
@@ -151,7 +183,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Error updating rider location:", error);
+    console.error("[LOCATION_UPDATE]", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
       { status: 500 }
@@ -159,9 +191,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+// ---------------- GET ----------------
+
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
+
     if (!session?.user?.id || session.user.activeRole !== "RIDER") {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
@@ -172,7 +207,6 @@ export async function GET(request: NextRequest) {
     const riderProfile = await prisma.riderProfile.findUnique({
       where: { userId: session.user.id },
       select: {
-        id: true,
         currentLat: true,
         currentLng: true,
         lastLocationUpdate: true,
@@ -199,7 +233,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Error fetching rider location:", error);
+    console.error("[GET_RIDER_LOCATION]", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
       { status: 500 }
@@ -207,28 +241,25 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Helper function to calculate distance
+// ---------------- HELPERS ----------------
+
 function calculateDistance(
   lat1: number,
   lng1: number,
   lat2: number,
   lng2: number
 ): number {
-  const R = 6371; // Earth's radius in kilometers
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
 
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRadians(lat1)) *
-      Math.cos(toRadians(lat2)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function toRadians(degrees: number): number {
-  return degrees * (Math.PI / 180);
+function toRad(v: number): number {
+  return (v * Math.PI) / 180;
 }

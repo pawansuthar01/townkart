@@ -707,67 +707,75 @@ export default function AdminOffersPage() {
           <CardTitle>All Offers ({offers.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Applicability</TableHead>
-                <TableHead>Target Users</TableHead>
-                <TableHead>Usage</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Valid Till</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {offers.map((offer) => (
-                <TableRow key={offer.id}>
-                  <TableCell className="font-medium">{offer.title}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {getOfferTypeLabel(offer.type)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">
-                      {getApplicabilityLabel(offer.applicableTo)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {offer.targetUsers.replace("_", " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {offer.usedCount}
-                    {offer.usageLimit && `/${offer.usageLimit}`}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={offer.isActive ? "default" : "secondary"}>
-                      {offer.isActive ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {new Date(offer.endDate).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead className="hidden sm:table-cell">Type</TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Applicability
+                  </TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Target Users
+                  </TableHead>
+                  <TableHead className="hidden sm:table-cell">Usage</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Valid Till
+                  </TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {offers.map((offer) => (
+                  <TableRow key={offer.id}>
+                    <TableCell className="font-medium">{offer.title}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <Badge variant="outline">
+                        {getOfferTypeLabel(offer.type)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <Badge variant="secondary">
+                        {getApplicabilityLabel(offer.applicableTo)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <Badge variant="outline">
+                        {offer.targetUsers.replace("_", " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {offer.usedCount}
+                      {offer.usageLimit && `/${offer.usageLimit}`}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={offer.isActive ? "default" : "secondary"}>
+                        {offer.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {new Date(offer.endDate).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="sm">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

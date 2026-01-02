@@ -329,9 +329,15 @@ export default function AdminDevicesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>User</TableHead>
-                    <TableHead>Device</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Last Login</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Device
+                    </TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Location
+                    </TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Last Login
+                    </TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -352,7 +358,7 @@ export default function AdminDevicesPage() {
                           </Badge>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-2">
                           {getDeviceIcon(device.deviceType)}
                           <div>
@@ -374,7 +380,7 @@ export default function AdminDevicesPage() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-1">
                           <MapPin className="h-4 w-4 text-gray-400" />
                           <span className="text-sm">
@@ -385,7 +391,7 @@ export default function AdminDevicesPage() {
                           {device.lastIP}
                         </p>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-1">
                           <Clock className="h-4 w-4 text-gray-400" />
                           <span className="text-sm">

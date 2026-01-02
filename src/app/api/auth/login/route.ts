@@ -56,7 +56,6 @@ export async function POST(request: NextRequest) {
         phoneVerified: true,
       },
     });
-    console.log("user", user);
     if (!user) {
       return NextResponse.json(
         { success: false, message: "User not found. Please register first." },

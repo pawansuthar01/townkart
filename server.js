@@ -15,17 +15,26 @@ app
       handle(req, res, parsedUrl);
     });
 
-    // Initialize WebSocket server
-    try {
-      wsServer.initialize(server);
-      console.log(`> WebSocket server initialized`);
+    // Initialize WebSocket server (only in production or when explicitly enabled)
+    const enableWebSocket =
+      process.env.ENABLE_WEBSOCKET === "true" ||
+      process.env.NODE_ENV === "production";
 
-      // Initialize notification system with WebSocket server
+    if (enableWebSocket) {
+      try {
+        wsServer.initialize(server);
+        console.log(`> WebSocket server initialized`);
 
-      setWebSocketServer(wsServer);
-      console.log(`> Notification system initialized with WebSocket support`);
-    } catch (error) {
-      console.error("Failed to initialize WebSocket server:", error);
+        // Initialize notification system with WebSocket server
+        setWebSocketServer(wsServer);
+        console.log(`> Notification system initialized with WebSocket support`);
+      } catch (error) {
+        console.error("Failed to initialize WebSocket server:", error);
+      }
+    } else {
+      console.log(
+        `> WebSocket server disabled in development (set ENABLE_WEBSOCKET=true to enable)`
+      );
     }
 
     const port = process.env.PORT || 3000;

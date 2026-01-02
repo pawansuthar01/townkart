@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient, DeliveryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
+import { sendNotification } from "@/store/slices/notificationSlice";
 
 // Valid status transitions
 const validTransitions: Record<DeliveryStatus, DeliveryStatus[]> = {
@@ -14,10 +16,10 @@ const validTransitions: Record<DeliveryStatus, DeliveryStatus[]> = {
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { deliveryId: string } },
+  { params }: { params: { deliveryId: string } }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -28,7 +30,7 @@ export async function PUT(
     if (!status || !Object.values(DeliveryStatus).includes(status)) {
       return NextResponse.json(
         { error: "Invalid delivery status" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -49,7 +51,7 @@ export async function PUT(
     if (!delivery) {
       return NextResponse.json(
         { error: "Delivery not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -60,7 +62,7 @@ export async function PUT(
     if (!isRider && !isAdmin) {
       return NextResponse.json(
         { error: "Unauthorized to update this delivery" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -70,7 +72,7 @@ export async function PUT(
         {
           error: `Invalid status transition from ${delivery.deliveryStatus} to ${status}`,
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -116,31 +118,47 @@ export async function PUT(
       });
     }
 
-    // TODO: Create delivery log
-    // await prisma.deliveryLog.create({
-    //   data: {
-    //     deliveryId,
-    //     eventType: 'status_change',
-    //     oldStatus,
-    //     newStatus: status,
-    //     description: `Status changed from ${oldStatus} to ${status}`,
-    //     actorId: session.user.id,
-    //     actorType: isAdmin ? 'admin' : 'rider',
-    //     metadata: {
-    //       notes,
-    //       location,
-    //     },
-    //   },
-    // });
+    await prisma.deliveryLog.create({
+      data: {
+        deliveryId,
+        eventType: "status_change",
+        oldStatus,
+        newStatus: status,
+        description: `Status changed from ${oldStatus} to ${status}`,
+        actorId: session.user.id,
+        actorType: isAdmin ? "admin" : "rider",
+        metadata: {
+          notes,
+          location,
+        },
+      },
+    });
 
-    // TODO: Send notifications
-    // if (status === 'PICKED_UP') {
-    //   await sendNotification(delivery.order.customerId, 'Order picked up', ...);
-    // } else if (status === 'OUT_FOR_DELIVERY') {
-    //   await sendNotification(delivery.order.customerId, 'Order out for delivery', ...);
-    // } else if (status === 'DELIVERED') {
-    //   await sendNotification(delivery.order.customerId, 'Order delivered', ...);
-    // }
+    if (status === "PICKED_UP") {
+      await sendNotification({
+        userId: delivery.order.customerId,
+        message: "Order picked up",
+        title: "delivery status change",
+        type: "string",
+        priority: "medium",
+      });
+    } else if (status === "OUT_FOR_DELIVERY") {
+      await sendNotification({
+        userId: delivery.order.customerId,
+        message: "Order out for delivery",
+        title: "delivery status change",
+        type: "string",
+        priority: "medium",
+      });
+    } else if (status === "DELIVERED") {
+      await sendNotification({
+        userId: delivery.order.customerId,
+        message: "Order delivered",
+        title: "delivery status change",
+        type: "string",
+        priority: "medium",
+      });
+    }
 
     // TODO: Broadcast real-time update
     // await broadcastDeliveryUpdate(deliveryId, {
@@ -163,17 +181,17 @@ export async function PUT(
     console.error("Update delivery status error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { deliveryId: string } },
+  { params }: { params: { deliveryId: string } }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -215,20 +233,20 @@ export async function GET(
     if (!delivery) {
       return NextResponse.json(
         { error: "Delivery not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
     // Check permissions
     const isRider = delivery.riderId === session.user.id;
-    const isAdmin = session.user.roles?.includes("ADMIN"); // TODO: Check user roles properly
+    const isAdmin = session.user.roles?.includes("ADMIN");
     const isCustomer = delivery.order.customerId === session.user.id;
     const isMerchant = delivery.order.storeId === session.user.id;
 
     if (!isRider && !isAdmin && !isCustomer && !isMerchant) {
       return NextResponse.json(
         { error: "Unauthorized to view this delivery" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -240,7 +258,7 @@ export async function GET(
     console.error("Get delivery status error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

@@ -1,20 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Smartphone,
-  Monitor,
-  Tablet,
-  MapPin,
-  Clock,
-  AlertTriangle,
-  RefreshCw,
-  CheckCircle,
-} from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { Shield, Smartphone, Monitor, Tablet, AlertCircle } from "lucide-react";
 
 interface Device {
   id: string;
@@ -23,305 +13,188 @@ interface Device {
   deviceType: string;
   os?: string;
   browser?: string;
-  lastLoginAt: string;
-  lastIP: string;
-  lastLocation?: {
-    city?: string;
-    region?: string;
-    country?: string;
-  };
+  lastLoginAt?: string;
+  lastIP?: string;
   batteryLevel?: number;
-  loginCount: number;
 }
 
 interface DeviceSelectionModalProps {
+  isOpen: boolean;
   devices: Device[];
-  onDeviceSelect: (deviceId: string) => void;
+  userId: string;
+  onSuccess: () => void;
   onCancel: () => void;
   isLoading?: boolean;
 }
 
 export function DeviceSelectionModal({
+  isOpen,
   devices,
-  onDeviceSelect,
+  userId,
+  onSuccess,
   onCancel,
   isLoading = false,
 }: DeviceSelectionModalProps) {
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
-  const [showOTPInput, setShowOTPInput] = useState(false);
-  const [otp, setOtp] = useState("");
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [error, setError] = useState("");
+  const [selectedDevices, setSelectedDevices] = useState<string[]>([]);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleDeviceSelection = (deviceId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedDevices([...selectedDevices, deviceId]);
+    } else {
+      setSelectedDevices(selectedDevices.filter((id) => id !== deviceId));
+    }
+  };
+
+  const handleLogoutSelectedDevices = async () => {
+    if (selectedDevices.length === 0) return;
+
+    setIsLoggingOut(true);
+    try {
+      const response = await fetch("/api/auth/device-logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceIds: selectedDevices,
+          userId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        onSuccess();
+      } else {
+        console.error("Device logout failed:", data.message);
+        // Show error but don't close modal - allow retry
+        alert(`Failed to logout devices: ${data.message}. Please try again.`);
+      }
+    } catch (error) {
+      console.error("Device logout error:", error);
+      alert("An error occurred while logging out devices. Please try again.");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   const getDeviceIcon = (deviceType: string) => {
     switch (deviceType.toLowerCase()) {
       case "mobile":
-      case "smartphone":
-        return <Smartphone className="h-5 w-5" />;
+        return <Smartphone className="h-4 w-4" />;
       case "tablet":
-        return <Tablet className="h-5 w-5" />;
-      case "desktop":
-      case "computer":
-        return <Monitor className="h-5 w-5" />;
+        return <Tablet className="h-4 w-4" />;
       default:
-        return <Monitor className="h-5 w-5" />;
+        return <Monitor className="h-4 w-4" />;
     }
   };
 
-  const formatLastLogin = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${diffDays}d ago`;
-  };
-
-  const handleRequestOTP = async () => {
-    if (!selectedDeviceId) {
-      setError("Please select a device to logout");
-      return;
-    }
-
-    setOtpLoading(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/auth/device-logout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "request_otp",
-          deviceId: selectedDeviceId,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setOtpSent(true);
-        setShowOTPInput(true);
-      } else {
-        setError(data.message || "Failed to send OTP");
-      }
-    } catch (error) {
-      setError("Failed to send OTP. Please try again.");
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
-  const handleVerifyOTP = async () => {
-    if (!otp || otp.length < 4) {
-      setError("Please enter a valid OTP");
-      return;
-    }
-
-    setOtpLoading(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/auth/device-logout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "verify_otp",
-          deviceId: selectedDeviceId,
-          otp,
-          phoneNumber: "", // Will be filled from session
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        onDeviceSelect(selectedDeviceId);
-      } else {
-        setError(data.message || "Invalid OTP");
-      }
-    } catch (error) {
-      setError("Failed to verify OTP. Please try again.");
-    } finally {
-      setOtpLoading(false);
-    }
-  };
+  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-orange-500" />
-            Multiple Device Login Detected
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Warning Message */}
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <h3 className="font-semibold text-orange-900 mb-1">
-                  Single Device Policy
-                </h3>
-                <p className="text-sm text-orange-800">
-                  As a rider, you can only be logged in from one device at a
-                  time. Please select which device to logout from to continue
-                  with your login.
-                </p>
-              </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl border-0 overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-red-500 to-orange-500 p-6 text-white">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-white/20 rounded-full">
+              <AlertCircle className="h-6 w-6" />
             </div>
+            <div>
+              <h2 className="text-xl font-bold">Device Limit Exceeded</h2>
+              <p className="text-sm opacity-90 mt-1">
+                Select devices to logout and continue
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          <div className="text-sm text-gray-600 mb-4">
+            You've reached the maximum number of active devices. Please select
+            which devices to logout from to continue with your login.
           </div>
 
           {/* Device List */}
-          <div>
-            <h3 className="font-semibold text-gray-900 mb-3">
-              Select a device to logout from:
-            </h3>
-            <div className="space-y-3">
-              {devices.map((device) => (
-                <div
-                  key={device.deviceId}
-                  className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                    selectedDeviceId === device.deviceId
-                      ? "border-townkart-primary bg-townkart-primary/5"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                  onClick={() => setSelectedDeviceId(device.deviceId)}
+          <div className="space-y-3 max-h-60 overflow-y-auto mb-6">
+            {devices.map((device) => (
+              <div
+                key={device.id}
+                className="flex items-start space-x-3 p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                <Checkbox
+                  id={`device-${device.id}`}
+                  checked={selectedDevices.includes(device.id)}
+                  onCheckedChange={(checked) =>
+                    handleDeviceSelection(device.id, checked as boolean)
+                  }
+                  className="mt-0.5"
+                />
+                <label
+                  htmlFor={`device-${device.id}`}
+                  className="flex-1 cursor-pointer"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {getDeviceIcon(device.deviceType)}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900">
-                            {device.deviceName ||
-                              `${device.deviceType} ${device.os ? `(${device.os})` : ""}`}
-                          </span>
-                          {selectedDeviceId === device.deviceId && (
-                            <CheckCircle className="h-4 w-4 text-townkart-primary" />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            Last login: {formatLastLogin(device.lastLoginAt)}
-                          </div>
-                          {device.lastLocation && (
-                            <div className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3" />
-                              {device.lastLocation.city},{" "}
-                              {device.lastLocation.region}
-                            </div>
-                          )}
-                          <div>Logins: {device.loginCount}</div>
-                        </div>
-                      </div>
-                    </div>
-                    <Badge variant="secondary">{device.deviceType}</Badge>
+                  <div className="flex items-center space-x-2 mb-1">
+                    {getDeviceIcon(device.deviceType)}
+                    <span className="font-medium text-gray-900 text-sm">
+                      {device.deviceType.charAt(0).toUpperCase() +
+                        device.deviceType.slice(1)}
+                    </span>
+                    {device.browser && (
+                      <span className="text-xs text-gray-500">
+                        • {device.browser}
+                      </span>
+                    )}
                   </div>
-                </div>
-              ))}
-            </div>
+                  {device.os && (
+                    <p className="text-xs text-gray-600 mb-1">{device.os}</p>
+                  )}
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>
+                      Last login:{" "}
+                      {device.lastLoginAt
+                        ? new Date(device.lastLoginAt).toLocaleDateString()
+                        : "Unknown"}
+                    </span>
+                    {device.lastIP && <span>IP: {device.lastIP}</span>}
+                  </div>
+                </label>
+              </div>
+            ))}
           </div>
 
-          {/* OTP Section */}
-          {selectedDeviceId && (
-            <div className="border-t pt-6">
-              {!showOTPInput ? (
-                <div className="text-center">
-                  <p className="text-gray-600 mb-4">
-                    To logout from the selected device, we'll send an OTP to
-                    your registered phone number for verification.
-                  </p>
-                  <Button
-                    onClick={handleRequestOTP}
-                    disabled={otpLoading}
-                    className="bg-townkart-primary hover:bg-townkart-primary/90"
-                  >
-                    {otpLoading && (
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    )}
-                    Send OTP to Verify
-                  </Button>
-                </div>
+          {/* Actions */}
+          <div className="flex space-x-3">
+            <Button
+              onClick={onCancel}
+              variant="outline"
+              className="flex-1 h-12 border-gray-300 hover:bg-gray-50"
+              disabled={isLoggingOut}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLogoutSelectedDevices}
+              disabled={
+                selectedDevices.length === 0 || isLoggingOut || isLoading
+              }
+              className="flex-1 h-12 bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white font-semibold"
+            >
+              {isLoggingOut ? (
+                <>
+                  <LoadingSpinner className="mr-2 h-4 w-4" />
+                  Logging out...
+                </>
               ) : (
-                <div className="space-y-4">
-                  <div className="text-center">
-                    <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
-                    <p className="text-gray-600 mb-4">
-                      OTP sent to your registered phone number. Enter it below
-                      to complete the device logout.
-                    </p>
-                  </div>
-
-                  <div className="max-w-xs mx-auto">
-                    <Input
-                      type="text"
-                      placeholder="Enter 4-digit OTP"
-                      value={otp}
-                      onChange={(e) =>
-                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                      }
-                      className="text-center text-lg tracking-widest"
-                      maxLength={6}
-                    />
-                  </div>
-
-                  {error && (
-                    <p className="text-red-600 text-center text-sm">{error}</p>
-                  )}
-
-                  <div className="flex gap-3 justify-center">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setShowOTPInput(false);
-                        setOtp("");
-                        setError("");
-                      }}
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      onClick={handleVerifyOTP}
-                      disabled={otpLoading || otp.length < 4}
-                      className="bg-townkart-primary hover:bg-townkart-primary/90"
-                    >
-                      {otpLoading && (
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      )}
-                      Verify & Logout Device
-                    </Button>
-                  </div>
-                </div>
+                <>
+                  <Shield className="mr-2 h-4 w-4" />
+                  Logout & Continue ({selectedDevices.length})
+                </>
               )}
-            </div>
-          )}
-
-          {/* Error Message */}
-          {error && !showOTPInput && (
-            <p className="text-red-600 text-center text-sm">{error}</p>
-          )}
-
-          {/* Cancel Button */}
-          <div className="flex justify-center pt-4 border-t">
-            <Button variant="ghost" onClick={onCancel}>
-              Cancel Login
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

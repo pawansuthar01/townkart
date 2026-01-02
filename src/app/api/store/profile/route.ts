@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     if (!storeStaff) {
       return NextResponse.json(
         { error: "Store access not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
     console.error("Store profile error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -92,7 +92,7 @@ export async function PUT(request: NextRequest) {
     if (!storeStaff) {
       return NextResponse.json(
         { error: "Store access not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -120,7 +120,7 @@ export async function PUT(request: NextRequest) {
     console.error("Update store profile error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

@@ -12,31 +12,7 @@ export default function StoreLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { data: session, status } = useSession();
-  const router = useRouter();
-  const pathname = usePathname();
-
-  useEffect(() => {
-    if (status === "loading") return;
-
-    const user = session?.user as any;
-    const hasStoreData = user?.storeData;
-
-    // Allow access to waiting page
-    if (pathname === "/store/waiting") return;
-
-    // If user is STORE_MANAGER but has no store assigned, redirect to waiting
-    if (user?.activeRole === "STORE_MANAGER" && !hasStoreData) {
-      router.push("/store/waiting");
-      return;
-    }
-
-    // If user has store data but is on waiting page, redirect to dashboard
-    if (hasStoreData && pathname === "/store/waiting") {
-      router.push("/store");
-      return;
-    }
-  }, [session, status, pathname, router]);
+  const { status } = useSession();
 
   // Show loading while checking
   if (status === "loading") {
@@ -61,7 +37,7 @@ export default function StoreLayout({
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
         />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-6 ">{children}</main>
       </div>
     </div>
   );

@@ -19,6 +19,7 @@ export default function StoreWaitingPage() {
   >(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const [ErrorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     checkStoreStatus();
@@ -35,21 +36,25 @@ export default function StoreWaitingPage() {
 
   const checkStoreStatus = async () => {
     try {
-      const response = await fetch("/api/store/profile");
-      if (response.ok) {
-        const data = await response.json();
-        const store = data.profile;
+      const response = await fetch("/api/store/store-manager", {
+        method: "GET",
+      });
+      const data = await response.json();
 
-        if (store.isActive && store.isVerified) {
+      if (response.ok) {
+        const store = data.profile;
+        console.log("Store profile data:", store);
+        if (store.applicationStatus == "APPROVED" && store.isActive) {
           setStoreStatus("approved");
-        } else if (!store.isActive && store.isVerified === false) {
+        } else if (store.applicationStatus == "REJECTED") {
           setStoreStatus("rejected");
         } else {
           setStoreStatus("pending");
+          setErrorMessage(data.error || "");
         }
       } else {
-        console.error("Failed to fetch store profile");
-        setStoreStatus("pending"); // Default to pending on error
+        setErrorMessage(data.error || "");
+        setStoreStatus("pending");
       }
     } catch (error) {
       console.error("Error checking store status:", error);
@@ -162,6 +167,7 @@ export default function StoreWaitingPage() {
                     Your store application is being reviewed by our team. This
                     usually takes 24-48 hours.
                   </p>
+                  <p>{ErrorMessage}</p>
                 </div>
 
                 <div className="space-y-3">

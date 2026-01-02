@@ -42,7 +42,7 @@ interface Delivery {
       address: string;
     };
     orderItems: any[];
-    deliveryAddress?: any;
+    deliveryAddress: any;
   };
 }
 
@@ -50,7 +50,7 @@ export default function ActiveDeliveriesPage() {
   const { user } = useAuth();
   const dispatch = useDispatch<AppDispatch>();
   const { deliveries, loading } = useSelector(
-    (state: RootState) => state.delivery,
+    (state: RootState) => state.delivery
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -62,7 +62,7 @@ export default function ActiveDeliveriesPage() {
   }, [dispatch, user?.id]);
 
   const activeDeliveries = deliveries.filter(
-    (d) => d.deliveryStatus !== "DELIVERED",
+    (d) => d.deliveryStatus !== "DELIVERED"
   );
 
   const filteredDeliveries = activeDeliveries.filter((delivery) => {
@@ -73,7 +73,7 @@ export default function ActiveDeliveriesPage() {
       delivery.order?.customer.fullName
         .toLowerCase()
         .includes(searchTerm.toLowerCase()) ||
-      delivery.order?.merchant.businessName
+      delivery.order?.store.businessName
         .toLowerCase()
         .includes(searchTerm.toLowerCase());
 
@@ -313,10 +313,10 @@ export default function ActiveDeliveriesPage() {
                           </div>
                           <div className="pl-6 space-y-1">
                             <p className="text-sm font-medium text-gray-900">
-                              {delivery.order?.merchant.businessName}
+                              {delivery.order?.store.businessName}
                             </p>
                             <p className="text-sm text-gray-600">
-                              {delivery.order?.merchant.address}
+                              {delivery.order?.store.address}
                             </p>
                           </div>
                         </div>
@@ -331,6 +331,12 @@ export default function ActiveDeliveriesPage() {
                             <p className="text-sm font-medium text-gray-900">
                               {delivery.order?.customer.fullName}
                             </p>
+                            {delivery.order?.customer.phoneNumber && (
+                              <p className="text-sm text-gray-600 flex items-center">
+                                <Phone className="h-3 w-3 mr-1" />
+                                {delivery.order.customer.phoneNumber}
+                              </p>
+                            )}
                             <p className="text-sm text-gray-600">
                               {typeof delivery.order?.deliveryAddress ===
                                 "object" &&
@@ -380,7 +386,7 @@ export default function ActiveDeliveriesPage() {
                           <span>
                             Delivered:{" "}
                             {new Date(
-                              delivery.deliveryTime,
+                              delivery.deliveryTime
                             ).toLocaleTimeString()}
                           </span>
                         )}

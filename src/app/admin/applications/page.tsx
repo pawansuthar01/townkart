@@ -42,7 +42,6 @@ import {
   Check,
   X,
   Eye,
-  Filter,
   Download,
   MapPin,
   FileText,
@@ -51,6 +50,7 @@ import {
   Mail,
 } from "lucide-react";
 import { MapIntegration } from "@/components/shared/MapIntegration";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Application {
   id: string;
@@ -66,9 +66,32 @@ interface Application {
   storeId?: string;
   documents?: Record<string, string>;
   invitation: {
-    serviceAreas?: string[];
+    serviceAreas: string[];
     stores?: string[];
-  };
+    token?: string;
+    store?: Store;
+  } | null;
+}
+
+interface StoreVerification {
+  id: string;
+  name: string;
+  code: string;
+  city: string;
+  state: string;
+  phoneNumber: string;
+  email: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  applicationStatus: string;
+  isVerified: boolean;
+  manager: {
+    id: string;
+    fullName: string;
+    phoneNumber: string;
+    email: string;
+  } | null;
 }
 
 interface ServiceArea {
@@ -92,46 +115,77 @@ interface Store {
 }
 
 export default function AdminApplicationsPage() {
-  const [applications, setApplications] = useState<Application[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [selectedApplication, setSelectedApplication] =
-    useState<Application | null>(null);
+  const [activeTab, setActiveTab] = useState<
+    "riders" | "storeManagers" | "storeVerification"
+  >("riders");
+
+  // For riders
+  const [ridersData, setRidersData] = useState<Application[]>([]);
+  const [ridersLoading, setRidersLoading] = useState(false);
+  const [ridersError, setRidersError] = useState("");
+  const [ridersPagination, setRidersPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    pages: 0,
+  });
+  const [ridersSearch, setRidersSearch] = useState("");
+  const [ridersStatusFilter, setRidersStatusFilter] = useState("all");
+
+  // For storeManagers
+  const [storeManagersData, setStoreManagersData] = useState<Application[]>([]);
+  const [storeManagersLoading, setStoreManagersLoading] = useState(false);
+  const [storeManagersError, setStoreManagersError] = useState("");
+  const [storeManagersPagination, setStoreManagersPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    pages: 0,
+  });
+  const [storeManagersSearch, setStoreManagersSearch] = useState("");
+  const [storeManagersStatusFilter, setStoreManagersStatusFilter] =
+    useState("all");
+
+  // For storeVerification
+  const [storeVerificationData, setStoreVerificationData] = useState<
+    StoreVerification[]
+  >([]);
+  const [storeVerificationLoading, setStoreVerificationLoading] =
+    useState(false);
+  const [storeVerificationError, setStoreVerificationError] = useState("");
+  const [storeVerificationPagination, setStoreVerificationPagination] =
+    useState({ page: 1, limit: 20, total: 0, pages: 0 });
+  const [storeVerificationSearch, setStoreVerificationSearch] = useState("");
+  const [storeVerificationStatusFilter, setStoreVerificationStatusFilter] =
+    useState("all");
+
+  const [serviceAreas, setServiceAreas] = useState<ServiceArea[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [selectedItem, setSelectedItem] = useState<
+    Application | StoreVerification | null
+  >(null);
+  const [showViewDialog, setShowViewDialog] = useState(false);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewAction, setReviewAction] = useState<"approve" | "reject">(
     "approve"
   );
   const [reviewNotes, setReviewNotes] = useState("");
-  const [serviceAreas, setServiceAreas] = useState<ServiceArea[]>([]);
-  const [stores, setStores] = useState<Store[]>([]);
-  const [filterStatus, setFilterStatus] = useState("ALL");
-  const [filterRole, setFilterRole] = useState("ALL");
+  const [success, setSuccess] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchApplications();
     fetchServiceAreasAndStores();
-  }, [filterStatus, filterRole]);
+  }, []);
 
-  const fetchApplications = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (filterStatus && filterStatus !== "ALL")
-        params.append("status", filterStatus);
-      if (filterRole && filterRole !== "ALL") params.append("role", filterRole);
-
-      const response = await fetch(`/api/admin/applications?${params}`);
-      if (!response.ok) throw new Error("Failed to fetch applications");
-
-      const data = await response.json();
-      setApplications(data.applications);
-    } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (activeTab === "riders") {
+      fetchRiders();
+    } else if (activeTab === "storeManagers") {
+      fetchStoreManagers();
+    } else if (activeTab === "storeVerification") {
+      fetchStoreVerification();
     }
-  };
+  }, [activeTab]);
 
   const fetchServiceAreasAndStores = async () => {
     try {
@@ -150,49 +204,137 @@ export default function AdminApplicationsPage() {
         setStores(storesData.data);
       }
     } catch (error) {
-      console.error("Failed to fetch areas/stores:", error);
+      // silent
     }
   };
 
-  const handleReviewApplication = async () => {
-    if (!selectedApplication) return;
+  const fetchRiders = async () => {
+    setRidersLoading(true);
+    setRidersError("");
+    try {
+      const params = new URLSearchParams({
+        role: "RIDER",
+        page: ridersPagination.page.toString(),
+        limit: ridersPagination.limit.toString(),
+        q: ridersSearch,
+      });
+      const statusParam =
+        ridersStatusFilter === "all" ? "" : ridersStatusFilter;
+      if (statusParam) params.set("status", statusParam);
+      const response = await fetch(`/api/admin/applications?${params}`);
+      if (!response.ok) throw new Error("Failed to fetch riders");
+
+      const data = await response.json();
+      setRidersData(data.applications);
+      setRidersPagination(data.pagination);
+    } catch (error: any) {
+      setRidersError(error.message);
+    } finally {
+      setRidersLoading(false);
+    }
+  };
+
+  const fetchStoreManagers = async () => {
+    setStoreManagersLoading(true);
+    setStoreManagersError("");
+    try {
+      const params = new URLSearchParams({
+        role: "STORE_MANAGER",
+        page: storeManagersPagination.page.toString(),
+        limit: storeManagersPagination.limit.toString(),
+        q: storeManagersSearch,
+      });
+      const statusParam =
+        storeManagersStatusFilter === "all" ? "" : storeManagersStatusFilter;
+      if (statusParam) params.set("status", statusParam);
+      const response = await fetch(`/api/admin/applications?${params}`);
+
+      const data = await response.json();
+      if (!response.ok) throw new Error("Failed to fetch store managers");
+      setStoreManagersData(data.applications);
+      setStoreManagersPagination(data.pagination);
+    } catch (error: any) {
+      setStoreManagersError(error.message);
+    } finally {
+      setStoreManagersLoading(false);
+    }
+  };
+
+  const fetchStoreVerification = async () => {
+    setStoreVerificationLoading(true);
+    setStoreVerificationError("");
+    try {
+      const params = new URLSearchParams({
+        type: "STORE",
+        page: storeVerificationPagination.page.toString(),
+        limit: storeVerificationPagination.limit.toString(),
+        q: storeVerificationSearch,
+      });
+      const statusParam =
+        storeVerificationStatusFilter === "all"
+          ? ""
+          : storeVerificationStatusFilter;
+      if (statusParam) params.set("status", statusParam);
+      const response = await fetch(`/api/admin/applications?${params}`);
+      if (!response.ok) throw new Error("Failed to fetch store verification");
+
+      const data = await response.json();
+      setStoreVerificationData(data.stores);
+      setStoreVerificationPagination(data.pagination);
+    } catch (error: any) {
+      setStoreVerificationError(error.message);
+    } finally {
+      setStoreVerificationLoading(false);
+    }
+  };
+
+  const handleReview = async () => {
+    if (!selectedItem) return;
 
     try {
+      const type = activeTab === "storeVerification" ? "STORE" : "APPLICATION";
       const response = await fetch("/api/admin/applications", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          applicationId: selectedApplication.id,
+          id: selectedItem.id,
+          type,
           action: reviewAction,
           notes: reviewNotes,
         }),
       });
-
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error);
       }
-
-      setSuccess(`Application ${reviewAction}d successfully!`);
+      setSuccess(
+        `${type === "STORE" ? "Store verification" : "Application"} ${reviewAction}d successfully!`
+      );
       setShowReviewDialog(false);
-      setSelectedApplication(null);
+      setSelectedItem(null);
       setReviewNotes("");
-      fetchApplications();
+      // Refresh current tab
+      if (activeTab === "riders") fetchRiders();
+      else if (activeTab === "storeManagers") fetchStoreManagers();
+      else fetchStoreVerification();
     } catch (error: any) {
       setError(error.message);
     }
   };
 
   const downloadDocument = async (
-    applicationId: string,
+    id: string,
     documentType: string,
     filename: string
   ) => {
     try {
       const response = await fetch(
-        `/api/admin/applications/${applicationId}/documents/${documentType}`
+        `/api/admin/applications/${id}/documents/${documentType}`
       );
-      if (!response.ok) throw new Error("Failed to download document");
+      console.log(response);
+      if (!response.ok) {
+        return;
+      }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -235,400 +377,751 @@ export default function AdminApplicationsPage() {
     return store ? `${store.name} (${store.code})` : "Unknown Store";
   };
 
+  const renderTable = (
+    data: Application[] | StoreVerification[],
+    loading: boolean,
+    error: string,
+    type: "application" | "store"
+  ) => {
+    if (loading)
+      return (
+        <div className="flex justify-center py-8">
+          <LoadingSpinner className="w-8 h-8" />
+        </div>
+      );
+    if (error)
+      return (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      );
+
+    if (type === "application") {
+      const apps = data as Application[];
+      return (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Applicant</TableHead>
+              <TableHead className="hidden sm:table-cell">Role</TableHead>
+              <TableHead className="hidden sm:table-cell">Assignment</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="hidden sm:table-cell">Submitted</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {apps.map((app) => (
+              <TableRow key={app.id}>
+                <TableCell>
+                  <div>
+                    <div className="font-medium">{app.fullName}</div>
+                    <div className="text-sm text-gray-500 flex items-center gap-1">
+                      <Mail className="h-3 w-3" />
+                      {app.email}
+                    </div>
+                    <div className="text-sm text-gray-500 flex items-center gap-1">
+                      <Phone className="h-3 w-3" />
+                      {app.phoneNumber}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="hidden sm:table-cell">
+                  {app.role === "STORE_MANAGER" ? "Store Manager" : "Rider"}
+                </TableCell>
+                <TableCell className="text-sm text-gray-600 hidden sm:table-cell">
+                  {app.role === "RIDER"
+                    ? app.invitation?.serviceAreas
+                      ? getServiceAreaNames(app.invitation.serviceAreas)
+                      : "Direct Application"
+                    : getStoreName(app.storeId)}
+                </TableCell>
+                <TableCell>{getStatusBadge(app.status)}</TableCell>
+                <TableCell className="hidden sm:table-cell">
+                  {new Date(app.submittedAt).toLocaleDateString()}
+                </TableCell>
+                <TableCell>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedItem(app);
+                        setShowViewDialog(true);
+                      }}
+                    >
+                      <Eye className="w-3 h-3 mr-1" />
+                      View
+                    </Button>
+                    {app.status === "PENDING" && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedItem(app);
+                            setReviewAction("approve");
+                            setShowReviewDialog(true);
+                          }}
+                        >
+                          <Check className="w-3 h-3 mr-1" />
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedItem(app);
+                            setReviewAction("reject");
+                            setShowReviewDialog(true);
+                          }}
+                        >
+                          <X className="w-3 h-3 mr-1" />
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      );
+    } else {
+      const stores = data as StoreVerification[];
+      return (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Code</TableHead>
+              <TableHead>City</TableHead>
+              <TableHead>Owner Phone</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {stores.map((store) => (
+              <TableRow key={store.id}>
+                <TableCell>{store.name}</TableCell>
+                <TableCell>{store.code}</TableCell>
+                <TableCell>{store.city}</TableCell>
+                <TableCell>{store.manager?.phoneNumber || "N/A"}</TableCell>
+                <TableCell>{getStatusBadge(store.applicationStatus)}</TableCell>
+                <TableCell>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedItem(store);
+                        setShowViewDialog(true);
+                      }}
+                    >
+                      <Eye className="w-3 h-3 mr-1" />
+                      View
+                    </Button>
+                    {store.applicationStatus === "PENDING" && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedItem(store);
+                            setReviewAction("approve");
+                            setShowReviewDialog(true);
+                          }}
+                        >
+                          <Check className="w-3 h-3 mr-1" />
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedItem(store);
+                            setReviewAction("reject");
+                            setShowReviewDialog(true);
+                          }}
+                        >
+                          <X className="w-3 h-3 mr-1" />
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      );
+    }
+  };
+
+  const renderViewDialog = () => {
+    if (!selectedItem) return null;
+    if ("role" in selectedItem) {
+      // Application
+      const app = selectedItem as Application;
+      return (
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Application Details</DialogTitle>
+            <DialogDescription>
+              Review application from {app.fullName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Personal Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p>
+                  <strong>Name:</strong> {app.fullName}
+                </p>
+                <p>
+                  <strong>Email:</strong> {app.email}
+                </p>
+                <p>
+                  <strong>Phone:</strong> {app.phoneNumber}
+                </p>
+                <p>
+                  <strong>Role:</strong>{" "}
+                  {app.role === "STORE_MANAGER" ? "Store Manager" : "Rider"}
+                </p>
+              </CardContent>
+            </Card>
+            {app.role === "RIDER" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Rider Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p>
+                    <strong>Vehicle Type:</strong> {app.vehicleType}
+                  </p>
+                  <p>
+                    <strong>Vehicle Number:</strong> {app.vehicleNumber}
+                  </p>
+                  <p>
+                    <strong>License Number:</strong> {app.licenseNumber}
+                  </p>
+                  <p>
+                    <strong>Service Areas:</strong>{" "}
+                    {app.invitation?.serviceAreas
+                      ? getServiceAreaNames(app.invitation.serviceAreas)
+                      : "Direct Application - Will be assigned to default service area"}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            {app.role === "STORE_MANAGER" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">
+                    Store Manager Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p>
+                    <strong>Assigned Store:</strong> {getStoreName(app.storeId)}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            {app.documents && Object.keys(app.documents).length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Documents
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(app.documents).map(([type, filename]) => (
+                      <Button
+                        key={type}
+                        variant="outline"
+                        onClick={() => downloadDocument(app.id, type, filename)}
+                        className="justify-start"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        {type
+                          .replace(/([A-Z])/g, " $1")
+                          .replace(/^./, (str) => str.toUpperCase())}
+                      </Button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {app.role === "RIDER" && app.invitation?.serviceAreas?.length && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <MapPin className="h-5 w-5" />
+                    Service Areas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64 rounded-lg overflow-hidden border">
+                    {app.invitation?.serviceAreas ? (
+                      <MapIntegration
+                        center={{
+                          latitude:
+                            serviceAreas.find((area) =>
+                              app.invitation?.serviceAreas?.includes(area.id)
+                            )?.centerLat || 29.5818,
+                          longitude:
+                            serviceAreas.find((area) =>
+                              app.invitation?.serviceAreas?.includes(area.id)
+                            )?.centerLng || 74.3294,
+                        }}
+                        zoom={10}
+                        markers={serviceAreas
+                          .filter((area) =>
+                            app.invitation?.serviceAreas?.includes(area.id)
+                          )
+                          .map((area) => ({
+                            id: area.id,
+                            latitude: area.centerLat,
+                            longitude: area.centerLng,
+                            title: area.name,
+                            address: `${area.city}, ${area.state}`,
+                            type: "shop" as const,
+                          }))}
+                        height="250px"
+                      />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-gray-500">
+                        <p>
+                          Direct application - will be assigned to default
+                          service area upon approval
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {app.role === "STORE_MANAGER" && app.storeId && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <MapPin className="h-5 w-5" />
+                    Store Location
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64 rounded-lg overflow-hidden border">
+                    {(() => {
+                      const store = stores.find((s) => s.id === app.storeId);
+                      return store ? (
+                        <MapIntegration
+                          center={{
+                            latitude: store.latitude || 29.5818,
+                            longitude: store.longitude || 74.3294,
+                          }}
+                          zoom={15}
+                          markers={[
+                            {
+                              id: store.id,
+                              latitude: store.latitude || 29.5818,
+                              longitude: store.longitude || 74.3294,
+                              title: store.name,
+                              address: store.address,
+                              type: "shop" as const,
+                            },
+                          ]}
+                          height="250px"
+                        />
+                      ) : null;
+                    })()}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </DialogContent>
+      );
+    } else {
+      // Store
+      const store = selectedItem as StoreVerification;
+      return (
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Store Verification Details</DialogTitle>
+            <DialogDescription>
+              Review store verification for {store.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Store Profile</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p>
+                  <strong>Name:</strong> {store.name}
+                </p>
+                <p>
+                  <strong>Code:</strong> {store.code}
+                </p>
+                <p>
+                  <strong>Address:</strong> {store.address}
+                </p>
+                <p>
+                  <strong>City:</strong> {store.city}
+                </p>
+                <p>
+                  <strong>State:</strong> {store.state}
+                </p>
+                <p>
+                  <strong>Phone:</strong> {store.phoneNumber}
+                </p>
+                <p>
+                  <strong>Email:</strong> {store.email}
+                </p>
+              </CardContent>
+            </Card>
+            {store.manager && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Owner Profile</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p>
+                    <strong>Name:</strong> {store.manager.fullName}
+                  </p>
+                  <p>
+                    <strong>Email:</strong> {store.manager.email}
+                  </p>
+                  <p>
+                    <strong>Phone:</strong> {store.manager.phoneNumber}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            {store.latitude && store.longitude && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <MapPin className="h-5 w-5" />
+                    Store Location
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64 rounded-lg overflow-hidden border">
+                    <MapIntegration
+                      center={{
+                        latitude: store.latitude,
+                        longitude: store.longitude,
+                      }}
+                      zoom={15}
+                      markers={[
+                        {
+                          id: store.id,
+                          latitude: store.latitude,
+                          longitude: store.longitude,
+                          title: store.name,
+                          address: store.address || "",
+                          type: "shop" as const,
+                        },
+                      ]}
+                      height="250px"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </DialogContent>
+      );
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Applications</h1>
-          <p className="text-gray-600">Review and approve user applications</p>
+          <h1 className="text-3xl font-bold">Applications Management</h1>
+          <p className="text-gray-600">
+            Review and manage rider, store manager, and store verification
+            applications
+          </p>
         </div>
       </div>
-
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-
       {success && (
         <Alert>
           <AlertDescription>{success}</AlertDescription>
         </Alert>
       )}
-
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex space-x-4">
-            <div>
-              <Label htmlFor="status-filter">Status</Label>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All</SelectItem>
-                  <SelectItem value="PENDING">Pending</SelectItem>
-                  <SelectItem value="APPROVED">Approved</SelectItem>
-                  <SelectItem value="REJECTED">Rejected</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="role-filter">Role</Label>
-              <Select value={filterRole} onValueChange={setFilterRole}>
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All</SelectItem>
-                  <SelectItem value="RIDER">Rider</SelectItem>
-                  <SelectItem value="STORE_MANAGER">Store Manager</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>All Applications</CardTitle>
-          <CardDescription>
-            Review and manage user applications ({applications.length} total)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <LoadingSpinner className="w-8 h-8" />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Applicant</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Assignment</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Submitted</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {applications.map((application) => (
-                  <TableRow key={application.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">
-                          {application.fullName}
-                        </div>
-                        <div className="text-sm text-gray-500 flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
-                          {application.email}
-                        </div>
-                        <div className="text-sm text-gray-500 flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {application.phoneNumber}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {application.role === "STORE_MANAGER"
-                        ? "Store Manager"
-                        : "Rider"}
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-600">
-                      {application.role === "RIDER"
-                        ? getServiceAreaNames(
-                            application.invitation.serviceAreas
-                          )
-                        : getStoreName(application.storeId)}
-                    </TableCell>
-                    <TableCell>{getStatusBadge(application.status)}</TableCell>
-                    <TableCell>
-                      {new Date(application.submittedAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              <Eye className="w-3 h-3 mr-1" />
-                              View
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>Application Details</DialogTitle>
-                              <DialogDescription>
-                                Review application from {application.fullName}
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-6">
-                              {/* Personal Info */}
-                              <Card>
-                                <CardHeader>
-                                  <CardTitle className="text-lg flex items-center gap-2">
-                                    <User className="h-5 w-5" />
-                                    Personal Information
-                                  </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-2">
-                                  <p>
-                                    <strong>Name:</strong>{" "}
-                                    {application.fullName}
-                                  </p>
-                                  <p>
-                                    <strong>Email:</strong> {application.email}
-                                  </p>
-                                  <p>
-                                    <strong>Phone:</strong>{" "}
-                                    {application.phoneNumber}
-                                  </p>
-                                  <p>
-                                    <strong>Role:</strong>{" "}
-                                    {application.role === "STORE_MANAGER"
-                                      ? "Store Manager"
-                                      : "Rider"}
-                                  </p>
-                                </CardContent>
-                              </Card>
-
-                              {/* Role Specific Info */}
-                              {application.role === "RIDER" && (
-                                <Card>
-                                  <CardHeader>
-                                    <CardTitle className="text-lg">
-                                      Rider Details
-                                    </CardTitle>
-                                  </CardHeader>
-                                  <CardContent className="space-y-2">
-                                    <p>
-                                      <strong>Vehicle Type:</strong>{" "}
-                                      {application.vehicleType}
-                                    </p>
-                                    <p>
-                                      <strong>Vehicle Number:</strong>{" "}
-                                      {application.vehicleNumber}
-                                    </p>
-                                    <p>
-                                      <strong>License Number:</strong>{" "}
-                                      {application.licenseNumber}
-                                    </p>
-                                    <p>
-                                      <strong>Service Areas:</strong>{" "}
-                                      {getServiceAreaNames(
-                                        application.invitation.serviceAreas
-                                      )}
-                                    </p>
-                                  </CardContent>
-                                </Card>
-                              )}
-
-                              {application.role === "STORE_MANAGER" && (
-                                <Card>
-                                  <CardHeader>
-                                    <CardTitle className="text-lg">
-                                      Store Manager Details
-                                    </CardTitle>
-                                  </CardHeader>
-                                  <CardContent className="space-y-2">
-                                    <p>
-                                      <strong>Assigned Store:</strong>{" "}
-                                      {getStoreName(application.storeId)}
-                                    </p>
-                                  </CardContent>
-                                </Card>
-                              )}
-
-                              {/* Documents */}
-                              {application.documents &&
-                                Object.keys(application.documents).length >
-                                  0 && (
-                                  <Card>
-                                    <CardHeader>
-                                      <CardTitle className="text-lg flex items-center gap-2">
-                                        <FileText className="h-5 w-5" />
-                                        Documents
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                      <div className="grid grid-cols-2 gap-2">
-                                        {Object.entries(
-                                          application.documents
-                                        ).map(([type, filename]) => (
-                                          <Button
-                                            key={type}
-                                            variant="outline"
-                                            onClick={() =>
-                                              downloadDocument(
-                                                application.id,
-                                                type,
-                                                filename
-                                              )
-                                            }
-                                            className="justify-start"
-                                          >
-                                            <Download className="w-4 h-4 mr-2" />
-                                            {type
-                                              .replace(/([A-Z])/g, " $1")
-                                              .replace(/^./, (str) =>
-                                                str.toUpperCase()
-                                              )}
-                                          </Button>
-                                        ))}
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
-
-                              {/* Map for Service Areas */}
-                              {application.role === "RIDER" &&
-                                application.invitation.serviceAreas?.length && (
-                                  <Card>
-                                    <CardHeader>
-                                      <CardTitle className="text-lg flex items-center gap-2">
-                                        <MapPin className="h-5 w-5" />
-                                        Service Areas
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                      <div className="h-64 rounded-lg overflow-hidden border">
-                                        <MapIntegration
-                                          center={{
-                                            latitude:
-                                              serviceAreas.find((area) =>
-                                                application.invitation.serviceAreas?.includes(
-                                                  area.id
-                                                )
-                                              )?.centerLat || 29.5818,
-                                            longitude:
-                                              serviceAreas.find((area) =>
-                                                application.invitation.serviceAreas?.includes(
-                                                  area.id
-                                                )
-                                              )?.centerLng || 74.3294,
-                                          }}
-                                          zoom={10}
-                                          markers={serviceAreas
-                                            .filter((area) =>
-                                              application.invitation.serviceAreas?.includes(
-                                                area.id
-                                              )
-                                            )
-                                            .map((area) => ({
-                                              id: area.id,
-                                              latitude: area.centerLat,
-                                              longitude: area.centerLng,
-                                              title: area.name,
-                                              address: `${area.city}, ${area.state}`,
-                                              type: "shop" as const,
-                                            }))}
-                                          height="250px"
-                                        />
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
-
-                              {/* Map for Store Location */}
-                              {application.role === "STORE_MANAGER" &&
-                                application.storeId && (
-                                  <Card>
-                                    <CardHeader>
-                                      <CardTitle className="text-lg flex items-center gap-2">
-                                        <MapPin className="h-5 w-5" />
-                                        Store Location
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                      <div className="h-64 rounded-lg overflow-hidden border">
-                                        {(() => {
-                                          const store = stores.find(
-                                            (s) => s.id === application.storeId
-                                          );
-                                          return store ? (
-                                            <MapIntegration
-                                              center={{
-                                                latitude: store.latitude,
-                                                longitude: store.longitude,
-                                              }}
-                                              zoom={15}
-                                              markers={[
-                                                {
-                                                  id: store.id,
-                                                  latitude: store.latitude,
-                                                  longitude: store.longitude,
-                                                  title: store.name,
-                                                  address: store.address,
-                                                  type: "shop" as const,
-                                                },
-                                              ]}
-                                              height="250px"
-                                            />
-                                          ) : null;
-                                        })()}
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-
-                        {application.status === "PENDING" && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedApplication(application);
-                                setReviewAction("approve");
-                                setShowReviewDialog(true);
-                              }}
-                            >
-                              <Check className="w-3 h-3 mr-1" />
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedApplication(application);
-                                setReviewAction("reject");
-                                setShowReviewDialog(true);
-                              }}
-                            >
-                              <X className="w-3 h-3 mr-1" />
-                              Reject
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Review Dialog */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as any)}
+      >
+        <TabsList>
+          <TabsTrigger value="riders">Rider Applications</TabsTrigger>
+          <TabsTrigger value="storeManagers">
+            Store Manager Applications
+          </TabsTrigger>
+          <TabsTrigger value="storeVerification">
+            Store Verification
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="riders">
+          <Card>
+            <CardHeader>
+              <CardTitle>Rider Applications</CardTitle>
+              <CardDescription>
+                Review rider applications ({ridersData.length} total)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-4 mb-4">
+                <Input
+                  placeholder="Search..."
+                  value={ridersSearch}
+                  onChange={(e) => setRidersSearch(e.target.value)}
+                />
+                <Select
+                  value={ridersStatusFilter}
+                  onValueChange={setRidersStatusFilter}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="APPROVED">Approved</SelectItem>
+                    <SelectItem value="REJECTED">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={fetchRiders}>Search</Button>
+              </div>
+              <div className="overflow-x-auto">
+                {renderTable(
+                  ridersData,
+                  ridersLoading,
+                  ridersError,
+                  "application"
+                )}
+              </div>
+              <div className="flex justify-between items-center mt-4">
+                <Button
+                  disabled={ridersPagination.page <= 1}
+                  onClick={() => {
+                    setRidersPagination((prev) => ({
+                      ...prev,
+                      page: prev.page - 1,
+                    }));
+                    fetchRiders();
+                  }}
+                >
+                  Previous
+                </Button>
+                <span>
+                  Page {ridersPagination.page} of {ridersPagination.pages}
+                </span>
+                <Button
+                  disabled={ridersPagination.page >= ridersPagination.pages}
+                  onClick={() => {
+                    setRidersPagination((prev) => ({
+                      ...prev,
+                      page: prev.page + 1,
+                    }));
+                    fetchRiders();
+                  }}
+                >
+                  Next
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="storeManagers">
+          <Card>
+            <CardHeader>
+              <CardTitle>Store Manager Applications</CardTitle>
+              <CardDescription>
+                Review store manager applications ({storeManagersData.length}{" "}
+                total)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-4 mb-4">
+                <Input
+                  placeholder="Search..."
+                  value={storeManagersSearch}
+                  onChange={(e) => setStoreManagersSearch(e.target.value)}
+                />
+                <Select
+                  value={storeManagersStatusFilter}
+                  onValueChange={setStoreManagersStatusFilter}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="APPROVED">Approved</SelectItem>
+                    <SelectItem value="REJECTED">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={fetchStoreManagers}>Search</Button>
+              </div>
+              <div className="overflow-x-auto">
+                {renderTable(
+                  storeManagersData,
+                  storeManagersLoading,
+                  storeManagersError,
+                  "application"
+                )}
+              </div>
+              <div className="flex justify-between items-center mt-4">
+                <Button
+                  disabled={storeManagersPagination.page <= 1}
+                  onClick={() => {
+                    setStoreManagersPagination((prev) => ({
+                      ...prev,
+                      page: prev.page - 1,
+                    }));
+                    fetchStoreManagers();
+                  }}
+                >
+                  Previous
+                </Button>
+                <span>
+                  Page {storeManagersPagination.page} of{" "}
+                  {storeManagersPagination.pages}
+                </span>
+                <Button
+                  disabled={
+                    storeManagersPagination.page >=
+                    storeManagersPagination.pages
+                  }
+                  onClick={() => {
+                    setStoreManagersPagination((prev) => ({
+                      ...prev,
+                      page: prev.page + 1,
+                    }));
+                    fetchStoreManagers();
+                  }}
+                >
+                  Next
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="storeVerification">
+          <Card>
+            <CardHeader>
+              <CardTitle>Store Verification Applications</CardTitle>
+              <CardDescription>
+                Review store verification applications (
+                {storeVerificationData.length} total)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-4 mb-4">
+                <Input
+                  placeholder="Search..."
+                  value={storeVerificationSearch}
+                  onChange={(e) => setStoreVerificationSearch(e.target.value)}
+                />
+                <Select
+                  value={storeVerificationStatusFilter}
+                  onValueChange={setStoreVerificationStatusFilter}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="APPROVED">Approved</SelectItem>
+                    <SelectItem value="REJECTED">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={fetchStoreVerification}>Search</Button>
+              </div>
+              <div className="overflow-x-auto">
+                {renderTable(
+                  storeVerificationData,
+                  storeVerificationLoading,
+                  storeVerificationError,
+                  "store"
+                )}
+              </div>
+              <div className="flex justify-between items-center mt-4">
+                <Button
+                  disabled={storeVerificationPagination.page <= 1}
+                  onClick={() => {
+                    setStoreVerificationPagination((prev) => ({
+                      ...prev,
+                      page: prev.page - 1,
+                    }));
+                    fetchStoreVerification();
+                  }}
+                >
+                  Previous
+                </Button>
+                <span>
+                  Page {storeVerificationPagination.page} of{" "}
+                  {storeVerificationPagination.pages}
+                </span>
+                <Button
+                  disabled={
+                    storeVerificationPagination.page >=
+                    storeVerificationPagination.pages
+                  }
+                  onClick={() => {
+                    setStoreVerificationPagination((prev) => ({
+                      ...prev,
+                      page: prev.page + 1,
+                    }));
+                    fetchStoreVerification();
+                  }}
+                >
+                  Next
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+        {renderViewDialog()}
+      </Dialog>
       <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {reviewAction === "approve" ? "Approve" : "Reject"} Application
+              {reviewAction === "approve" ? "Approve" : "Reject"}{" "}
+              {activeTab === "storeVerification"
+                ? "Store Verification"
+                : "Application"}
             </DialogTitle>
             <DialogDescription>
               {reviewAction === "approve"
-                ? "This will create an account for the applicant and send them login credentials."
-                : "This will reject the application. The applicant will be notified."}
+                ? "This will approve the application."
+                : "This will reject the application."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -638,7 +1131,7 @@ export default function AdminApplicationsPage() {
                 id="reviewNotes"
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
-                placeholder="Add any notes about your decision..."
+                placeholder="Add any notes..."
                 rows={3}
               />
             </div>
@@ -650,10 +1143,10 @@ export default function AdminApplicationsPage() {
                 Cancel
               </Button>
               <Button
-                onClick={handleReviewApplication}
+                onClick={handleReview}
                 variant={reviewAction === "approve" ? "default" : "destructive"}
               >
-                {reviewAction === "approve" ? "Approve" : "Reject"} Application
+                {reviewAction === "approve" ? "Approve" : "Reject"}
               </Button>
             </div>
           </div>

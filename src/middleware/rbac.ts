@@ -224,7 +224,7 @@ export class RBAC {
 
       // Get user from database to verify roles
       const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
+        where: { id: decoded.sub },
         select: {
           id: true,
           userRoles: true,

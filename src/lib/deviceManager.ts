@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NotificationType } from "@prisma/client";
+import { LocationInfo } from "./locationService";
 
 export interface DeviceInfo {
   deviceId: string;
@@ -9,15 +10,6 @@ export interface DeviceInfo {
   browser?: string;
   fingerprint?: string;
   batteryLevel?: number;
-}
-
-export interface LocationInfo {
-  ip: string;
-  country?: string;
-  city?: string;
-  region?: string;
-  lat?: number;
-  lng?: number;
 }
 
 export interface LoginContext {
@@ -59,8 +51,8 @@ export class DeviceManager {
             country: locationInfo.country,
             city: locationInfo.city,
             region: locationInfo.region,
-            lat: locationInfo.lat,
-            lng: locationInfo.lng,
+            lat: locationInfo.latitude,
+            lng: locationInfo.longitude,
           },
           batteryLevel: deviceInfo.batteryLevel,
           lastBatteryUpdate: deviceInfo.batteryLevel ? new Date() : undefined,
@@ -80,13 +72,14 @@ export class DeviceManager {
             country: locationInfo.country,
             city: locationInfo.city,
             region: locationInfo.region,
-            lat: locationInfo.lat,
-            lng: locationInfo.lng,
+            lat: locationInfo.latitude,
+            lng: locationInfo.longitude,
           },
           batteryLevel: deviceInfo.batteryLevel,
           lastBatteryUpdate: deviceInfo.batteryLevel ? new Date() : undefined,
           loginCount: { increment: 1 },
           lastLoginAt: new Date(),
+          isActive: true, // Reactivate device on login
         },
       });
     }
@@ -95,7 +88,7 @@ export class DeviceManager {
   }
 
   /**
-   * Check if user can login from this device based on role restrictions
+   * Check if user can login from this device based on configured limits
    */
   static async canLoginFromDevice(
     userId: string,
@@ -107,18 +100,30 @@ export class DeviceManager {
     existingDevices?: any[];
     requiresDeviceSelection?: boolean;
   }> {
-    // Customers can login from multiple devices
-    if (userRole === "CUSTOMER") {
-      return { allowed: true };
-    }
+    try {
+      // Get device limits for this user or role
+      const [userLimit, roleLimit] = await Promise.all([
+        prisma.deviceLimit.findFirst({
+          where: { userId, isActive: true },
+        }),
+        prisma.deviceLimit.findFirst({
+          where: { role: userRole as any, isActive: true },
+        }),
+      ]);
+      const deviceLimit = userLimit || roleLimit;
+      // Default limits based on role
+      let maxDevices = 1;
+      if (userRole === "CUSTOMER") {
+        maxDevices = deviceLimit?.maxDevices || 5; // Customers get 5 by default
+      } else {
+        maxDevices = deviceLimit?.maxDevices || 1; // Others get 1 by default
+      }
 
-    // For riders - strict single device policy
-    if (userRole === "RIDER") {
-      const activeDevices = await prisma.device.findMany({
+      // Get all current active devices for the user
+      const allActiveDevices = await prisma.device.findMany({
         where: {
           userId,
           isActive: true,
-          deviceId: { not: deviceId }, // Exclude current device
         },
         select: {
           id: true,
@@ -135,43 +140,50 @@ export class DeviceManager {
         orderBy: { lastLoginAt: "desc" },
       });
 
-      if (activeDevices.length > 0) {
-        return {
-          allowed: false,
-          reason: `You are already logged in from another device. Please select which device to logout from to continue.`,
-          existingDevices: activeDevices,
-          requiresDeviceSelection: true,
-        };
+      // Check if current device is already active
+      // const currentDeviceExists = allActiveDevices.some(
+      //   (device) => device.deviceId === deviceId
+      // );
+      // console.log(
+      //   "Device limit check: currentDeviceExists",
+      //   currentDeviceExists
+      // );
+      // if (currentDeviceExists) {
+      //   // Re-login from existing device - always allow
+      //   return {
+      //     allowed: true,
+      //     requiresDeviceSelection: false,
+      //     existingDevices: [],
+      //     reason: "",
+      //   };
+      // }
+
+      // New device login - check limit
+      if (allActiveDevices.length >= maxDevices) {
+        if (maxDevices === 1) {
+          return {
+            allowed: false,
+            reason:
+              "Maximum device limit reached. Please logout from other devices first.",
+            existingDevices: allActiveDevices,
+            requiresDeviceSelection: true,
+          };
+        } else {
+          return {
+            allowed: false,
+            reason: `Device limit of ${maxDevices} exceeded. Please select a device to logout.`,
+            existingDevices: allActiveDevices,
+            requiresDeviceSelection: true,
+          };
+        }
       }
+
+      return { allowed: true };
+    } catch (error) {
+      console.error("Device limit check error:", error);
+      // On error, allow login to prevent blocking legitimate users
+      return { allowed: true };
     }
-
-    // For admins, stores - check if any other device is active
-    const activeDevices = await prisma.device.findMany({
-      where: {
-        userId,
-        isActive: true,
-        deviceId: { not: deviceId }, // Exclude current device
-      },
-      select: {
-        id: true,
-        deviceId: true,
-        deviceName: true,
-        deviceType: true,
-        lastLoginAt: true,
-        lastIP: true,
-        lastLocation: true,
-      },
-    });
-
-    if (activeDevices.length > 0) {
-      return {
-        allowed: false,
-        reason: `You can only be logged in from one device at a time. Please logout from other devices first.`,
-        existingDevices: activeDevices,
-      };
-    }
-
-    return { allowed: true };
   }
 
   /**
@@ -199,8 +211,8 @@ export class DeviceManager {
 
     const regLocation = user.registrationLocation as any;
     if (
-      !currentLocation.lat ||
-      !currentLocation.lng ||
+      !currentLocation.latitude ||
+      !currentLocation.longitude ||
       !regLocation.lat ||
       !regLocation.lng
     ) {
@@ -212,8 +224,8 @@ export class DeviceManager {
     const distance = this.calculateDistance(
       regLocation.lat,
       regLocation.lng,
-      currentLocation.lat,
-      currentLocation.lng
+      currentLocation.latitude,
+      currentLocation.longitude
     );
 
     // Allow login if within 50km of registration location
@@ -275,8 +287,8 @@ export class DeviceManager {
           country: context.locationInfo.country,
           city: context.locationInfo.city,
           region: context.locationInfo.region,
-          lat: context.locationInfo.lat,
-          lng: context.locationInfo.lng,
+          lat: context.locationInfo.latitude,
+          lng: context.locationInfo.longitude,
         },
         batteryLevel: context.deviceInfo.batteryLevel,
         deviceType: context.deviceInfo.deviceType,
@@ -421,13 +433,13 @@ export class DeviceManager {
   }
 
   /**
-   * Deactivate a device
+   * Deactivate a device by primary key ID
    */
-  static async deactivateDevice(userId: string, deviceId: string) {
+  static async deactivateDevice(userId: string, devicePrimaryKeyId: string) {
     await prisma.device.updateMany({
       where: {
+        id: devicePrimaryKeyId,
         userId,
-        deviceId,
       },
       data: {
         isActive: false,
@@ -438,9 +450,7 @@ export class DeviceManager {
     await prisma.session.updateMany({
       where: {
         userId,
-        device: {
-          deviceId,
-        },
+        deviceId: devicePrimaryKeyId,
       },
       data: {
         isActive: false,

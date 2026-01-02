@@ -12,7 +12,6 @@ export interface LocationData {
   longitude: number;
   accuracy: number;
   timestamp: number | string;
-
   speed?: number;
   heading?: number;
   altitude?: number;
@@ -23,11 +22,11 @@ export interface LocationPermissionOptions {
   timeout?: number;
   maximumAge?: number;
   background?: boolean;
-  maxAccuracy?: number; // Maximum acceptable accuracy in meters
+  maxAccuracy?: number;
 }
 
 export interface RiderLocationTrackingOptions {
-  updateInterval: number; // in milliseconds
+  updateInterval: number;
   backgroundEnabled: boolean;
   batteryOptimizationWarning: boolean;
   spoofingDetection: boolean;
@@ -44,9 +43,13 @@ export class LocationService {
   private watchId: number | null = null;
   private permissionStatus: LocationPermissionStatus | null = null;
   private lastLocation: LocationData | null = null;
-  private locationCallbacks: ((location: LocationData) => void)[] = [];
-  private permissionCallbacks: ((status: LocationPermissionStatus) => void)[] =
-    [];
+
+  private locationCallbacks = new Set<(l: LocationData) => void>();
+  private permissionCallbacks = new Set<
+    (s: LocationPermissionStatus) => void
+  >();
+
+  private permissionListenerAttached = false;
 
   private constructor() {}
 
@@ -57,15 +60,18 @@ export class LocationService {
     return LocationService.instance;
   }
 
-  // Check location permission status
+  // -------------------- PERMISSION --------------------
+
   async checkPermission(): Promise<LocationPermissionStatus> {
-    if (!navigator.permissions) {
-      // Fallback for older browsers
+    if (!("permissions" in navigator)) {
       return this.fallbackPermissionCheck();
     }
 
     try {
-      const result = await navigator.permissions.query({ name: "geolocation" });
+      const result = await navigator.permissions.query({
+        name: "geolocation",
+      });
+
       this.permissionStatus = {
         granted: result.state === "granted",
         denied: result.state === "denied",
@@ -73,184 +79,232 @@ export class LocationService {
         unavailable: false,
       };
 
-      // Listen for permission changes
-      result.addEventListener("change", () => {
-        this.checkPermission().then((status) => {
-          this.permissionCallbacks.forEach((callback) => callback(status));
+      if (!this.permissionListenerAttached) {
+        this.permissionListenerAttached = true;
+        result.addEventListener("change", () => {
+          this.checkPermission().then((status) => {
+            this.permissionCallbacks.forEach((cb) => cb(status));
+          });
         });
-      });
+      }
 
       return this.permissionStatus;
     } catch (error) {
-      console.error("Error checking location permission:", error);
+      // If permissions API fails, try to determine status by attempting geolocation
+      console.warn("Permissions API not available, using fallback:", error);
       return this.fallbackPermissionCheck();
     }
   }
 
   private fallbackPermissionCheck(): LocationPermissionStatus {
-    // Basic check without Permissions API
-    const hasGeolocation = "geolocation" in navigator;
+    const supported = "geolocation" in navigator;
     return {
       granted: false,
       denied: false,
-      prompt: hasGeolocation,
-      unavailable: !hasGeolocation,
+      prompt: supported,
+      unavailable: !supported,
     };
   }
 
-  // Request location permission and get current position
-  async requestLocation(
-    options: LocationPermissionOptions = {}
-  ): Promise<LocationData> {
-    const defaultOptions: PositionOptions = {
-      enableHighAccuracy: options.enableHighAccuracy ?? true,
-      timeout: options.timeout ?? 10000,
-      maximumAge: options.maximumAge ?? 30000,
-    };
+  // -------------------- PERMISSION REQUEST --------------------
 
-    const maxAccuracy = options.maxAccuracy ?? 1000; // Default 1km max accuracy
-
-    return new Promise((resolve, reject) => {
+  async requestPermission(): Promise<LocationPermissionStatus> {
+    return new Promise((resolve) => {
       if (!navigator.geolocation) {
-        reject(new Error("Geolocation is not supported by this browser"));
+        resolve({
+          granted: false,
+          denied: false,
+          prompt: false,
+          unavailable: true,
+        });
         return;
       }
 
+      // Try to get current position to trigger permission prompt
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          // Validate location accuracy
-          if (position.coords.accuracy > maxAccuracy) {
-            reject(
-              new Error(
-                `Location accuracy too low (${Math.round(position.coords.accuracy)}m). ` +
-                  `Maximum allowed accuracy is ${maxAccuracy}m. ` +
-                  `Please ensure GPS is enabled and you have a clear view of the sky.`
-              )
-            );
-            return;
-          }
-
-          const locationData: LocationData = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            timestamp: position.timestamp,
-            speed: position.coords.speed || undefined,
-            heading: position.coords.heading || undefined,
-            altitude: position.coords.altitude || undefined,
+        (pos) => {
+          // Permission granted
+          const status: LocationPermissionStatus = {
+            granted: true,
+            denied: false,
+            prompt: false,
+            unavailable: false,
           };
-
-          this.lastLocation = locationData;
-          resolve(locationData);
+          this.permissionStatus = status;
+          resolve(status);
         },
-        (error) => {
-          let errorMessage = "Failed to get location";
-
-          switch (error.code) {
-            case error.PERMISSION_DENIED:
-              errorMessage = "Location permission denied by user";
-              break;
-            case error.POSITION_UNAVAILABLE:
-              errorMessage = "Location information is unavailable";
-              break;
-            case error.TIMEOUT:
-              errorMessage = "Location request timed out";
-              break;
+        (err) => {
+          if (err.code === err.PERMISSION_DENIED) {
+            // Permission denied
+            const status: LocationPermissionStatus = {
+              granted: false,
+              denied: true,
+              prompt: false,
+              unavailable: false,
+            };
+            this.permissionStatus = status;
+            resolve(status);
+          } else {
+            // Other error (timeout, unavailable)
+            const status: LocationPermissionStatus = {
+              granted: false,
+              denied: false,
+              prompt: false,
+              unavailable: err.code === err.POSITION_UNAVAILABLE,
+            };
+            this.permissionStatus = status;
+            resolve(status);
           }
-
-          reject(new Error(errorMessage));
         },
-        defaultOptions
+        {
+          enableHighAccuracy: false, // Don't need high accuracy for permission check
+          timeout: 5000,
+          maximumAge: 0,
+        }
       );
     });
   }
 
-  // Start continuous location tracking (for riders)
+  // -------------------- SINGLE REQUEST --------------------
+
+  async requestLocation(
+    options: LocationPermissionOptions = {}
+  ): Promise<LocationData> {
+    const maxAccuracy = options.maxAccuracy ?? 100; // Reduced from 1000m to 100m for better accuracy
+
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation not supported"));
+        return;
+      }
+
+      // Try multiple times with different accuracy settings
+      const attemptLocation = (attemptCount = 0) => {
+        const timeout = attemptCount === 0 ? (options.timeout ?? 15000) : 10000;
+        const enableHighAccuracy = attemptCount < 2; // Try high accuracy first, then fallback
+
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            // For riders, we want very high accuracy (< 50m)
+            const requiredAccuracy = options.enableHighAccuracy
+              ? 50
+              : maxAccuracy;
+
+            if (pos.coords.accuracy > requiredAccuracy) {
+              if (attemptCount < 2) {
+                // Try again with different settings
+                console.warn(
+                  `Low accuracy (${Math.round(pos.coords.accuracy)}m), retrying...`
+                );
+                setTimeout(() => attemptLocation(attemptCount + 1), 1000);
+                return;
+              } else {
+                // Accept lower accuracy after retries
+                console.warn(
+                  `Accepting lower accuracy: ${Math.round(pos.coords.accuracy)}m`
+                );
+              }
+            }
+
+            const loc: LocationData = {
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+              timestamp: pos.timestamp,
+              speed: pos.coords.speed ?? undefined,
+              heading: pos.coords.heading ?? undefined,
+              altitude: pos.coords.altitude ?? undefined,
+            };
+
+            this.lastLocation = loc;
+            resolve(loc);
+          },
+          (err) => {
+            if (attemptCount < 2) {
+              // Try again with different settings
+              console.warn(
+                `Location attempt ${attemptCount + 1} failed, retrying...`
+              );
+              setTimeout(() => attemptLocation(attemptCount + 1), 2000);
+              return;
+            }
+
+            reject(
+              new Error(
+                err.code === err.PERMISSION_DENIED
+                  ? "Location permission denied. Please enable location access in your browser settings."
+                  : err.code === err.TIMEOUT
+                    ? "Location request timed out. Please check your GPS signal and try again."
+                    : `Location unavailable: ${err.message}`
+              )
+            );
+          },
+          {
+            enableHighAccuracy: enableHighAccuracy,
+            timeout: timeout,
+            maximumAge: options.maximumAge ?? 10000, // Reduced from 30s to 10s for fresher data
+          }
+        );
+      };
+
+      attemptLocation();
+    });
+  }
+
+  // -------------------- TRACKING --------------------
+
   startLocationTracking(
     options: RiderLocationTrackingOptions,
     onLocationUpdate: (location: LocationData) => void,
     onError?: (error: Error) => void
   ): void {
     if (!navigator.geolocation) {
-      onError?.(new Error("Geolocation is not supported"));
+      onError?.(new Error("Geolocation not supported"));
       return;
     }
 
-    const watchOptions: PositionOptions = {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: options.updateInterval,
-    };
+    if (this.watchId !== null) return; // 🔒 prevent duplicate watch
 
     this.watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        // Validate location accuracy for tracking
-        const maxAccuracy = 1000; // 1km max for tracking
-        if (position.coords.accuracy > maxAccuracy) {
-          onError?.(
-            new Error(
-              `Location accuracy too low (${Math.round(position.coords.accuracy)}m) for tracking. ` +
-                `Please ensure GPS is enabled and you have a clear view of the sky.`
-            )
-          );
-          return;
-        }
-
-        const locationData: LocationData = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          timestamp: position.timestamp,
-          speed: position.coords.speed || undefined,
-          heading: position.coords.heading || undefined,
-          altitude: position.coords.altitude || undefined,
+      (pos) => {
+        const loc: LocationData = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          timestamp: pos.timestamp,
+          speed: pos.coords.speed ?? undefined,
+          heading: pos.coords.heading ?? undefined,
+          altitude: pos.coords.altitude ?? undefined,
         };
 
-        // Spoofing detection
-        if (
-          options.spoofingDetection &&
-          this.detectLocationSpoofing(locationData)
-        ) {
+        if (options.spoofingDetection && this.detectLocationSpoofing(loc)) {
           onError?.(new Error("Location spoofing detected"));
           return;
         }
 
-        // Battery optimization check
-        if (
-          options.batteryOptimizationWarning &&
-          this.shouldWarnBatteryOptimization()
-        ) {
-          console.warn(
-            "Battery optimization may be affecting location accuracy"
-          );
-        }
-
-        this.lastLocation = locationData;
-        onLocationUpdate(locationData);
-        this.locationCallbacks.forEach((callback) => callback(locationData));
+        this.lastLocation = loc;
+        onLocationUpdate(loc);
+        this.locationCallbacks.forEach((cb) => cb(loc));
       },
-      (error) => {
-        let errorMessage = "Location tracking failed";
-
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage = "Location permission revoked";
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMessage = "Location unavailable";
-            break;
-          case error.TIMEOUT:
-            errorMessage = "Location request timed out";
-            break;
-        }
-
-        onError?.(new Error(errorMessage));
+      (err) => {
+        onError?.(
+          new Error(
+            err.code === err.PERMISSION_DENIED
+              ? "permission"
+              : err.code === err.TIMEOUT
+                ? "timeout"
+                : "unavailable"
+          )
+        );
       },
-      watchOptions
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: options.updateInterval,
+      }
     );
   }
 
-  // Stop location tracking
   stopLocationTracking(): void {
     if (this.watchId !== null) {
       navigator.geolocation.clearWatch(this.watchId);
@@ -258,171 +312,85 @@ export class LocationService {
     }
   }
 
-  // Get last known location
+  // -------------------- HELPERS --------------------
+
   getLastLocation(): LocationData | null {
     return this.lastLocation;
   }
 
-  // Check if location is within service area
-  async isWithinServiceArea(
-    location: LocationData,
-    serviceArea: ServiceArea
-  ): Promise<boolean> {
-    // Simple bounding box check first
-    const bounds = serviceArea.bounds as {
-      north: number;
-      south: number;
-      east: number;
-      west: number;
-    };
-    if (
-      location.latitude < bounds.south ||
-      location.latitude > bounds.north ||
-      location.longitude < bounds.west ||
-      location.longitude > bounds.east
-    ) {
-      return false;
-    }
+  private detectLocationSpoofing(next: LocationData): boolean {
+    if (!this.lastLocation) return false;
 
-    // Calculate distance from center
+    const t1 = Number(this.lastLocation.timestamp);
+    const t2 = Number(next.timestamp);
+    if (!isFinite(t1) || !isFinite(t2) || t2 <= t1) return false;
+
     const distance = this.calculateDistance(
-      location.latitude,
-      location.longitude,
-      serviceArea.centerLat,
-      serviceArea.centerLng
+      this.lastLocation.latitude,
+      this.lastLocation.longitude,
+      next.latitude,
+      next.longitude
     );
 
-    return distance <= serviceArea.radiusKm;
+    const speedKmh = (distance / ((t2 - t1) / 1000)) * 3.6;
+    return speedKmh > 1200;
   }
 
-  // Check if location is within delivery zone
-  async isWithinDeliveryZone(
-    location: LocationData,
-    deliveryZone: DeliveryZone
-  ): Promise<boolean> {
-    // For now, use simple distance check from zone center
-    const distance = this.calculateDistance(
-      location.latitude,
-      location.longitude,
-      deliveryZone.centerLat,
-      deliveryZone.centerLng
-    );
-
-    return distance <= deliveryZone.radiusKm;
-  }
-
-  // Calculate distance between two points (Haversine formula)
   calculateDistance(
     lat1: number,
     lng1: number,
     lat2: number,
     lng2: number
   ): number {
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = this.toRadians(lat2 - lat1);
-    const dLng = this.toRadians(lng2 - lng1);
-
+    const R = 6371;
+    const dLat = this.toRad(lat2 - lat1);
+    const dLng = this.toRad(lng2 - lng1);
     const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(lat1)) *
-        Math.cos(this.toRadians(lat2)) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(this.toRad(lat1)) *
+        Math.cos(this.toRad(lat2)) *
+        Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  private toRadians(degrees: number): number {
-    return degrees * (Math.PI / 180);
+  private toRad(v: number) {
+    return (v * Math.PI) / 180;
   }
 
-  // Detect potential location spoofing
-  private detectLocationSpoofing(location: LocationData): boolean {
-    if (!this.lastLocation) return false;
+  // -------------------- SUBSCRIPTIONS --------------------
 
-    const timeDiff =
-      Number(location.timestamp) - Number(this.lastLocation.timestamp);
-    const distance = this.calculateDistance(
-      location.latitude,
-      location.longitude,
-      this.lastLocation.latitude,
-      this.lastLocation.longitude
-    );
-
-    // Check for impossible speed (faster than commercial jet)
-    const speedKmh = distance / (timeDiff / 1000 / 3600);
-    const maxReasonableSpeed = 1200; // km/h
-
-    return speedKmh > maxReasonableSpeed;
+  onLocationUpdate(cb: (location: LocationData) => void): () => void {
+    this.locationCallbacks.add(cb);
+    return () => this.locationCallbacks.delete(cb);
   }
 
-  // Check if battery optimization might affect location
-  private shouldWarnBatteryOptimization(): boolean {
-    // This is a simplified check - in reality, you'd check system settings
-    return (
-      navigator.userAgent.includes("Android") &&
-      Boolean(this.lastLocation?.accuracy) &&
-      (this.lastLocation?.accuracy ?? 0) > 100
-    ); // Rough accuracy threshold
-  }
-
-  // Subscribe to location updates
-  onLocationUpdate(callback: (location: LocationData) => void): () => void {
-    this.locationCallbacks.push(callback);
-    return () => {
-      const index = this.locationCallbacks.indexOf(callback);
-      if (index > -1) {
-        this.locationCallbacks.splice(index, 1);
-      }
-    };
-  }
-
-  // Subscribe to permission changes
   onPermissionChange(
-    callback: (status: LocationPermissionStatus) => void
+    cb: (status: LocationPermissionStatus) => void
   ): () => void {
-    this.permissionCallbacks.push(callback);
-    return () => {
-      const index = this.permissionCallbacks.indexOf(callback);
-      if (index > -1) {
-        this.permissionCallbacks.splice(index, 1);
-      }
-    };
+    this.permissionCallbacks.add(cb);
+    return () => this.permissionCallbacks.delete(cb);
   }
 
-  // Get platform-specific permission instructions
+  // -------------------- UX HELPERS --------------------
+
   getPermissionInstructions(): string {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const isAndroid = /Android/.test(navigator.userAgent);
-
-    if (isIOS) {
-      return "Go to Settings > Privacy & Security > Location Services > Safari Websites > Allow";
-    } else if (isAndroid) {
-      return "Go to Settings > Apps > [Browser] > Permissions > Location > Allow";
-    } else {
-      return "Please enable location permissions in your browser settings";
-    }
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent))
+      return "Settings → Privacy & Security → Location Services → Safari → Allow";
+    if (/Android/.test(navigator.userAgent))
+      return "Settings → Apps → Browser → Permissions → Location → Allow";
+    return "Enable location permission in browser settings";
   }
 
-  // Request background location permission (limited browser support)
   async requestBackgroundLocation(): Promise<boolean> {
-    if ("permissions" in navigator) {
-      try {
-        const result = await navigator.permissions.query({
-          name: "geolocation",
-          // @ts-ignore - background permission might not be widely supported
-          background: true,
-        });
-        return result.state === "granted";
-      } catch {
-        // Background permission not supported
-        return false;
-      }
+    try {
+      const res = await navigator.permissions.query({
+        name: "geolocation",
+      });
+      return res.state === "granted";
+    } catch {
+      return false;
     }
-    return false;
   }
 }
 
-// Export singleton instance
 export const locationService = LocationService.getInstance();

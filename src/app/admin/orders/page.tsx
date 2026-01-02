@@ -235,55 +235,67 @@ export default function AdminOrdersPage() {
           <CardTitle>Orders ({filteredOrders.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order ID</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Store</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Payment</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredOrders.map((order) => (
-                <TableRow key={order.id}>
-                  <TableCell className="font-medium">{order.id}</TableCell>
-                  <TableCell>{order.customer}</TableCell>
-                  <TableCell>{order.store}</TableCell>
-                  <TableCell>₹{order.total}</TableCell>
-                  <TableCell>{order.items}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusBadgeVariant(order.status)}>
-                      {order.status.replace("_", " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={getPaymentBadgeVariant(order.paymentStatus)}
-                    >
-                      {order.paymentStatus}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{order.date}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order ID</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead className="hidden sm:table-cell">Store</TableHead>
+                  <TableHead className="hidden sm:table-cell">Total</TableHead>
+                  <TableHead className="hidden sm:table-cell">Items</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Payment
+                  </TableHead>
+                  <TableHead className="hidden sm:table-cell">Date</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredOrders.map((order) => (
+                  <TableRow key={order.id}>
+                    <TableCell className="font-medium">{order.id}</TableCell>
+                    <TableCell>{order.customer}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {order.store}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      ₹{order.total}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {order.items}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusBadgeVariant(order.status)}>
+                        {order.status.replace("_", " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <Badge
+                        variant={getPaymentBadgeVariant(order.paymentStatus)}
+                      >
+                        {order.paymentStatus}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {order.date}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="sm">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

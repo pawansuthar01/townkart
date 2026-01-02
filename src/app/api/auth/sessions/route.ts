@@ -6,13 +6,12 @@ import { DeviceTracker } from "@/middleware/deviceTracking";
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session.sessionToken) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const activeSessions = await DeviceTracker.getActiveSessions(
-      session.user.id,
+      session.user.id
     );
 
     return NextResponse.json({
@@ -26,14 +25,14 @@ export async function GET(request: NextRequest) {
         location: sess.location,
         lastActivity: sess.lastActivity,
         createdAt: sess.createdAt,
-        isCurrentSession: false, // TODO: Implement current session detection
+        isCurrentSession: false,
       })),
     });
   } catch (error) {
     console.error("Get sessions error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -50,7 +49,7 @@ export async function DELETE(request: NextRequest) {
 
     if (terminateAll) {
       const terminatedCount = await DeviceTracker.terminateAllSessions(
-        session.user.id,
+        session.user.id
         // TODO: Pass current session ID to keep it active
       );
 
@@ -63,19 +62,19 @@ export async function DELETE(request: NextRequest) {
     if (!sessionId) {
       return NextResponse.json(
         { error: "Session ID required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     const terminated = await DeviceTracker.terminateSession(
       sessionId,
-      session.user.id,
+      session.user.id
     );
 
     if (!terminated) {
       return NextResponse.json(
         { error: "Session not found or already terminated" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -86,7 +85,7 @@ export async function DELETE(request: NextRequest) {
     console.error("Terminate session error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

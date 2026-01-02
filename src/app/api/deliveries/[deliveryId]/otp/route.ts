@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
-
+import { authOptions } from "@/lib/auth";
 
 // Generate OTP for pickup or delivery
 function generateOTP(): string {
@@ -11,10 +11,10 @@ function generateOTP(): string {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { deliveryId: string } },
+  { params }: { params: { deliveryId: string } }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -25,27 +25,39 @@ export async function POST(
     if (!type || !["pickup", "delivery"].includes(type)) {
       return NextResponse.json(
         { error: "Invalid OTP type. Must be 'pickup' or 'delivery'" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     // Get delivery and verify rider access
     const delivery = await prisma.delivery.findUnique({
       where: { id: deliveryId },
-      include: { rider: true, order: true },
+      select: {
+        id: true,
+        riderId: true,
+        order: {
+          select: {
+            customer: {
+              select: {
+                phoneNumber: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!delivery) {
       return NextResponse.json(
         { error: "Delivery not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
     if (delivery.riderId !== session.user.id) {
       return NextResponse.json(
         { error: "Unauthorized access to this delivery" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -68,6 +80,9 @@ export async function POST(
     });
 
     // TODO: Send OTP via SMS to customer
+    console.log(
+      `Sending ${type} OTP ${otp} for delivery ${deliveryId} to customer phone number ${delivery.order.customer.phoneNumber}`
+    );
     // await sendSMS(delivery.order.customer.phoneNumber, `Your ${type} OTP is: ${otp}`);
 
     // TODO: Create delivery log
@@ -86,17 +101,17 @@ export async function POST(
     console.error("Generate OTP error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { deliveryId: string } },
+  { params }: { params: { deliveryId: string } }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -107,7 +122,7 @@ export async function PUT(
     if (!otp || !type || !["pickup", "delivery"].includes(type)) {
       return NextResponse.json(
         { error: "OTP and type are required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -120,14 +135,14 @@ export async function PUT(
     if (!delivery) {
       return NextResponse.json(
         { error: "Delivery not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
     if (delivery.riderId !== session.user.id) {
       return NextResponse.json(
         { error: "Unauthorized access to this delivery" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -154,7 +169,7 @@ export async function PUT(
     if (!isValid) {
       return NextResponse.json(
         { success: false, message: "Invalid OTP" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -205,7 +220,7 @@ export async function PUT(
     console.error("Verify OTP error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

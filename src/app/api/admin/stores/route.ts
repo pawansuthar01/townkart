@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { a } from "node_modules/framer-motion/dist/types.d-BJcRxCew";
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,11 +16,19 @@ export async function GET(request: NextRequest) {
     // Build where clause
     const where: any = {};
     if (type === "pending") {
-      // where.applicationStatus = "PENDING"; // TODO: Uncomment after Prisma client regeneration
+      where.applicationStatus = "PENDING";
       where.isActive = false;
       where.managerId = { not: null };
-    } else if (status) {
-      where.isActive = status === "ACTIVE";
+    } else {
+      // For active stores, include both approved active stores and pending stores
+      where.OR = [
+        { applicationStatus: "APPROVED", isActive: true },
+        {
+          applicationStatus: "PENDING",
+          isActive: false,
+          managerId: { not: null },
+        },
+      ];
     }
     if (search) {
       where.OR = [
@@ -56,13 +65,16 @@ export async function GET(request: NextRequest) {
       .filter((store) => {
         // For pending applications, ensure manager exists
         if (type === "pending") {
-          return store.manager !== null;
+          return (
+            store.manager !== null || store.applicationStatus === "PENDING"
+          );
         }
         return true;
       })
       .map((store) => ({
         id: store.id,
         name: store.name,
+        applicationStatus: store.applicationStatus,
         code: store.code,
         description: store.description,
         category: store.category,
@@ -96,7 +108,7 @@ export async function GET(request: NextRequest) {
       where: {
         isActive: false,
         applicationStatus: "PENDING",
-        managerId: { not: null }, // Only count stores with assigned managers
+        managerId: { not: null },
       },
     });
 
@@ -139,6 +151,75 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * Find the service area that contains the given location
+ */
+async function findServiceAreaForLocation(latitude: number, longitude: number) {
+  const serviceAreas = await prisma.serviceArea.findMany({
+    where: { isActive: true },
+  });
+
+  for (const area of serviceAreas) {
+    // Check if the point is within the service area bounds
+    const bounds = area.bounds as {
+      north: number;
+      south: number;
+      east: number;
+      west: number;
+    };
+
+    if (
+      bounds &&
+      latitude >= bounds.south &&
+      latitude <= bounds.north &&
+      longitude >= bounds.west &&
+      longitude <= bounds.east
+    ) {
+      // Calculate distance from center to verify it's within radius
+      const distance = calculateDistance(
+        latitude,
+        longitude,
+        area.centerLat,
+        area.centerLng
+      );
+
+      if (distance <= area.radiusKm) {
+        return area;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Calculate distance between two points using Haversine formula
+ */
+function calculateDistance(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function toRadians(degrees: number): number {
+  return degrees * (Math.PI / 180);
+}
+
 export async function PUT(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -156,11 +237,11 @@ export async function PUT(request: NextRequest) {
     if (action === "approve") {
       updateData.isActive = true;
       updateData.isVerified = true;
-      // updateData.applicationStatus = "APPROVED"; // TODO: Uncomment after Prisma client regeneration
+      updateData.applicationStatus = "APPROVED";
     } else if (action === "reject") {
       updateData.isActive = false;
       updateData.isVerified = false;
-      // updateData.applicationStatus = "REJECTED"; // TODO: Uncomment after Prisma client regeneration
+      updateData.applicationStatus = "REJECTED";
     }
 
     const store = await prisma.store.update({
@@ -232,17 +313,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get default service area (first one available)
-    const defaultServiceArea = await prisma.serviceArea.findFirst({
-      where: { isActive: true },
-    });
+    // Validate latitude and longitude
+    const storeLat = parseFloat(latitude);
+    const storeLng = parseFloat(longitude);
 
-    if (!defaultServiceArea) {
+    if (
+      !storeLat ||
+      !storeLng ||
+      storeLat < -90 ||
+      storeLat > 90 ||
+      storeLng < -180 ||
+      storeLng > 180
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Invalid latitude or longitude coordinates",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Find service area based on location
+    const serviceArea = await findServiceAreaForLocation(storeLat, storeLng);
+
+    if (!serviceArea) {
       return NextResponse.json(
         {
           success: false,
           message:
-            "No active service area found. Please create a service area first.",
+            "No service area found for the specified location. Please create a service area that covers this location first.",
         },
         { status: 400 }
       );
@@ -258,11 +358,11 @@ export async function POST(request: NextRequest) {
         city,
         state,
         pincode,
-        latitude: parseFloat(latitude) || 0,
-        longitude: parseFloat(longitude) || 0,
+        latitude: storeLat,
+        longitude: storeLng,
         category,
         managerId,
-        serviceAreaId: defaultServiceArea.id,
+        serviceAreaId: serviceArea.id,
       },
       include: {
         manager: {

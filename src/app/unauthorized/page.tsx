@@ -22,49 +22,17 @@ export default function UnauthorizedPage() {
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
+      console.log("User is logged in, logging out to unAuthorized page..");
       // Call comprehensive logout API that handles database cleanup
-      const response = await fetch("/api/auth/logout", {
+      await fetch("/api/auth/logout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
-
-      if (!response.ok) {
-        throw new Error("Logout API failed");
-      }
-
-      // Clear NextAuth session cookies explicitly
-      const cookiesToClear = [
-        "next-auth.session-token",
-        "next-auth.callback-url",
-        "__Secure-next-auth.session-token",
-        "next-auth.pkce.code_verifier",
-        "next-auth.pkce.state",
-      ];
-
-      cookiesToClear.forEach((cookieName) => {
-        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname};`;
-        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; secure; samesite=lax;`;
-      });
-
-      // Force redirect to clear all client-side session state
-      window.location.replace("/");
+      await signOut({ callbackUrl: "/auth/login" });
     } catch (error) {
       console.error("Logout failed:", error);
-
-      // Emergency logout - clear all possible auth cookies
-      document.cookie.split(";").forEach((cookie) => {
-        const name = cookie.split("=")[0].trim();
-        if (
-          name.includes("auth") ||
-          name.includes("session") ||
-          name.includes("token")
-        ) {
-          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-        }
-      });
-
-      window.location.replace("/");
+      // Fallback to NextAuth signOut if API call fails
+      await signOut({ callbackUrl: "/auth/login" });
     } finally {
       setIsLoggingOut(false);
     }
@@ -131,7 +99,7 @@ export default function UnauthorizedPage() {
 
           <div className="space-y-3">
             {reason === "phone_unverified" || reason === "account_inactive" ? (
-              <Link href="/verify-otp" className="block">
+              <Link href="/auth/verify-otp" className="block">
                 <Button className="w-full" variant="default">
                   <Phone className="mr-2 h-4 w-4" />
                   {reason === "account_inactive"

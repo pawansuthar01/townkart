@@ -5,8 +5,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
 import {
   Grid,
   List,
@@ -28,7 +26,7 @@ import { useCollections } from "@/hooks/useCollections";
 export default function CollectionsPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [selectedCollection, setSelectedCollection] = useState<string | null>(
-    null,
+    null
   );
   const { addItem } = useCart();
   const {
@@ -270,7 +268,7 @@ export default function CollectionsPage() {
                               {Math.round(
                                 ((product.price - product.discountedPrice) /
                                   product.price) *
-                                  100,
+                                  100
                               )}
                               % OFF
                             </Badge>
@@ -338,7 +336,7 @@ export default function CollectionsPage() {
 
                         <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
                           <span className="font-medium">
-                            {product.merchant.businessName}
+                            {product?.store?.name}
                           </span>
                           <span>{product.totalReviews || 0} reviews</span>
                         </div>
@@ -379,7 +377,7 @@ export default function CollectionsPage() {
                               {Math.round(
                                 ((product.price - product.discountedPrice) /
                                   product.price) *
-                                  100,
+                                  100
                               )}
                               % OFF
                             </Badge>
@@ -397,9 +395,7 @@ export default function CollectionsPage() {
                             </p>
                             <div className="flex items-center text-sm text-gray-600 mb-2">
                               <MapPin className="h-4 w-4 mr-1" />
-                              <span>
-                                2.1 km • {product.merchant.businessName}
-                              </span>
+                              <span>2.1 km • {product?.store?.name}</span>
                               <span className="mx-2">•</span>
                               <Clock className="h-4 w-4 mr-1" />
                               <span>45 mins</span>
@@ -500,8 +496,6 @@ export default function CollectionsPage() {
           )}
         </div>
       </section>
-
-      <Footer />
     </div>
   );
 }

@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id || !session.user.roles?.includes("ADMIN")) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     console.error("Error fetching notification settings:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -69,7 +69,7 @@ export async function PUT(request: NextRequest) {
     if (!session?.user?.id || !session.user.roles?.includes("ADMIN")) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -78,7 +78,7 @@ export async function PUT(request: NextRequest) {
     if (!category || !settings) {
       return NextResponse.json(
         { success: false, message: "Category and settings are required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -104,7 +104,7 @@ export async function PUT(request: NextRequest) {
             description: `${category} setting: ${key}`,
             isPublic: false,
           },
-        }),
+        })
       );
     }
 
@@ -118,7 +118,7 @@ export async function PUT(request: NextRequest) {
     console.error("Error updating notification settings:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

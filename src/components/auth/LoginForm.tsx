@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn, getSession, useSession } from "next-auth/react";
+import { signIn, getSession, useSession, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { Eye, EyeOff, Mail, Lock, ShoppingCart } from "lucide-react";
 import { hashPassword } from "@/lib/auth";
+import { DeviceSelectionModal } from "./DeviceSelectionModal";
 
 export function LoginForm() {
   const [formData, setFormData] = useState({
@@ -29,23 +30,28 @@ export function LoginForm() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [showDeviceModal, setShowDeviceModal] = useState(false);
+  const [existingDevices, setExistingDevices] = useState<any[]>([]);
+  const [currentUserInfo, setCurrentUserInfo] = useState<any>(null);
 
   const router = useRouter();
   const { data: session, status } = useSession();
-  console.log(session, status);
-  // Redirect if already logged in
   useEffect(() => {
-    if (status === "authenticated" && session?.user) {
-      const activeRole = (session.user as any)?.activeRole;
-
-      if (activeRole === "ADMIN") {
-        router.push("/admin/dashboard");
-      } else if (activeRole === "STORE_MANAGER") {
-        router.push("/store");
-      } else if (activeRole === "RIDER") {
-        router.push("/rider");
+    if (status === "authenticated") {
+      if (session?.user) {
+        const activeRole = (session.user as any)?.activeRole;
+        if (activeRole === "ADMIN") {
+          router.push("/admin/dashboard");
+        } else if (activeRole === "STORE_MANAGER") {
+          router.push("/store");
+        } else if (activeRole === "RIDER") {
+          router.push("/rider");
+        } else {
+          router.push("/");
+        }
       } else {
-        router.push("/");
+        console.log("Invalid session detected, signing out...");
+        signOut({ redirect: false });
       }
     }
   }, [session, status, router]);
@@ -63,58 +69,175 @@ export function LoginForm() {
     setIsLoading(true);
 
     try {
-      const result = await signIn("credentials", {
-        identifier: formData.identifier,
-        password: formData.password,
-        rememberMe,
-        redirect: false,
+      // First, check if OTP is required
+      const otpCheckResponse = await fetch("/api/auth/check-otp-requirement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: formData.identifier,
+          password: formData.password,
+        }),
       });
-
-      if (result?.error) {
-        if (result.error === "CredentialsSignin") {
-          setError("Invalid email/phone number or password");
-        } else if (result.error.includes("rate limit")) {
-          setError("Too many login attempts. Please try again later.");
-        } else {
-          setError(result.error);
-        }
+      if (!otpCheckResponse.ok) {
+        const errorData = await otpCheckResponse.json();
+        setError(errorData.message || "Invalid credentials");
         return;
       }
-      console.log(result);
-      if (result?.ok) {
-        // Get session to check user role and verification status
-        const session = await getSession();
-        console.log(session);
-        const activeRole = (session?.user as any)?.activeRole;
-        const phoneVerified = (session?.user as any)?.phoneVerified;
-        const phoneNumber = (session?.user as any)?.phoneNumber;
 
-        // If phone not verified, redirect to verification
-        if (!phoneVerified) {
-          router.push(
-            `/verify-otp?phone=${encodeURIComponent(phoneNumber || "")}&purpose=LOGIN`
-          );
+      const otpCheckData = await otpCheckResponse.json();
+      console.log(otpCheckData);
+      if (!otpCheckData.success) {
+        // Check if device selection is required
+        if (otpCheckData.requiresDeviceSelection) {
+          setCurrentUserInfo(otpCheckData.userInfo);
+          setExistingDevices(otpCheckData.existingDevices || []);
+          setShowDeviceModal(true);
           return;
         }
 
-        if (activeRole === "ADMIN") {
-          router.push("/admin/dashboard");
-        } else if (activeRole === "STORE_MANAGER") {
-          router.push("/store");
-        } else if (activeRole === "RIDER") {
-          router.push("/rider");
+        setError(otpCheckData.message || "Invalid credentials");
+        return;
+      }
+
+      // Show message if provided (for phone verification requirements)
+      if (otpCheckData.message) {
+        setError(otpCheckData.message);
+        // Don't return here - continue with redirect logic
+      }
+
+      if (otpCheckData.requiresPhoneVerification) {
+        console.log("Redirecting to phone verification with data:", {
+          phone: otpCheckData.phoneNumber,
+          purpose: otpCheckData.purpose,
+          userId: otpCheckData.userId,
+        });
+
+        // Show message briefly before redirect if provided
+        if (otpCheckData.message) {
+          setError(otpCheckData.message);
+          // Redirect after showing message
+          setTimeout(() => {
+            router.push(
+              `/auth/verify-otp?phone=${encodeURIComponent(otpCheckData.phoneNumber)}&purpose=${otpCheckData.purpose}&userId=${otpCheckData.userId}`
+            );
+          }, 1500);
         } else {
-          router.push("/");
+          // Redirect immediately
+          router.push(
+            `/auth/verify-otp?phone=${encodeURIComponent(otpCheckData.phoneNumber)}&purpose=${otpCheckData.purpose}&userId=${otpCheckData.userId}`
+          );
         }
-        router.refresh();
-      } else {
-        setError("Login failed. Please try again.");
+        console.log("Router push scheduled/called for phone verification");
+        return;
+      }
+
+      if (otpCheckData.requiresOTP) {
+        console.log("Redirecting to OTP verification for login");
+        // Redirect to OTP verification for login
+        router.push(
+          `/auth/verify-otp?phone=${encodeURIComponent(otpCheckData.phoneNumber)}&purpose=LOGIN&userId=${otpCheckData.userId}`
+        );
+        return;
+      }
+
+      // No OTP required - proceed with normal login
+
+      try {
+        const result = await signIn("credentials", {
+          userInfo: JSON.stringify(otpCheckData.userInfo),
+          identifier: formData.identifier,
+          password: formData.password,
+          rememberMe,
+          redirect: false,
+        });
+
+        console.log("signIn result:", result);
+
+        if (result?.error) {
+          console.error("signIn returned error:", result.error);
+
+          // Check if it's a device selection error
+          try {
+            const errorData = JSON.parse(result.error);
+            if (errorData.requiresDeviceSelection) {
+              setCurrentUserInfo(otpCheckData.userInfo);
+              setExistingDevices(errorData.existingDevices || []);
+              setShowDeviceModal(true);
+              return;
+            }
+          } catch (parseError) {
+            // Not a JSON error, treat as regular error
+          }
+
+          if (result.error === "CredentialsSignin") {
+            setError("Invalid email/phone number or password");
+          } else if (result.error.includes("rate limit")) {
+            setError("Too many login attempts. Please try again later.");
+          } else {
+            setError(result.error);
+          }
+          return;
+        }
+
+        if (result?.ok) {
+          console.log("signIn successful, getting session...");
+          // Get session to check user role for redirection
+          console.log("Session after login:", session);
+          const activeRole = (session?.user as any)?.activeRole;
+
+          console.log("Redirecting based on role:", activeRole);
+          // Redirect based on user role
+          if (activeRole === "ADMIN") {
+            router.push("/admin/dashboard");
+          } else if (activeRole === "STORE_MANAGER") {
+            router.push("/store");
+          } else if (activeRole === "RIDER") {
+            router.push("/rider");
+          } else {
+            router.push("/");
+          }
+          router.refresh();
+        } else {
+          console.warn("signIn result not ok:", result);
+          setError("Login failed. Please try again.");
+        }
+      } catch (e) {
+        console.log(e);
       }
     } catch (error: any) {
       setError(error.message || "Login failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDeviceLogoutSuccess = async () => {
+    setShowDeviceModal(false);
+
+    // Now proceed with login since devices have been logged out
+    try {
+      const result = await signIn("credentials", {
+        userInfo: JSON.stringify(currentUserInfo),
+        identifier: formData.identifier,
+        password: formData.password,
+        rememberMe,
+        redirect: false,
+      });
+
+      if (result?.ok) {
+        // Success - redirect will happen via useEffect
+      } else {
+        setError(result?.error || "Login failed after device logout.");
+      }
+    } catch (signInError: any) {
+      console.error("Sign in error:", signInError);
+      setError(signInError.message || "Sign in failed");
+    }
+  };
+
+  const handleDeviceModalCancel = () => {
+    setShowDeviceModal(false);
+    setError("Device selection cancelled. Please try logging in again.");
   };
 
   const handleGoogleSignIn = async () => {
@@ -324,6 +447,16 @@ export function LoginForm() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Device Selection Modal */}
+      <DeviceSelectionModal
+        isOpen={showDeviceModal}
+        devices={existingDevices}
+        userId={currentUserInfo?.id}
+        onSuccess={handleDeviceLogoutSuccess}
+        onCancel={handleDeviceModalCancel}
+        isLoading={isLoading}
+      />
     </div>
   );
 }

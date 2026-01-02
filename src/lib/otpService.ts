@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { convertSeconds } from "./utils";
 
 export interface OTPSettings {
   delivery_method: "email" | "sms" | "both";
@@ -63,14 +64,14 @@ export class OTPService {
       });
 
       const otpSettings: OTPSettings = {
-        delivery_method: "both", // Send via both SMS and Email/WhatsApp
+        delivery_method: "email", // Send via both SMS and Email/WhatsApp
         email_enabled: true,
-        sms_enabled: true,
-        whatsapp_enabled: true, // Enable WhatsApp OTP
+        sms_enabled: false,
+        whatsapp_enabled: false, // Enable WhatsApp OTP
         otp_length: 4,
         expiry_minutes: 10,
-        max_attempts: 3,
-        cooldown_minutes: 5,
+        max_attempts: 5,
+        cooldown_minutes: 1,
         retry_attempts: 2,
         enable_fallback: true,
       };
@@ -89,13 +90,13 @@ export class OTPService {
     } catch (error) {
       console.error("Error fetching OTP settings:", error);
       return {
-        delivery_method: "both",
+        delivery_method: "email", // Send via both SMS and Email/WhatsApp
         email_enabled: true,
-        sms_enabled: true,
-        whatsapp_enabled: true,
-        otp_length: 6,
+        sms_enabled: false,
+        whatsapp_enabled: false, // Enable WhatsApp OTP
+        otp_length: 4,
         expiry_minutes: 10,
-        max_attempts: 3,
+        max_attempts: 5,
         cooldown_minutes: 5,
         retry_attempts: 2,
         enable_fallback: true,
@@ -144,19 +145,22 @@ export class OTPService {
       });
 
       if (recentOTP) {
-        const timeLeft = Math.ceil(
+        const remainingSeconds = Math.ceil(
           (recentOTP.createdAt.getTime() +
             settings.cooldown_minutes * 60 * 1000 -
             Date.now()) /
-            1000 /
-            60
+            1000
         );
-        console.log(`[OTP] Cooldown active, ${timeLeft} minutes remaining`);
-        return {
-          success: false,
-          message: `Please wait ${timeLeft} minutes before requesting another OTP`,
-          channels: [],
-        };
+
+        if (remainingSeconds > 0) {
+          return {
+            success: false,
+            message: `Please wait ${convertSeconds(
+              remainingSeconds
+            )} before requesting another OTP`,
+            channels: [],
+          };
+        }
       }
 
       // Check max attempts
@@ -168,8 +172,7 @@ export class OTPService {
           },
         },
       });
-
-      if (recentAttempts >= settings.max_attempts * 3) {
+      if ((recentAttempts || 0) >= settings.max_attempts * 3) {
         // Allow 3x max_attempts per day
         return {
           success: false,

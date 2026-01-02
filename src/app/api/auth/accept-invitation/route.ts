@@ -38,12 +38,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (invitation.status !== "APPROVED") {
-      return NextResponse.json(
-        { error: "Invitation is not approved" },
-        { status: 400 }
-      );
-    }
+    // if (invitation.status !== "APPROVED") {
+    //   return NextResponse.json(
+    //     { error: "Invitation is not approved" },
+    //     { status: 400 }
+    //   );
+    // }
 
     if (invitation.expiresAt < new Date()) {
       return NextResponse.json(
@@ -105,22 +105,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create user account with pending status
-    const user = await prisma.user.create({
-      data: {
-        fullName,
+    // Check if user already has an application
+    const existingApplication = await prisma.application.findFirst({
+      where: {
         email: invitation.invitedEmail,
-        phoneNumber,
-        password: hashedPassword,
-        userRoles: [role as "RIDER" | "STORE_MANAGER"],
-        activeRole: role as "RIDER" | "STORE_MANAGER",
-        emailVerified: false,
-        phoneVerified: false,
-        isActive: false, // Account is pending approval
+        role: role as "RIDER" | "STORE_MANAGER",
       },
     });
 
-    // Create role-specific profile
+    if (existingApplication) {
+      return NextResponse.json(
+        { error: "Application already exists for this invitation" },
+        { status: 400 }
+      );
+    }
+
+    // Create application record instead of user account
+    const applicationData: any = {
+      invitationId: invitation.id,
+      fullName,
+      email: invitation.invitedEmail,
+      phoneNumber,
+      password: hashedPassword,
+      role: role as "RIDER" | "STORE_MANAGER",
+    };
+
+    // Add role-specific data
     if (role === "RIDER") {
       const vehicleType = formData.get("vehicleType") as string;
       const vehicleNumber = formData.get("vehicleNumber") as string;
@@ -128,31 +138,12 @@ export async function POST(request: NextRequest) {
       const emergencyContact = formData.get("emergencyContact") as string;
       const emergencyPhone = formData.get("emergencyPhone") as string;
 
-      await prisma.riderProfile.create({
-        data: {
-          userId: user.id,
-          city: "Pending", // Will be updated during approval process
-          vehicleType: vehicleType || "bike",
-          vehicleNumber,
-          licenseNumber,
-          emergencyContact,
-          emergencyPhone,
-          isVerified: false,
-          isActive: false, // Pending approval
-        },
-      });
-
-      // Store document URLs (you might want to create a separate RiderDocument table)
-      if (documentUrls.length > 0) {
-        await prisma.riderProfile.update({
-          where: { userId: user.id },
-          data: {
-            // Using licenseNumber field to store document URLs for now
-            // In production, create a proper RiderDocument model
-            licenseNumber: licenseNumber + "|" + JSON.stringify(documentUrls),
-          },
-        });
-      }
+      applicationData.vehicleType = vehicleType || "bike";
+      applicationData.vehicleNumber = vehicleNumber;
+      applicationData.licenseNumber = licenseNumber;
+      applicationData.emergencyContact = emergencyContact;
+      applicationData.emergencyPhone = emergencyPhone;
+      applicationData.documents = documentUrls.length > 0 ? documentUrls : null;
     } else if (role === "STORE_MANAGER") {
       const storeId = formData.get("storeId") as string;
 
@@ -163,31 +154,30 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Assign store manager to store
-      await prisma.store.update({
-        where: { id: storeId },
-        data: { managerId: user.id },
-      });
+      applicationData.storeId = storeId;
     }
+
+    const application = await prisma.application.create({
+      data: applicationData,
+    });
 
     // Mark invitation as used
     await prisma.invitation.update({
       where: { id: invitation.id },
       data: {
         usedAt: new Date(),
-        usedBy: user.id,
         status: "USED",
       },
     });
 
     // Send notifications to all admins
-    await notifyAdmins(user, invitation, role);
+    await notifyAdmins(invitation, role, application);
 
     return NextResponse.json({
       success: true,
       message:
-        "Account created successfully. Your application is pending approval.",
-      userId: user.id,
+        "Application submitted successfully. Your application is pending admin approval.",
+      applicationId: application.id,
     });
   } catch (error) {
     console.error("Error accepting invitation:", error);
@@ -198,7 +188,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function notifyAdmins(user: any, invitation: any, role: string) {
+async function notifyAdmins(invitation: any, role: string, application: any) {
   try {
     // Get all admin users
     const admins = await prisma.user.findMany({
@@ -219,9 +209,9 @@ async function notifyAdmins(user: any, invitation: any, role: string) {
 A new ${roleDisplay.toLowerCase()} has applied for registration and is pending approval.
 
 Applicant Details:
-- Name: ${user.fullName}
-- Email: ${user.email}
-- Phone: ${user.phoneNumber}
+- Name: ${application.fullName}
+- Email: ${application.email}
+- Phone: ${application.phoneNumber}
 - Invited by: ${invitation.invitedByUser?.fullName || "System"}
 
 Please review and approve/reject the application in the admin panel.
@@ -238,7 +228,7 @@ Please review and approve/reject the application in the admin panel.
           [
             {
               label: "Review Application",
-              url: `${process.env.NEXTAUTH_URL}/admin/users`,
+              url: `${process.env.NEXTAUTH_URL}/admin/applications`,
             },
           ]
         );
@@ -249,9 +239,9 @@ Please review and approve/reject the application in the admin panel.
         data: {
           userId: admin.id,
           title: subject,
-          message: `New ${roleDisplay.toLowerCase()} application from ${user.fullName} is pending approval.`,
+          message: `New ${roleDisplay.toLowerCase()} application from ${application.fullName} is pending approval.`,
           notificationType: "SYSTEM_NOTIFICATION",
-          referenceId: user.id,
+          referenceId: application.id,
         },
       });
     }

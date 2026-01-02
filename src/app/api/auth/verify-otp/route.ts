@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { generateAccessToken, generateRefreshToken } from "@/lib/auth";
 import { verifyOtpSchema } from "@/lib/validation";
 import { DeviceManager, LoginContext } from "@/lib/deviceManager";
 import { LocationService } from "@/lib/locationService";
 import { OTPService } from "@/lib/otpService";
 import { UserRole } from "@prisma/client";
+import { generateAccessToken, generateRefreshToken } from "@/lib/auth";
+import { userInfo } from "os";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,7 +39,6 @@ export async function POST(request: NextRequest) {
         user?.email || null,
         purpose as any
       );
-      console.log(`[VERIFY-OTP] OTP send result:`, result);
 
       if (result.success) {
         return NextResponse.json({
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle OTP verification
-    const { phoneNumber, otp, deviceInfo, batteryLevel } =
+    const { phoneNumber, otp, deviceInfo, batteryLevel, logoutDevices } =
       verifyOtpSchema.parse(body);
 
     // Get client information
@@ -126,15 +126,9 @@ export async function POST(request: NextRequest) {
       // Handle phone verification for authenticated users
       user = await prisma.user.findUnique({
         where: { phoneNumber },
-        select: {
-          id: true,
-          phoneNumber: true,
-          fullName: true,
-          email: true,
-          userRoles: true,
-          activeRole: true,
-          phoneVerified: true,
-          isActive: true,
+        include: {
+          riderProfile: true,
+          managedStores: true,
         },
       });
 
@@ -155,36 +149,25 @@ export async function POST(request: NextRequest) {
       });
 
       user.phoneVerified = true;
+      user.isActive = true;
 
       return NextResponse.json({
         success: true,
         message: "Phone number verified successfully",
-        data: {
-          user: {
-            id: user.id,
-            phoneNumber: user.phoneNumber,
-            fullName: user.fullName,
-            email: user.email,
-            userRoles: user.userRoles,
-            activeRole: user.activeRole,
-            phoneVerified: user.phoneVerified,
-            isActive: user.isActive,
-          },
+        userInfo: {
+          ...user,
+          storeId: user.managedStores?.[0]?.id || null,
+          riderId: user.riderProfile?.id || null,
+          riderProfile: user.riderProfile,
         },
       });
-    } else if (otpRecord.purpose === "ACCOUNT_REACTIVATION") {
+    } else if (otpRecord.purpose === "ACCOUNT_ACTIVATION") {
       // Handle account reactivation for inactive users
       user = await prisma.user.findUnique({
         where: { phoneNumber },
-        select: {
-          id: true,
-          phoneNumber: true,
-          fullName: true,
-          email: true,
-          userRoles: true,
-          activeRole: true,
-          phoneVerified: true,
-          isActive: true,
+        include: {
+          riderProfile: true,
+          managedStores: true,
         },
       });
 
@@ -194,46 +177,34 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         );
       }
-
-      // Reactivate the account
       await prisma.user.update({
         where: { id: user.id },
         data: {
+          phoneVerified: true,
           isActive: true,
         },
       });
-
+      user.phoneVerified = true;
       user.isActive = true;
 
+      // Reactivate the user account
       return NextResponse.json({
         success: true,
         message: "Account reactivated successfully",
-        data: {
-          user: {
-            id: user.id,
-            phoneNumber: user.phoneNumber,
-            fullName: user.fullName,
-            email: user.email,
-            userRoles: user.userRoles,
-            activeRole: user.activeRole,
-            phoneVerified: user.phoneVerified,
-            isActive: user.isActive,
-          },
+        userInfo: {
+          ...user,
+          storeId: user.managedStores?.[0]?.id || null,
+          riderId: user.riderProfile?.id || null,
+          riderProfile: user.riderProfile,
         },
       });
     } else if (otpRecord.purpose === "REGISTER") {
       // Find the user created during registration
       user = await prisma.user.findUnique({
         where: { phoneNumber },
-        select: {
-          id: true,
-          phoneNumber: true,
-          fullName: true,
-          email: true,
-          userRoles: true,
-          activeRole: true,
-          phoneVerified: true,
-          isActive: true,
+        include: {
+          riderProfile: true,
+          managedStores: true,
         },
       });
 
@@ -255,8 +226,8 @@ export async function POST(request: NextRequest) {
             country: loginContext.locationInfo.country,
             city: loginContext.locationInfo.city,
             region: loginContext.locationInfo.region,
-            lat: loginContext.locationInfo.lat,
-            lng: loginContext.locationInfo.lng,
+            lat: loginContext.locationInfo.latitude,
+            lng: loginContext.locationInfo.longitude,
           },
         },
       });
@@ -277,7 +248,8 @@ export async function POST(request: NextRequest) {
         "LOW",
         ["First login after registration"]
       );
-
+      user.isActive = true;
+      user.phoneVerified = true;
       // Send welcome notification
       await DeviceManager.sendLoginNotification(
         user.id,
@@ -286,22 +258,23 @@ export async function POST(request: NextRequest) {
         "LOGIN"
       );
 
-      isNewUser = true;
+      return NextResponse.json({
+        success: true,
+        message: "Account register successfully",
+        userInfo: {
+          ...user,
+          storeId: user.managedStores?.[0]?.id || null,
+          riderId: user.riderProfile?.id || null,
+          riderProfile: user.riderProfile,
+        },
+      });
     } else if (otpRecord.purpose === "LOGIN") {
       // Find existing user
       user = await prisma.user.findUnique({
         where: { phoneNumber },
-        select: {
-          id: true,
-          phoneNumber: true,
-          fullName: true,
-          email: true,
-          userRoles: true,
-          activeRole: true,
-          phoneVerified: true,
-          isActive: true,
-          registrationIP: true,
-          registrationLocation: true,
+        include: {
+          riderProfile: true,
+          managedStores: true,
         },
       });
 
@@ -312,251 +285,60 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Validate location if user has registration location
-      const locationValidation = await DeviceManager.validateLocation(
+      // Handle device logout if requested
+      if (logoutDevices && logoutDevices.length > 0) {
+        for (const deviceId of logoutDevices) {
+          await DeviceManager.deactivateDevice(user.id, deviceId);
+        }
+      }
+
+      // Check device limit before proceeding with login
+      const deviceCheck = await DeviceManager.canLoginFromDevice(
         user.id,
-        loginContext.locationInfo
+        user.activeRole,
+        deviceData.deviceId
       );
-      if (!locationValidation.valid) {
-        // Get or create device record for logging
-        const deviceForLogging = await DeviceManager.getOrCreateDevice(
-          user.id,
-          loginContext.deviceInfo,
-          loginContext.locationInfo
-        );
 
-        // Log suspicious login attempt
-        await DeviceManager.logDeviceLogin(
-          user.id,
-          deviceForLogging.id,
-          "LOGIN",
-          loginContext,
-          "HIGH",
-          [
-            `Login from different location: ${locationValidation.distance?.toFixed(1)}km away from registration location`,
-          ]
-        );
-
+      if (!deviceCheck.allowed) {
         return NextResponse.json(
           {
-            success: false,
-            message: `Login blocked: You are trying to login from a location ${locationValidation.distance?.toFixed(1)}km away from your registration location. Please contact support if this is not you.`,
+            success: true, // OTP was verified successfully
+            otpVerified: true,
+            allowed: deviceCheck.allowed,
+            reason: deviceCheck.reason,
+            existingDevices: deviceCheck.existingDevices,
+            requiresDeviceSelection: deviceCheck.requiresDeviceSelection,
+            userInfo: user,
           },
-          { status: 403 }
+          { status: 200 }
         );
       }
 
       // Update phone verification and activation if needed
-      if (!user.phoneVerified || !user.isActive) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            phoneVerified: true,
-            isActive: true,
-          },
-        });
-        user.phoneVerified = true;
-        user.isActive = true;
-      }
-
-      // Check device login restrictions
-      const deviceCheck = await DeviceManager.canLoginFromDevice(
-        user.id,
-        user.activeRole,
-        loginContext.deviceInfo.deviceId
-      );
-
-      if (!deviceCheck.allowed) {
-        // For riders, return device selection instead of blocking
-        if (deviceCheck.requiresDeviceSelection) {
-          return NextResponse.json(
-            {
-              success: false,
-              message: deviceCheck.reason,
-              existingDevices: deviceCheck.existingDevices,
-              requiresDeviceSelection: true,
-              action: "SELECT_DEVICE",
-            },
-            { status: 409 } // Conflict status for device selection
-          );
-        }
-
-        // Get or create device record for logging
-        const deviceForFailedLogging = await DeviceManager.getOrCreateDevice(
-          user.id,
-          loginContext.deviceInfo,
-          loginContext.locationInfo
-        );
-
-        // Log failed login attempt for other roles
-        await DeviceManager.logDeviceLogin(
-          user.id,
-          deviceForFailedLogging.id,
-          "LOGIN",
-          loginContext,
-          "HIGH",
-          ["Multiple device login attempt blocked"]
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: deviceCheck.reason,
-            existingDevices: deviceCheck.existingDevices,
-          },
-          { status: 403 }
-        );
-      }
-
-      // For riders, always force logout other devices (single device policy)
-      if (user.activeRole === "RIDER") {
-        await DeviceManager.forceLogoutOtherDevices(
-          user.id,
-          loginContext.deviceInfo.deviceId,
-          user.activeRole
-        );
-      } else {
-        // For other roles, only logout if they have multiple active devices
-        await DeviceManager.forceLogoutOtherDevices(
-          user.id,
-          loginContext.deviceInfo.deviceId,
-          user.activeRole
-        );
-      }
-
-      // Get or create device record
-      const device = await DeviceManager.getOrCreateDevice(
-        user.id,
-        loginContext.deviceInfo,
-        loginContext.locationInfo
-      );
-
-      // Log successful login
-      await DeviceManager.logDeviceLogin(
-        user.id,
-        device.id,
-        "LOGIN",
-        loginContext,
-        locationValidation.distance && locationValidation.distance > 10
-          ? "MEDIUM"
-          : "LOW"
-      );
-
-      // Send login notifications
-      await DeviceManager.sendLoginNotification(
-        user.id,
-        loginContext.deviceInfo,
-        loginContext.locationInfo,
-        "LOGIN"
-      );
-
-      // Send admin notification if admin logs in
-      if (user.activeRole === "ADMIN") {
-        await DeviceManager.sendAdminLoginNotification(
-          user.id,
-          user.fullName || user.phoneNumber
-        );
-      }
-    }
-
-    // Only create session for LOGIN and REGISTER purposes
-    if (
-      (otpRecord.purpose === "LOGIN" || otpRecord.purpose === "REGISTER") &&
-      user
-    ) {
-      console.log(
-        `Creating session for ${otpRecord.purpose} - user: ${user.id}`
-      );
-
-      // Generate tokens
-      const accessToken = generateAccessToken({
-        userId: user.id,
-        phoneNumber: user.phoneNumber,
-        activeRole: user.activeRole,
-      });
-
-      const refreshToken = generateRefreshToken({
-        userId: user.id,
-        phoneNumber: user.phoneNumber,
-      });
-
-      // Update user login info
       await prisma.user.update({
         where: { id: user.id },
         data: {
+          phoneVerified: true,
+          isActive: true,
           lastLoginAt: new Date(),
           lastLoginIP: loginContext.locationInfo.ip,
           lastLoginDevice: loginContext.deviceInfo.deviceId,
         },
       });
-
-      // Create session with device tracking
-      console.log(
-        `Creating session for user ${user.id}, device: ${device?.id}`
-      );
-
-      const session = await prisma.session.create({
-        data: {
-          userId: user.id,
-          sessionToken: accessToken,
-          accessToken,
-          refreshToken,
-          deviceId: device?.id || null, // Use the actual device record ID, not the fingerprint
-          ipAddress: loginContext.locationInfo.ip,
-          userAgent: loginContext.userAgent,
-          location: {
-            country: loginContext.locationInfo.country,
-            city: loginContext.locationInfo.city,
-            region: loginContext.locationInfo.region,
-            lat: loginContext.locationInfo.lat,
-            lng: loginContext.locationInfo.lng,
-          },
-          expires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
-          isActive: true,
-        },
-      });
-
-      console.log(
-        `✅ Session created successfully: ${session.id} for user ${user.id}`
-      );
-      console.log(
-        `Session details: deviceId=${session.deviceId}, ip=${session.ipAddress}`
-      );
-
-      // Clean up expired OTPs for this phone number
-      await prisma.oTP.deleteMany({
-        where: {
-          phoneNumber,
-          expiresAt: {
-            lt: new Date(),
-          },
-        },
-      });
-
+      user.phoneVerified = true;
+      user.isActive = true;
       return NextResponse.json({
         success: true,
-        message: isNewUser
-          ? "Registration completed successfully"
-          : "Login successful",
-        data: {
-          user: {
-            id: user.id,
-            phoneNumber: user.phoneNumber,
-            fullName: user.fullName,
-            email: user.email,
-            userRoles: user.userRoles,
-            activeRole: user.activeRole,
-            phoneVerified: user.phoneVerified,
-            isActive: user.isActive,
-          },
-          accessToken,
-          refreshToken,
-          expiresIn: 15 * 60, // 15 minutes
+        message: "Account login successfully",
+        userInfo: {
+          ...user,
+          storeId: user.managedStores?.[0]?.id || null,
+          riderId: user.riderProfile?.id || null,
+          riderProfile: user.riderProfile,
         },
       });
     }
 
-    // For other purposes (PHONE_VERIFICATION, ACCOUNT_REACTIVATION), just return success
     if (!user) {
       return NextResponse.json(
         { success: false, message: "User not found" },
@@ -567,21 +349,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message:
-        otpRecord.purpose === "PHONE_VERIFICATION"
-          ? "Phone number verified successfully"
-          : "Account reactivated successfully",
-      data: {
-        user: {
-          id: user.id,
-          phoneNumber: user.phoneNumber,
-          fullName: user.fullName,
-          email: user.email,
-          userRoles: user.userRoles,
-          activeRole: user.activeRole,
-          phoneVerified: user.phoneVerified,
-          isActive: user.isActive,
-        },
-      },
+        otpRecord.purpose === "LOGIN"
+          ? "Login successful"
+          : otpRecord.purpose === "REGISTER"
+            ? "Registration completed successfully"
+            : otpRecord.purpose === "PHONE_VERIFICATION"
+              ? "Phone number verified successfully"
+              : "Account reactivated successfully",
+      userInfo: user
+        ? {
+            ...user,
+            storeId: user.managedStores?.[0]?.id || null,
+            riderId: user.riderProfile?.id || null,
+            riderProfile: user.riderProfile,
+          }
+        : null,
     });
   } catch (error: any) {
     console.error("OTP verification error:", error);

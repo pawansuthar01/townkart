@@ -43,7 +43,13 @@ export async function POST(
     // Check if target user exists
     const targetUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, fullName: true, activeRole: true },
+      select: {
+        id: true,
+        fullName: true,
+        activeRole: true,
+        email: true,
+        phoneNumber: true,
+      },
     });
 
     if (!targetUser) {
@@ -53,11 +59,52 @@ export async function POST(
       );
     }
 
+    // Check if user has any active sessions
+    const activeSessionCount = await prisma.session.count({
+      where: {
+        userId: userId,
+        isActive: true,
+        expires: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    if (activeSessionCount === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User is not currently logged in",
+          data: { userId, userName: targetUser.fullName },
+        },
+        { status: 400 }
+      );
+    }
+
     // Get all active sessions for the user
     const activeSessions = await DeviceTracker.getActiveSessions(userId);
 
     // Terminate all sessions
     const terminatedCount = await DeviceTracker.terminateAllSessions(userId);
+
+    // Deactivate all devices for this user
+    await prisma.device.updateMany({
+      where: {
+        userId: userId,
+        isActive: true,
+      },
+      data: {
+        isActive: false,
+      },
+    });
+
+    // Update user's last logout timestamp for immediate logout
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        lastLogoutAt: new Date(),
+      },
+    });
 
     // Log the admin action in device login log
     await prisma.deviceLoginLog.create({

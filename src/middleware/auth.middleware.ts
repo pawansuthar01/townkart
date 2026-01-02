@@ -265,8 +265,8 @@ export async function adminOnlyMiddleware(request: NextRequest) {
       );
     }
 
-    const userRoles = (session.user as any).userRoles || [];
-    const activeRole = (session.user as any).activeRole || "";
+    const userRoles = session.user.roles || [];
+    const activeRole = session.user.activeRole || "";
 
     if (!roleBasedAccessControl(userRoles, activeRole, ["manage_users"])) {
       return NextResponse.json(

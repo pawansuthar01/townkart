@@ -60,42 +60,6 @@ Before running this application, make sure you have the following installed:
 - **Redis** (optional, for caching)
 - **Git**
 
-## 🚀 Quick Start
-
-1. **Clone the repository**
-
-   ```bash
-   git clone https://github.com/your-username/townkart.git
-   cd townkart
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-
-   ```bash
-   cp .env.example .env.local
-   ```
-
-   Fill in the required environment variables in `.env.local`
-
-4. **Set up the database**
-
-   ```bash
-   npm run db:generate
-   npm run db:push
-   npm run db:seed
-   ```
-
-5. **Start the development server**
-   ```bash
-   npm run dev
-   ```
-
 The application will be available at `http://localhost:3000`
 
 ## 🔧 Environment Setup
@@ -110,6 +74,18 @@ Copy `.env.example` to `.env.local` and configure the following variables:
 - `RAZORPAY_KEY_ID` & `RAZORPAY_KEY_SECRET`: Payment gateway credentials
 - `SMS_API_KEY`: For OTP SMS service
 - `GOOGLE_MAPS_API_KEY`: For location services
+
+### WebSocket Configuration
+
+- `ENABLE_WEBSOCKET`: Set to `true` to enable WebSocket server in development (default: `false`)
+  - **Why disabled by default?** Prevents conflicts with Next.js Hot Module Replacement (HMR) WebSocket
+  - **When to enable?** When testing real-time features like location tracking and notifications
+  - **Production:** Always enabled automatically
+
+```bash
+# Enable WebSocket in development
+echo "ENABLE_WEBSOCKET=true" >> .env.local
+```
 
 ### Optional
 
@@ -141,6 +117,8 @@ npm run db:push -- --force-reset
 npm run dev
 ```
 
+**Note:** WebSocket server is disabled by default in development to prevent conflicts with Next.js Hot Module Replacement (HMR). If you see WebSocket connection errors in the browser console, this is normal and expected.
+
 ### Production Build
 
 ```bash
@@ -160,6 +138,30 @@ npm run test:e2e
 # Type checking
 npm run type-check
 ```
+
+## 🔧 Troubleshooting
+
+### WebSocket Connection Errors
+
+If you see errors like `"WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr' failed: Invalid frame header"` in development:
+
+1. **This is normal** - The error is from Next.js webpack Hot Module Replacement, not your application
+2. **WebSocket server is intentionally disabled** in development to prevent conflicts
+3. **To enable WebSocket in development** (for testing real-time features):
+   ```bash
+   echo "ENABLE_WEBSOCKET=true" >> .env.local
+   npm run dev
+   ```
+4. **In production**, WebSocket is automatically enabled
+
+### GPS Location Issues
+
+If location tracking isn't working:
+
+1. **Check browser permissions** - Ensure location access is granted
+2. **Enable WebSocket** - Set `ENABLE_WEBSOCKET=true` in development
+3. **Check console** - Look for GPS accuracy warnings
+4. **Verify authentication** - Location monitoring requires rider login
 
 ## 📁 Project Structure
 

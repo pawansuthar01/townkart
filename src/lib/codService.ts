@@ -1,6 +1,7 @@
 // Cash on Delivery (COD) Service for TownKart
 // Complete cash management system with fraud prevention and settlement tracking
 
+import { NotificationService } from "@/services/notification.service";
 import { prisma } from "./prisma";
 // import { notificationService } from "./notificationSystem"; // Temporarily commented out
 
@@ -99,7 +100,7 @@ export class CODService {
         await this.validateHighValueOrderVerification(
           delivery.order,
           customerOtp,
-          photoProofUrl,
+          photoProofUrl
         );
       }
 
@@ -131,7 +132,7 @@ export class CODService {
       await this.sendCashCollectionNotifications(
         delivery,
         amount,
-        requiresImmediateSettlement,
+        requiresImmediateSettlement
       );
 
       // Log the transaction
@@ -182,7 +183,7 @@ export class CODService {
       const riderBalance = await this.getRiderCashBalance(riderId);
       if (riderBalance.outstandingAmount < amount) {
         throw new Error(
-          `Insufficient outstanding cash. Available: ₹${riderBalance.outstandingAmount}`,
+          `Insufficient outstanding cash. Available: ₹${riderBalance.outstandingAmount}`
         );
       }
 
@@ -207,7 +208,7 @@ export class CODService {
       const settlement = await this.createSettlementRecord(
         riderId,
         storeId,
-        amount,
+        amount
       );
 
       // Send notifications
@@ -255,7 +256,7 @@ export class CODService {
 
       const totalCollected = pendingTransactions.reduce(
         (sum, t) => sum + t.amount,
-        0,
+        0
       );
 
       // Get deposits for the settlement period
@@ -394,7 +395,7 @@ export class CODService {
    */
   private static async validateDailyCODLimit(
     riderId: string,
-    newAmount: number,
+    newAmount: number
   ): Promise<void> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -419,7 +420,7 @@ export class CODService {
 
     if (todayTotal > this.COD_LIMITS.MAX_DAILY_COD) {
       throw new Error(
-        `Daily COD limit exceeded. Today: ₹${todayTotal}, Limit: ₹${this.COD_LIMITS.MAX_DAILY_COD}`,
+        `Daily COD limit exceeded. Today: ₹${todayTotal}, Limit: ₹${this.COD_LIMITS.MAX_DAILY_COD}`
       );
     }
   }
@@ -430,7 +431,7 @@ export class CODService {
   private static async validateHighValueOrderVerification(
     order: any,
     customerOtp?: string,
-    photoProofUrl?: string,
+    photoProofUrl?: string
   ): Promise<void> {
     if (!customerOtp) {
       throw new Error("OTP verification required for high-value COD orders");
@@ -450,7 +451,7 @@ export class CODService {
   private static async updateRiderCashBalance(
     riderId: string,
     amount: number,
-    operation: "COLLECTED" | "DEPOSITED" | "SETTLED",
+    operation: "COLLECTED" | "DEPOSITED" | "SETTLED"
   ): Promise<void> {
     const balance = await prisma.riderCashBalance.findUnique({
       where: { riderId },
@@ -491,7 +492,7 @@ export class CODService {
   private static async createSettlementRecord(
     riderId: string,
     storeId: string,
-    depositedAmount: number,
+    depositedAmount: number
   ): Promise<any> {
     const settlementDate = new Date();
 
@@ -512,12 +513,12 @@ export class CODService {
   private static async sendCashCollectionNotifications(
     delivery: any,
     amount: number,
-    requiresImmediateSettlement: boolean,
+    requiresImmediateSettlement: boolean
   ): Promise<void> {
     const { order, rider } = delivery;
 
     // Notify rider
-    await notificationService.sendNotification({
+    await NotificationService.sendNotification({
       userId: rider.userId,
       title: "💰 Cash Collected Successfully",
       message: `₹${amount} collected for order #${order.orderNumber}. ${requiresImmediateSettlement ? "Please deposit cash immediately." : ""}`,
@@ -528,7 +529,7 @@ export class CODService {
 
     // Notify store if immediate settlement required
     if (requiresImmediateSettlement && order.store?.managerId) {
-      await notificationService.sendNotification({
+      await NotificationService.sendNotification({
         userId: order.store.managerId,
         title: "🚨 Rider Requires Immediate Cash Settlement",
         message: `${rider.user.fullName} has ₹${amount} outstanding cash. Please arrange settlement.`,
@@ -545,10 +546,10 @@ export class CODService {
   private static async sendCashDepositNotifications(
     rider: any,
     store: any,
-    amount: number,
+    amount: number
   ): Promise<void> {
     // Notify rider
-    await notificationService.sendNotification({
+    await NotificationService.sendNotification({
       userId: rider.userId,
       title: "✅ Cash Deposit Confirmed",
       message: `₹${amount} deposited successfully at ${store.name}`,
@@ -558,7 +559,7 @@ export class CODService {
 
     // Notify store manager
     if (store.managerId) {
-      await notificationService.sendNotification({
+      await NotificationService.sendNotification({
         userId: store.managerId,
         title: "💰 Cash Deposit Received",
         message: `${rider.user.fullName} deposited ₹${amount}`,
@@ -572,12 +573,12 @@ export class CODService {
    * Send settlement notifications
    */
   private static async sendSettlementNotifications(
-    settlement: any,
+    settlement: any
   ): Promise<void> {
     const { rider, store } = settlement;
 
     // Notify rider
-    await notificationService.sendNotification({
+    await NotificationService.sendNotification({
       userId: rider.userId,
       title:
         settlement.status === "VERIFIED"
@@ -591,7 +592,7 @@ export class CODService {
 
     // Notify store manager
     if (store.managerId) {
-      await notificationService.sendNotification({
+      await NotificationService.sendNotification({
         userId: store.managerId,
         title: "💼 Cash Settlement Processed",
         message: `${rider.user.fullName} settlement: Collected ₹${settlement.totalCollected}, Deposited ₹${settlement.totalDeposited}`,
@@ -608,7 +609,7 @@ export class CODService {
   private static async logCashTransaction(
     delivery: any,
     transaction: any,
-    operation: string,
+    operation: string
   ): Promise<void> {
     // This would integrate with your existing logging system
     console.log(`COD ${operation}:`, {

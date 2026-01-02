@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Send external notifications directly (bypassing subscription system)
-    const invitationUrl = `${process.env.NEXTAUTH_URL}/auth/invitation?token=${token}`;
+    const invitationUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/auth/invitation?token=${token}`;
 
     // Map our channels to notification system channels
     const channelMap: Record<string, "email" | "whatsapp" | "sms"> = {

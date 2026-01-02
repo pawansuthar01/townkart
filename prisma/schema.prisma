@@ -31,6 +31,7 @@ enum OrderStatus {
   READY_FOR_PICKUP
   RIDER_ASSIGNED
   EN_ROUTE
+  OUT_FOR_DELIVERY
   DELIVERED
   CANCELLED
   REFUNDED
@@ -103,6 +104,7 @@ model User {
   lastLoginAt       DateTime?
   lastLoginIP       String?
   lastLoginDevice   String?
+  lastLogoutAt      DateTime? // For remote logout functionality
 
   // Registration location for validation
   registrationIP    String?
@@ -112,6 +114,10 @@ model User {
   emailNotifications Boolean @default(true)
   pushNotifications  Boolean @default(true)
   smsNotifications   Boolean @default(false)
+
+  // 2FA Settings
+  twoFactorEnabled  Boolean  @default(false)
+  twoFactorMethod   String?  // 'SMS', 'EMAIL', 'APP' (future)
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -145,6 +151,7 @@ model User {
   sentInvitations   Invitation[]    @relation("SentInvitations")
   usedInvitations   Invitation[]    @relation("UsedInvitations")
   accounts          Account[]
+  deviceLimits      DeviceLimit[]
 
   @@map("users")
 }
@@ -715,7 +722,7 @@ model Device {
 
   // Activity
   lastLoginAt   DateTime?
-  loginCount    Int      @default(0)
+  loginCount    Int      @default(1)
   isActive      Boolean  @default(true) // For device management
 
   // Battery & Status tracking
@@ -1906,7 +1913,7 @@ model Invitation {
   updatedAt       DateTime         @updatedAt
 
   // Relations
-  application     Application?
+  applications    Application[]
 
   @@map("invitations")
 }
@@ -1943,8 +1950,8 @@ enum ApplicationStatus {
 
 model Application {
    id              String            @id @default(cuid())
-   invitationId    String            @unique
-   invitation      Invitation        @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+   invitationId    String?
+   invitation      Invitation?       @relation(fields: [invitationId], references: [id])
 
    // Personal Information
    fullName        String
@@ -1961,7 +1968,7 @@ model Application {
    licenseNumber   String?
    emergencyContact String?
    emergencyPhone  String?
-
+city               String?
    // Store Manager Specific Data
    storeId         String?
 
@@ -1998,4 +2005,22 @@ model SystemSetting {
 
    @@unique([category, key])
    @@map("system_settings")
+}
+
+// Device Limits for Authentication
+model DeviceLimit {
+   id          String   @id @default(cuid())
+   userId      String?  // Specific user limit (null for role-based limits)
+   user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+   role        UserRole? // Role-based limit (null for user-specific limits)
+   maxDevices  Int      @default(1) // Maximum number of active devices
+   isActive    Boolean  @default(true)
+
+   createdAt   DateTime @default(now())
+   updatedAt   DateTime @updatedAt
+
+   // Ensure only one limit per user or role
+   @@unique([userId])
+   @@unique([role])
+   @@map("device_limits")
 }

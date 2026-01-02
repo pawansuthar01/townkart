@@ -17,13 +17,14 @@ interface Delivery {
   order?: {
     id: string;
     orderNumber: string;
+    deliveryAddress: object;
     totalAmount: number;
     customer: {
       id: string;
       fullName: string;
       phoneNumber: string;
     };
-    merchant: {
+    store: {
       id: string;
       businessName: string;
       address: string;
@@ -78,7 +79,7 @@ export const fetchDeliveries = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
-  },
+  }
 );
 
 // Fetch available deliveries
@@ -97,7 +98,7 @@ export const fetchAvailableDeliveries = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
-  },
+  }
 );
 
 // Accept a delivery
@@ -122,7 +123,7 @@ export const acceptDelivery = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
-  },
+  }
 );
 
 // Update delivery status
@@ -138,7 +139,7 @@ export const updateDeliveryStatus = createAsyncThunk(
       status: string;
       proofPhotoUrl?: string;
     },
-    { rejectWithValue },
+    { rejectWithValue }
   ) => {
     try {
       const response = await fetch(`/api/deliveries/${deliveryId}`, {
@@ -158,7 +159,7 @@ export const updateDeliveryStatus = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
-  },
+  }
 );
 
 // Fetch single delivery details
@@ -177,7 +178,7 @@ export const fetchDeliveryDetails = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
-  },
+  }
 );
 
 const deliverySlice = createSlice({
@@ -202,7 +203,7 @@ const deliverySlice = createSlice({
         (state, action: PayloadAction<Delivery[]>) => {
           state.loading = false;
           state.deliveries = action.payload;
-        },
+        }
       )
       .addCase(fetchDeliveries.rejected, (state, action) => {
         state.loading = false;
@@ -217,7 +218,7 @@ const deliverySlice = createSlice({
         (state, action: PayloadAction<Delivery[]>) => {
           state.loading = false;
           state.deliveries = action.payload;
-        },
+        }
       )
       .addCase(fetchAvailableDeliveries.rejected, (state, action) => {
         state.loading = false;
@@ -233,12 +234,12 @@ const deliverySlice = createSlice({
           state.loading = false;
           // Update the delivery in the list
           const index = state.deliveries.findIndex(
-            (d) => d.id === action.payload.id,
+            (d) => d.id === action.payload.id
           );
           if (index !== -1) {
             state.deliveries[index] = action.payload;
           }
-        },
+        }
       )
       .addCase(acceptDelivery.rejected, (state, action) => {
         state.loading = false;
@@ -254,7 +255,7 @@ const deliverySlice = createSlice({
           state.loading = false;
           // Update the delivery in the list
           const index = state.deliveries.findIndex(
-            (d) => d.id === action.payload.id,
+            (d) => d.id === action.payload.id
           );
           if (index !== -1) {
             state.deliveries[index] = action.payload;
@@ -263,7 +264,7 @@ const deliverySlice = createSlice({
           if (state.currentDelivery?.id === action.payload.id) {
             state.currentDelivery = action.payload;
           }
-        },
+        }
       )
       .addCase(updateDeliveryStatus.rejected, (state, action) => {
         state.loading = false;
@@ -278,7 +279,7 @@ const deliverySlice = createSlice({
         (state, action: PayloadAction<Delivery>) => {
           state.loading = false;
           state.currentDelivery = action.payload;
-        },
+        }
       )
       .addCase(fetchDeliveryDetails.rejected, (state, action) => {
         state.loading = false;

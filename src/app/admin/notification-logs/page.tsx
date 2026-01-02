@@ -300,22 +300,30 @@ export default function AdminNotificationLogsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Channel</TableHead>
+                    <TableHead className="hidden sm:table-cell">Type</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Channel
+                    </TableHead>
                     <TableHead>Recipient</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Provider</TableHead>
-                    <TableHead>Sent At</TableHead>
-                    <TableHead>Error</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Provider
+                    </TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Sent At
+                    </TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Error
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredLogs.map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         <Badge variant="outline">{log.type}</Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-2">
                           {getChannelIcon(log.channel)}
                           <span className="capitalize">{log.channel}</span>
@@ -325,15 +333,15 @@ export default function AdminNotificationLogsPage() {
                         {log.recipient}
                       </TableCell>
                       <TableCell>{getStatusBadge(log.status)}</TableCell>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         {log.provider && (
                           <Badge variant="secondary">{log.provider}</Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm">
+                      <TableCell className="text-sm hidden sm:table-cell">
                         {log.sentAt ? formatDate(log.sentAt) : "-"}
                       </TableCell>
-                      <TableCell className="max-w-xs">
+                      <TableCell className="max-w-xs hidden sm:table-cell">
                         {log.errorMessage && (
                           <div
                             className="text-red-600 text-sm truncate"

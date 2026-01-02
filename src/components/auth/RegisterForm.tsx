@@ -196,7 +196,7 @@ export function RegisterForm() {
       if (result) {
         // Redirect to OTP verification page
         router.push(
-          `/auth/verify-otp?phone=${encodeURIComponent(formData.phoneNumber)}&role=${formData.role}`
+          `/auth/verify-otp?phone=${encodeURIComponent(formData.phoneNumber)}&role=${formData.role}&Purpose=REGISTER&userId=${result.userId}`
         );
       } else {
         throw new Error("Registration failed");

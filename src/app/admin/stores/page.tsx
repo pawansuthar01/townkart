@@ -35,13 +35,24 @@ import {
   Check,
   X,
   Clock,
+  Map,
+  List,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-
-// Prevent automatic scrolling
-if (typeof window !== "undefined") {
-  window.history.scrollRestoration = "manual";
-}
+import {
+  MapIntegration,
+  MapLocation,
+  MapMarker,
+} from "@/components/shared/MapIntegration";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface StoreData {
   id: string;
@@ -51,6 +62,8 @@ interface StoreData {
   address: string;
   city: string;
   state: string;
+  latitude: number;
+  longitude: number;
   manager: {
     id: string;
     name: string;
@@ -58,6 +71,7 @@ interface StoreData {
     phone: string;
   } | null;
   isActive: boolean;
+  applicationStatus: string;
   isVerified: boolean;
   averageRating: number;
   totalOrders: number;
@@ -85,11 +99,33 @@ export default function AdminStoresPage() {
   const [selectedManager, setSelectedManager] = useState<string>("");
   const [selectedStore, setSelectedStore] = useState<string>("");
   const [pendingCount, setPendingCount] = useState(0);
+  const [activeTab, setActiveTab] = useState("stores");
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
     total: 0,
     totalPages: 0,
+  });
+
+  // Add Store dialog state
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [mapCenter, setMapCenter] = useState<MapLocation>({
+    latitude: 29.1492, // Hanumangarh center
+    longitude: 74.124,
+  });
+  const [mapMarkers, setMapMarkers] = useState<MapMarker[]>([]);
+  const [storeFormData, setStoreFormData] = useState({
+    name: "",
+    code: "",
+    description: "",
+    address: "",
+    city: "",
+    state: "",
+    pincode: "",
+    category: "",
+    latitude: "",
+    longitude: "",
+    managerId: "",
   });
 
   // Fetch stores
@@ -142,26 +178,9 @@ export default function AdminStoresPage() {
       console.error("Failed to fetch store managers:", error);
     }
   };
-
   useEffect(() => {
     fetchStores();
-    fetchPendingStores();
     fetchStoreManagers();
-
-    // Prevent automatic scrolling
-    const preventAutoScroll = () => {
-      if (window.scrollY > 0) {
-        window.scrollTo(0, 0);
-      }
-    };
-
-    // Prevent scroll restoration
-    window.history.scrollRestoration = "manual";
-
-    // Add a small delay to prevent any auto-scrolling
-    const timer = setTimeout(preventAutoScroll, 100);
-
-    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -171,6 +190,12 @@ export default function AdminStoresPage() {
 
     return () => clearTimeout(debounceTimer);
   }, [searchQuery, statusFilter]);
+
+  useEffect(() => {
+    if (activeTab === "pending") {
+      fetchPendingStores();
+    }
+  }, [activeTab]);
 
   const handleAssignStore = async () => {
     if (!selectedManager || !selectedStore) return;
@@ -250,6 +275,74 @@ export default function AdminStoresPage() {
     }
   };
 
+  // Handle map click to set store coordinates
+  const handleMapClick = (location: MapLocation) => {
+    setStoreFormData({
+      ...storeFormData,
+      latitude: location.latitude.toString(),
+      longitude: location.longitude.toString(),
+    });
+  };
+
+  // Handle create store
+  const handleCreateStore = async () => {
+    try {
+      const response = await fetch("/api/admin/stores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: storeFormData.name,
+          code: storeFormData.code,
+          description: storeFormData.description,
+          address: storeFormData.address,
+          city: storeFormData.city,
+          state: storeFormData.state,
+          pincode: storeFormData.pincode,
+          category: storeFormData.category,
+          latitude: storeFormData.latitude,
+          longitude: storeFormData.longitude,
+          managerId: storeFormData.managerId || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        alert("Store created successfully!");
+        setIsCreateDialogOpen(false);
+        resetStoreForm();
+        fetchStores();
+      } else {
+        const error = await response.json();
+        alert(error.message || "Failed to create store");
+      }
+    } catch (error) {
+      console.error("Failed to create store:", error);
+      alert("Failed to create store");
+    }
+  };
+
+  // Reset store form
+  const resetStoreForm = () => {
+    setStoreFormData({
+      name: "",
+      code: "",
+      description: "",
+      address: "",
+      city: "",
+      state: "",
+      pincode: "",
+      category: "",
+      latitude: "",
+      longitude: "",
+      managerId: "",
+    });
+  };
+
+  // Close dialog
+  const closeStoreDialog = () => {
+    setIsCreateDialogOpen(false);
+    resetStoreForm();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -259,13 +352,244 @@ export default function AdminStoresPage() {
             Manage stores and store manager assignments
           </p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Store
-        </Button>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Store
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Create New Store</DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Form Section */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="store-name">Store Name</Label>
+                    <Input
+                      id="store-name"
+                      placeholder="Enter store name"
+                      value={storeFormData.name}
+                      onChange={(e) =>
+                        setStoreFormData({
+                          ...storeFormData,
+                          name: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="store-code">Store Code</Label>
+                    <Input
+                      id="store-code"
+                      placeholder="Unique code"
+                      value={storeFormData.code}
+                      onChange={(e) =>
+                        setStoreFormData({
+                          ...storeFormData,
+                          code: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="store-description">Description</Label>
+                  <Textarea
+                    id="store-description"
+                    placeholder="Store description"
+                    value={storeFormData.description}
+                    onChange={(e) =>
+                      setStoreFormData({
+                        ...storeFormData,
+                        description: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="store-address">Address</Label>
+                  <Textarea
+                    id="store-address"
+                    placeholder="Full address"
+                    value={storeFormData.address}
+                    onChange={(e) =>
+                      setStoreFormData({
+                        ...storeFormData,
+                        address: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="store-city">City</Label>
+                    <Input
+                      id="store-city"
+                      placeholder="City"
+                      value={storeFormData.city}
+                      onChange={(e) =>
+                        setStoreFormData({
+                          ...storeFormData,
+                          city: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="store-state">State</Label>
+                    <Input
+                      id="store-state"
+                      placeholder="State"
+                      value={storeFormData.state}
+                      onChange={(e) =>
+                        setStoreFormData({
+                          ...storeFormData,
+                          state: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="store-pincode">Pincode</Label>
+                    <Input
+                      id="store-pincode"
+                      placeholder="Pincode"
+                      value={storeFormData.pincode}
+                      onChange={(e) =>
+                        setStoreFormData({
+                          ...storeFormData,
+                          pincode: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="store-category">Category</Label>
+                  <Input
+                    id="store-category"
+                    placeholder="e.g., Grocery, Restaurant"
+                    value={storeFormData.category}
+                    onChange={(e) =>
+                      setStoreFormData({
+                        ...storeFormData,
+                        category: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="store-manager">Manager (Optional)</Label>
+                  <Select
+                    value={storeFormData.managerId}
+                    onValueChange={(value) =>
+                      setStoreFormData({ ...storeFormData, managerId: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select manager" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {storeManagers.map((manager) => (
+                        <SelectItem key={manager.id} value={manager.id}>
+                          {manager.fullName || "N/A"} ({manager.email})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="store-latitude">Latitude</Label>
+                    <Input
+                      id="store-latitude"
+                      type="number"
+                      step="0.000001"
+                      placeholder="29.123456"
+                      value={storeFormData.latitude}
+                      onChange={(e) =>
+                        setStoreFormData({
+                          ...storeFormData,
+                          latitude: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="store-longitude">Longitude</Label>
+                    <Input
+                      id="store-longitude"
+                      type="number"
+                      step="0.000001"
+                      placeholder="74.123456"
+                      value={storeFormData.longitude}
+                      onChange={(e) =>
+                        setStoreFormData({
+                          ...storeFormData,
+                          longitude: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={closeStoreDialog}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCreateStore}
+                    disabled={
+                      !storeFormData.name ||
+                      !storeFormData.code ||
+                      !storeFormData.address ||
+                      !storeFormData.city ||
+                      !storeFormData.state ||
+                      !storeFormData.pincode ||
+                      !storeFormData.category ||
+                      !storeFormData.latitude ||
+                      !storeFormData.longitude
+                    }
+                  >
+                    Create Store
+                  </Button>
+                </div>
+              </div>
+
+              {/* Map Section */}
+              <div className="space-y-4">
+                <div>
+                  <Label>Store Location</Label>
+                  <p className="text-sm text-gray-600 mb-2">
+                    Click on the map to set the store location coordinates
+                  </p>
+                  <MapIntegration
+                    center={mapCenter}
+                    zoom={12}
+                    markers={mapMarkers}
+                    onMapClick={handleMapClick}
+                    height="400px"
+                    interactive={true}
+                    showControls={true}
+                  />
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      <Tabs defaultValue="stores" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="stores">Store Overview</TabsTrigger>
           <TabsTrigger value="pending">
@@ -275,286 +599,273 @@ export default function AdminStoresPage() {
         </TabsList>
 
         <TabsContent value="stores" className="space-y-6">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Total Stores
-                </CardTitle>
-                <Store className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stores.length}</div>
-              </CardContent>
-            </Card>
+          <Tabs defaultValue="list" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="list">
+                <List className="mr-2 h-4 w-4" />
+                List View
+              </TabsTrigger>
+              <TabsTrigger value="map">
+                <Map className="mr-2 h-4 w-4" />
+                Map View
+              </TabsTrigger>
+            </TabsList>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Active Stores
-                </CardTitle>
-                <Store className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {stores.filter((s) => s.isActive).length}
-                </div>
-              </CardContent>
-            </Card>
+            <TabsContent value="list" className="space-y-6">
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Total Stores
+                    </CardTitle>
+                    <Store className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{stores.length}</div>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Total Orders
-                </CardTitle>
-                <Store className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {stores.reduce((sum, store) => sum + store.ordersCount, 0)}
-                </div>
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Active Stores
+                    </CardTitle>
+                    <Store className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {stores.filter((s) => s.isActive).length}
+                    </div>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Total Revenue
-                </CardTitle>
-                <Store className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  ₹
-                  {stores
-                    .reduce((sum, store) => sum + store.totalRevenue, 0)
-                    .toLocaleString()}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Total Orders
+                    </CardTitle>
+                    <Store className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {stores.reduce(
+                        (sum, store) => sum + store.ordersCount,
+                        0
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
 
-          {/* Stores Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Stores ({stores.length})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Store Name</TableHead>
-                    <TableHead>Manager</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Rating</TableHead>
-                    <TableHead>Orders</TableHead>
-                    <TableHead>Revenue</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stores.map((store) => (
-                    <TableRow key={store.id}>
-                      <TableCell className="font-medium">
-                        {store.name}
-                      </TableCell>
-                      <TableCell>
-                        {store.manager ? store.manager.name : "No Manager"}
-                      </TableCell>
-                      <TableCell>{store.category}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                          {store.averageRating.toFixed(1)}
-                        </div>
-                      </TableCell>
-                      <TableCell>{store.ordersCount}</TableCell>
-                      <TableCell>
-                        ₹{store.totalRevenue.toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        {store.city}, {store.state}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Badge
-                            variant={store.isActive ? "default" : "secondary"}
-                          >
-                            {store.isActive ? "ACTIVE" : "INACTIVE"}
-                          </Badge>
-                          <Badge
-                            variant={store.isVerified ? "default" : "outline"}
-                          >
-                            {store.isVerified ? "VERIFIED" : "UNVERIFIED"}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {!store.isActive && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  handleStoreAction(store.id, "approve")
-                                }
-                              >
-                                <Check className="h-4 w-4 text-green-600" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  handleStoreAction(store.id, "reject")
-                                }
-                              >
-                                <X className="h-4 w-4 text-red-600" />
-                              </Button>
-                            </>
-                          )}
-                          <Button variant="ghost" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Total Revenue
+                    </CardTitle>
+                    <Store className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      ₹
+                      {stores
+                        .reduce((sum, store) => sum + store.totalRevenue, 0)
+                        .toLocaleString()}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Stores Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Stores ({stores.length})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto -mx-6 px-6">
+                    <Table className="min-w-full">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Store Name</TableHead>
+                          <TableHead>Manager</TableHead>
+                          <TableHead>Category</TableHead>
+                          <TableHead className="hidden sm:table-cell">
+                            Rating
+                          </TableHead>
+                          <TableHead className="hidden sm:table-cell">
+                            Orders
+                          </TableHead>
+                          <TableHead className="hidden sm:table-cell">
+                            Revenue
+                          </TableHead>
+                          <TableHead className="hidden sm:table-cell">
+                            Location
+                          </TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {stores.map((store) => (
+                          <TableRow key={store.id}>
+                            <TableCell className="font-medium">
+                              {store.name}
+                            </TableCell>
+                            <TableCell>
+                              {store.manager
+                                ? store.manager.name
+                                : "No Manager"}
+                            </TableCell>
+                            <TableCell>{store.category}</TableCell>
+                            <TableCell className="hidden sm:table-cell">
+                              <div className="flex items-center gap-1">
+                                <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                                {store.averageRating.toFixed(1)}
+                              </div>
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell">
+                              {store.ordersCount}
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell">
+                              ₹{store.totalRevenue.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell">
+                              {store.city}, {store.state}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-1">
+                                <Badge
+                                  variant={
+                                    store.applicationStatus === "APPROVED"
+                                      ? "default"
+                                      : "secondary"
+                                  }
+                                >
+                                  {store.applicationStatus === "APPROVED"
+                                    ? "APPROVED"
+                                    : store.applicationStatus}
+                                </Badge>
+                                <Badge
+                                  variant={
+                                    store.isActive ? "default" : "secondary"
+                                  }
+                                >
+                                  {store.isActive ? "ACTIVE" : "INACTIVE"}
+                                </Badge>
+                                <Badge
+                                  variant={
+                                    store.isVerified ? "default" : "outline"
+                                  }
+                                >
+                                  {store.isVerified ? "VERIFIED" : "UNVERIFIED"}
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {store.applicationStatus === "PENDING" && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleStoreAction(store.id, "approve")
+                                      }
+                                    >
+                                      <Check className="h-4 w-4 text-green-600" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleStoreAction(store.id, "reject")
+                                      }
+                                    >
+                                      <X className="h-4 w-4 text-red-600" />
+                                    </Button>
+                                  </>
+                                )}
+                                <Button variant="ghost" size="sm">
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="sm">
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="map" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Stores Map View</CardTitle>
+                  <p className="text-sm text-gray-600">
+                    View all stores on the map. Click on markers for details.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <MapIntegration
+                    center={mapCenter}
+                    zoom={10}
+                    markers={stores
+                      .filter((store) => store.latitude && store.longitude)
+                      .map((store) => ({
+                        id: store.id,
+                        latitude: store.latitude,
+                        longitude: store.longitude,
+                        title: store.name,
+                        address: store.address,
+                        type: "shop",
+                        infoWindow: `
+                          <div class="p-2">
+                            <h3 class="font-semibold">${store.name}</h3>
+                            <p class="text-sm text-gray-600">${store.address}</p>
+                            <p class="text-sm">${store.city}, ${store.state}</p>
+                            <p class="text-sm">Manager: ${store.manager?.name || "No Manager"}</p>
+                            <p class="text-sm">Status: ${store.isActive ? "Active" : "Inactive"}</p>
+                            <p class="text-sm">Orders: ${store.ordersCount}</p>
+                          </div>
+                        `,
+                      }))}
+                    height="600px"
+                    interactive={true}
+                    showControls={true}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="pending" className="space-y-6">
-          {/* Pending Applications Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Pending Applications
-                </CardTitle>
-                <Clock className="h-4 w-4 text-yellow-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{pendingStores.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  Awaiting approval
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Average Review Time
-                </CardTitle>
-                <Clock className="h-4 w-4 text-blue-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">24-48h</div>
-                <p className="text-xs text-muted-foreground">
-                  Standard processing time
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Pending Applications Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Store Applications ({pendingStores.length})</CardTitle>
+              <CardTitle>Store Applications Management</CardTitle>
               <p className="text-sm text-gray-600">
-                Review and approve store registration applications
+                Store applications are now managed in the Applications section
+                for better organization.
               </p>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Store Name</TableHead>
-                    <TableHead>Manager</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Applied Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendingStores.map((store) => (
-                    <TableRow key={store.id}>
-                      <TableCell className="font-medium">
-                        {store.name}
-                      </TableCell>
-                      <TableCell>
-                        {store.manager ? (
-                          <div>
-                            <div className="font-medium">
-                              {store.manager.name}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {store.manager.email}
-                            </div>
-                          </div>
-                        ) : (
-                          "No Manager"
-                        )}
-                      </TableCell>
-                      <TableCell>{store.category}</TableCell>
-                      <TableCell>
-                        {store.city}, {store.state}
-                      </TableCell>
-                      <TableCell>
-                        {new Date(store?.createdAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className="bg-yellow-100 text-yellow-800"
-                        >
-                          UNDER REVIEW
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleStoreAction(store.id, "approve")
-                            }
-                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                          >
-                            <Check className="h-4 w-4 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleStoreAction(store.id, "reject")
-                            }
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            Reject
-                          </Button>
-                          <Button variant="ghost" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="text-center py-8">
+                <p className="text-gray-600 mb-4">
+                  All store manager applications for active and verified stores
+                  are now displayed in the
+                  <strong> Applications </strong> page.
+                </p>
+                <div className="flex gap-4 justify-center">
+                  <Button asChild variant="outline">
+                    <a href="/admin/applications">Go to Applications</a>
+                  </Button>
+                  <Button variant="default">Verify & Activate Stores</Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -621,44 +932,52 @@ export default function AdminStoresPage() {
               <CardTitle>Store Managers Waiting for Assignment</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Applied Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {storeManagers.map((manager) => (
-                    <TableRow key={manager.id}>
-                      <TableCell className="font-medium">
-                        {manager.fullName || "N/A"}
-                      </TableCell>
-                      <TableCell>{manager.email}</TableCell>
-                      <TableCell>{manager.phoneNumber || "N/A"}</TableCell>
-                      <TableCell>
-                        {new Date(manager.createdAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">WAITING_FOR_STORE</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedManager(manager.id)}
-                        >
-                          Assign Store
-                        </Button>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Phone
+                      </TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Applied Date
+                      </TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {storeManagers.map((manager) => (
+                      <TableRow key={manager.id}>
+                        <TableCell className="font-medium">
+                          {manager.fullName || "N/A"}
+                        </TableCell>
+                        <TableCell>{manager.email}</TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          {manager.phoneNumber || "N/A"}
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          {new Date(manager.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">WAITING_FOR_STORE</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedManager(manager.id)}
+                          >
+                            Assign Store
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
 
@@ -668,43 +987,49 @@ export default function AdminStoresPage() {
               <CardTitle>Current Store Assignments</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Store Name</TableHead>
-                    <TableHead>Manager</TableHead>
-                    <TableHead>Manager Email</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stores
-                    .filter((store) => store.manager)
-                    .map((store) => (
-                      <TableRow key={store.id}>
-                        <TableCell className="font-medium">
-                          {store.name}
-                        </TableCell>
-                        <TableCell>{store.manager?.name || "N/A"}</TableCell>
-                        <TableCell>{store.manager?.email || "N/A"}</TableCell>
-                        <TableCell>
-                          <Badge variant="default">ASSIGNED</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRemoveStore(store.id)}
-                          >
-                            <UserX className="mr-2 h-4 w-4" />
-                            Remove
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Store Name</TableHead>
+                      <TableHead>Manager</TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Manager Email
+                      </TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stores
+                      .filter((store) => store.manager)
+                      .map((store) => (
+                        <TableRow key={store.id}>
+                          <TableCell className="font-medium">
+                            {store.name}
+                          </TableCell>
+                          <TableCell>{store.manager?.name || "N/A"}</TableCell>
+                          <TableCell className="hidden sm:table-cell">
+                            {store.manager?.email || "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="default">ASSIGNED</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRemoveStore(store.id)}
+                            >
+                              <UserX className="mr-2 h-4 w-4" />
+                              Remove
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

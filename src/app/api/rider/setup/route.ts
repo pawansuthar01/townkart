@@ -4,6 +4,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import bcrypt from "bcryptjs";
+import { notificationManager } from "@/lib/notificationSystem";
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +33,7 @@ export async function POST(request: NextRequest) {
       emergencyContactName: formData.get("emergencyContactName") as string,
       emergencyContactPhone: formData.get("emergencyContactPhone") as string,
       emergencyContactRelation: formData.get(
-        "emergencyContactRelation",
+        "emergencyContactRelation"
       ) as string,
     };
 
@@ -54,24 +56,33 @@ export async function POST(request: NextRequest) {
     ) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    // Check if user already has a rider profile
+    // Check if user already has an application or rider profile
+    const existingApplication = await prisma.application.findFirst({
+      where: { userId: session.user.id, role: "RIDER" },
+    });
+
     const existingRider = await prisma.riderProfile.findUnique({
       where: { userId: session.user.id },
     });
 
-    if (existingRider) {
+    if (existingApplication || existingRider) {
       return NextResponse.json(
-        { error: "User already has a rider profile" },
-        { status: 400 },
+        { error: "User already has a rider application or profile" },
+        { status: 400 }
       );
     }
 
     // Handle file uploads
-    const uploadDir = path.join(process.cwd(), "uploads", "riders");
+    const uploadDir = path.join(
+      process.cwd(),
+      "public",
+      "uploads",
+      "rider-documents"
+    );
     await mkdir(uploadDir, { recursive: true });
 
     const documentUrls: { [key: string]: string } = {};
@@ -92,7 +103,7 @@ export async function POST(request: NextRequest) {
         const filePath = path.join(uploadDir, fileName);
         const buffer = Buffer.from(await file.arrayBuffer());
         await writeFile(filePath, buffer);
-        documentUrls[field] = `/uploads/riders/${fileName}`;
+        documentUrls[field] = `/uploads/rider-documents/${fileName}`;
       } else if (
         [
           "drivingLicense",
@@ -104,64 +115,102 @@ export async function POST(request: NextRequest) {
       ) {
         return NextResponse.json(
           { error: `Missing required document: ${field}` },
-          { status: 400 },
+          { status: 400 }
         );
       }
     }
 
-    // Get default service area
-    const defaultServiceArea = await prisma.serviceArea.findFirst({
-      where: { isActive: true },
-    });
+    // Hash a dummy password for the application (user will set real password after approval)
+    const dummyPassword = await bcrypt.hash("temp_password_" + Date.now(), 12);
 
-    if (!defaultServiceArea) {
-      return NextResponse.json(
-        { error: "No active service area found" },
-        { status: 400 },
-      );
-    }
-
-    // Create rider profile with pending status
-    const riderProfile = await prisma.riderProfile.create({
+    // Create application record
+    const application = await prisma.application.create({
       data: {
-        userId: session.user.id,
+        fullName: riderData.fullName,
+        email: riderData.email,
+        phoneNumber: riderData.phoneNumber,
+        password: dummyPassword, // Will be updated after approval
+        role: "RIDER",
         vehicleType: riderData.vehicleType,
         vehicleNumber: riderData.vehicleNumber,
+        licenseNumber: "", // Not collected in setup
         emergencyContact: riderData.emergencyContactName,
         emergencyPhone: riderData.emergencyContactPhone,
         city: riderData.city,
-        isAvailable: false, // Not available until approved
-        isVerified: false, // Pending verification
-        isActive: false, // Pending approval
+        documents: documentUrls,
+        userId: session.user.id, // Link to existing user
+        status: "PENDING",
       },
     });
 
-    // Create rider zone assignment for the default service area
-    await prisma.riderZoneAssignment.create({
-      data: {
-        riderId: riderProfile.id,
-        serviceAreaId: defaultServiceArea.id,
-        assignedZones: [defaultServiceArea.name], // Default to service area
-        lastValidation: new Date(),
-        isCurrentlyValid: false, // Not valid until approved
-        validationErrors: ["Pending approval"],
-      },
-    });
+    // Send notification to admins
+    try {
+      const admins = await prisma.user.findMany({
+        where: {
+          userRoles: { has: "ADMIN" },
+          isActive: true,
+        },
+        select: {
+          id: true,
+          email: true,
+        },
+      });
 
-    // TODO: Send notification to admin for approval
-    // TODO: Store document URLs in appropriate table
-    // TODO: Update user profile with additional information
+      const subject = "New Rider Application Pending Approval";
+      const message = `
+A new rider has applied for registration and is pending approval.
+
+Applicant Details:
+- Name: ${riderData.fullName}
+- Email: ${riderData.email}
+- Phone: ${riderData.phoneNumber}
+- Vehicle: ${riderData.vehicleType} - ${riderData.vehicleNumber}
+
+Please review and approve/reject the application in the admin panel.
+      `;
+
+      for (const admin of admins) {
+        if (admin.email) {
+          await notificationManager.sendExternalEmail(
+            admin.email,
+            subject,
+            message,
+            undefined,
+            [
+              {
+                label: "Review Application",
+                url: `${process.env.NEXTAUTH_URL}/admin/applications`,
+              },
+            ]
+          );
+        }
+
+        // Send in-app notification
+        await prisma.notification.create({
+          data: {
+            userId: admin.id,
+            title: subject,
+            message: `New rider application from ${riderData.fullName} is pending approval.`,
+            notificationType: "SYSTEM_NOTIFICATION",
+            referenceId: application.id,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Error notifying admins:", error);
+    }
 
     return NextResponse.json({
       success: true,
-      message: "Rider application submitted successfully",
-      riderId: riderProfile.id,
+      message:
+        "Rider application submitted successfully. Please wait for admin approval.",
+      applicationId: application.id,
     });
   } catch (error) {
     console.error("Rider setup error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

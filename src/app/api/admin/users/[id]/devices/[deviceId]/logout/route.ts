@@ -24,12 +24,50 @@ export async function POST(
         id: deviceId,
         userId: id,
       },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            activeRole: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
     });
 
     if (!device) {
       return NextResponse.json(
         { success: false, message: "Device not found for this user" },
         { status: 404 }
+      );
+    }
+
+    // Check if device has any active sessions
+    const activeSessionCount = await prisma.session.count({
+      where: {
+        deviceId: deviceId,
+        isActive: true,
+        expires: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    if (activeSessionCount === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Device is not currently logged in",
+          data: {
+            userId: id,
+            userName: device.user.fullName,
+            deviceId,
+            deviceType: device.deviceType,
+          },
+        },
+        { status: 400 }
       );
     }
 
@@ -68,20 +106,42 @@ export async function POST(
       },
     });
 
+    // Update device last login info
+    await prisma.device.update({
+      where: { id: deviceId },
+      data: {
+        lastLoginAt: new Date(),
+        isActive: false, // Mark device as inactive
+      },
+    });
+
+    // Log the admin-forced device logout with better details
+    console.log(
+      `Admin ${session.user.id} logged out device ${deviceId} (${device.deviceType}) for user ${id} (${device.user.fullName}) - ${updateResult.count} sessions terminated`
+    );
+
     return NextResponse.json({
       success: true,
-      message: "Device logged out successfully by admin",
+      message: `Device ${device.deviceType} logged out successfully for user ${device.user.fullName || "user"}`,
       data: {
-        id,
+        userId: id,
+        userName: device.user.fullName,
         deviceId,
+        deviceType: device.deviceType,
         sessionsTerminated: updateResult.count,
         adminId: session.user.id,
+        userRole: device.user.activeRole,
       },
     });
   } catch (error: any) {
     console.error("Admin device logout error:", error);
     return NextResponse.json(
-      { success: false, message: "Internal server error" },
+      {
+        success: false,
+        message: "Failed to logout device",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      },
       { status: 500 }
     );
   }

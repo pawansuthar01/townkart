@@ -25,6 +25,7 @@ import {
   Globe,
   Cog,
   CreditCard,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,11 @@ const adminNavItems = [
     title: "Analytics",
     href: "/admin/analytics",
     icon: BarChart3,
+  },
+  {
+    title: "Destination Analytics",
+    href: "/admin/destination-analytics",
+    icon: TrendingUp,
   },
   {
     title: "Users",
@@ -181,7 +187,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-4">
+          <nav className="flex-1 p-4 overflow-y-auto">
             <ul className="space-y-2">
               {adminNavItems.map((item) => {
                 const Icon = item.icon;

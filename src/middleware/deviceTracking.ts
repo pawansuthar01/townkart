@@ -28,12 +28,25 @@ export interface LoginContext {
 }
 
 export class DeviceTracker {
-  static generateDeviceFingerprint(request: NextRequest): string {
-    const userAgent = request.headers.get("user-agent") || "";
-    const acceptLanguage = request.headers.get("accept-language") || "";
-    const platform = request.headers.get("sec-ch-ua-platform") || "";
+  static generateDeviceFingerprint(request: any): string {
+    let userAgent = "";
+    let acceptLanguage = "";
+    let platform = "";
 
-    // Create a simple fingerprint from user agent and platform
+    // ✅ NextRequest (App Router)
+    if (typeof (request as NextRequest).headers?.get === "function") {
+      const headers = (request as NextRequest).headers;
+      userAgent = headers.get("user-agent") || "";
+      acceptLanguage = headers.get("accept-language") || "";
+      platform = headers.get("sec-ch-ua-platform") || "";
+    }
+    // ✅ NextAuth / Node request
+    else if (request?.headers && typeof request.headers === "object") {
+      userAgent = String(request?.headers?.["user-agent"] || "");
+      acceptLanguage = String(request?.headers?.["accept-language"] || "");
+      platform = String(request?.headers?.["sec-ch-ua-platform"] || "");
+    }
+
     const fingerprint = `${userAgent}-${acceptLanguage}-${platform}`;
     return Buffer.from(fingerprint).toString("base64").substring(0, 32);
   }
@@ -132,6 +145,7 @@ export class DeviceTracker {
     return await prisma.session.findMany({
       where: {
         userId,
+        isActive: true,
         expires: { gt: new Date() },
       },
       include: {
@@ -147,7 +161,7 @@ export class DeviceTracker {
   ): Promise<boolean> {
     try {
       const session = await prisma.session.findUnique({
-        where: { id: sessionId },
+        where: { id: sessionId, userId },
         include: { device: true },
       });
 
@@ -190,13 +204,15 @@ export class DeviceTracker {
 
   static async terminateAllSessions(
     userId: string,
-    exceptSessionId?: string
+    exceptSessionToken?: string | null
   ): Promise<number> {
     try {
       const sessionsToTerminate = await prisma.session.findMany({
         where: {
           userId,
-          ...(exceptSessionId && { id: { not: exceptSessionId } }),
+          ...(exceptSessionToken
+            ? { sessionToken: { not: exceptSessionToken } }
+            : {}),
         },
         include: { device: true },
       });
@@ -204,7 +220,9 @@ export class DeviceTracker {
       const result = await prisma.session.updateMany({
         where: {
           userId,
-          ...(exceptSessionId && { id: { not: exceptSessionId } }),
+          ...(exceptSessionToken
+            ? { sessionToken: { not: exceptSessionToken } }
+            : {}),
         },
         data: {
           isActive: false,
@@ -212,7 +230,7 @@ export class DeviceTracker {
         },
       });
 
-      // Log logout for each terminated session
+      // audit logs
       for (const session of sessionsToTerminate) {
         await this.logDeviceLogin(
           userId,
@@ -342,7 +360,7 @@ export class DeviceTracker {
     }
   }
 
-  private static async getClientIP(request: NextRequest): Promise<string> {
+  public static async getClientIP(request: NextRequest): Promise<string> {
     const forwarded = request.headers.get("x-forwarded-for");
     const realIP = request.headers.get("x-real-ip");
     const clientIP = request.headers.get("x-client-ip");

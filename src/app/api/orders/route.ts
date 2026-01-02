@@ -6,6 +6,7 @@ import {
 } from "@/lib/orderManagement";
 import { prisma } from "@/lib/prisma";
 import { findStoreForOrder } from "@/lib/storeAssignment";
+import { predictDestinationType } from "@/lib/destinationAnalytics";
 
 export async function GET(request: NextRequest) {
   try {
@@ -169,6 +170,28 @@ export async function POST(request: NextRequest) {
     };
 
     const assignmentResult = await findStoreForOrder(customerLocation);
+
+    // Predict destination type for analytics
+    let destinationPrediction = null;
+    try {
+      destinationPrediction = await predictDestinationType(
+        {
+          id: "temp", // Not needed for prediction
+          latitude: address.latitude,
+          longitude: address.longitude,
+          line1: address.addressLine1,
+          city: address.city,
+          state: address.state,
+        },
+        customerId
+      );
+      console.log(
+        `Destination prediction for order: ${destinationPrediction.predictedType} (${destinationPrediction.confidence}%)`
+      );
+    } catch (error) {
+      console.error("Failed to predict destination type:", error);
+      // Continue with order creation even if prediction fails
+    }
 
     if (!assignmentResult) {
       return NextResponse.json(

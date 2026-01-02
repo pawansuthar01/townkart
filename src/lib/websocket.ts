@@ -19,16 +19,124 @@ export class DeliveryWebSocketServer {
   private wss: WebSocketServer | null = null;
 
   initialize(server: any) {
-    this.wss = new WebSocketServer({ server });
+    // Only initialize WebSocket server in production or when explicitly enabled
+    // This prevents conflicts with Next.js development HMR WebSocket
+    const enableWebSocket =
+      process.env.ENABLE_WEBSOCKET === "true" ||
+      process.env.NODE_ENV === "production";
+
+    if (!enableWebSocket) {
+      console.log(
+        "WebSocket server disabled in development (set ENABLE_WEBSOCKET=true to enable)"
+      );
+      return;
+    }
+
+    this.wss = new WebSocketServer({
+      server,
+      // Avoid conflicts with Next.js HMR by not handling HMR paths
+      verifyClient: (info, callback) => {
+        const url = info.req.url || "";
+        // Reject webpack HMR connections to avoid conflicts
+        if (url.includes("_next/webpack-hmr") || url.includes("webpack-hmr")) {
+          callback(false, 403, "HMR connections not allowed");
+          return;
+        }
+        callback(true);
+      },
+    });
 
     this.wss.on("connection", (ws: WebSocket, request: IncomingMessage) => {
       this.handleConnection(ws, request);
     });
 
-    console.log("WebSocket server initialized");
+    console.log("✅ WebSocket server initialized (production mode)");
   }
 
-  private handleConnection(ws: WebSocket, request: IncomingMessage) {
+  private async authenticateWebSocketUser(
+    userId: string,
+    userType: string,
+    token?: string | null
+  ): Promise<{ authenticated: boolean; reason?: string }> {
+    try {
+      // For development/testing, allow connections without token
+      if (process.env.NODE_ENV === "development" && !token) {
+        console.warn("WebSocket authentication bypassed in development mode");
+        return { authenticated: true };
+      }
+
+      if (!token) {
+        return { authenticated: false, reason: "Missing authentication token" };
+      }
+
+      // Verify user exists and has correct role
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          riderProfile: userType === "rider",
+          managedStores: userType === "store_manager",
+        },
+      });
+
+      if (!user) {
+        return { authenticated: false, reason: "User not found" };
+      }
+
+      // Check if user has the required role
+      const roleMap: Record<string, string> = {
+        customer: "CUSTOMER",
+        store_manager: "STORE_MANAGER",
+        rider: "RIDER",
+        admin: "ADMIN",
+      };
+
+      const requiredRole = roleMap[userType];
+      if (
+        !requiredRole ||
+        !user.userRoles.some((role) => role === requiredRole)
+      ) {
+        return {
+          authenticated: false,
+          reason: "Invalid user type for this user",
+        };
+      }
+
+      // Additional checks based on user type
+      if (userType === "store_manager" && !user.managedStores?.length) {
+        return {
+          authenticated: false,
+          reason: "Store manager has no associated store",
+        };
+      }
+
+      if (userType === "rider" && !user.riderProfile) {
+        return { authenticated: false, reason: "Rider profile not found" };
+      }
+
+      // Verify session token
+      const session = await prisma.session.findFirst({
+        where: {
+          userId: userId,
+          sessionToken: token,
+          isActive: true,
+          expires: {
+            gt: new Date(),
+          },
+        },
+      });
+
+      if (!session) {
+        return { authenticated: false, reason: "Invalid or expired session" };
+      }
+
+      return { authenticated: true };
+    } catch (error) {
+      console.error("WebSocket authentication error:", error);
+      return { authenticated: false, reason: "Authentication service error" };
+    }
+  }
+
+  private async handleConnection(ws: WebSocket, request: IncomingMessage) {
     const url = new URL(request.url || "", "http://localhost");
     const deliveryId = url.searchParams.get("deliveryId");
     const orderId = url.searchParams.get("orderId");
@@ -39,9 +147,21 @@ export class DeliveryWebSocketServer {
       | "store_manager"
       | "rider"
       | "admin";
+    const token = url.searchParams.get("token");
 
     if (!userId || !userType) {
       ws.close(1008, "Missing userId or userType");
+      return;
+    }
+
+    // Authenticate user
+    const authResult = await this.authenticateWebSocketUser(
+      userId,
+      userType,
+      token
+    );
+    if (!authResult.authenticated) {
+      ws.close(1008, authResult.reason || "Authentication failed");
       return;
     }
 
@@ -100,10 +220,24 @@ export class DeliveryWebSocketServer {
     // Handle messages
     ws.on("message", (data) => {
       try {
-        const message = JSON.parse(data.toString());
+        const rawData = data.toString();
+        // Validate message size (prevent DoS)
+        if (rawData.length > 1024 * 1024) {
+          // 1MB limit
+          console.error("WebSocket message too large from", connection.userId);
+          return;
+        }
+
+        const message = JSON.parse(rawData);
         this.handleMessage(connection, message);
       } catch (error) {
-        console.error("Invalid WebSocket message:", error);
+        console.error(
+          "Invalid WebSocket message from",
+          connection.userId,
+          ":",
+          error
+        );
+        // Don't close connection for invalid messages, just log
       }
     });
 
@@ -207,17 +341,34 @@ export class DeliveryWebSocketServer {
         this.sendToConnection(connection.ws, {
           type: "pong",
           timestamp: new Date(),
+          serverTime: new Date().toISOString(),
         });
         break;
       case "location_update":
-        // Handle location updates from riders
-        if (connection.userType === "rider" && connection.deliveryId) {
-          this.broadcastToDelivery(connection.deliveryId, {
-            type: "location_update",
-            riderId: connection.userId,
-            location: message.location,
+        // Handle location updates from different user types
+        if (connection.userType === "rider") {
+          this.handleRiderLocationUpdate(connection, message.location);
+        } else if (connection.userType === "customer") {
+          this.handleCustomerLocationUpdate(connection, message.location);
+        } else if (connection.userType === "store_manager") {
+          this.handleStoreLocationUpdate(connection, message.location);
+        }
+        break;
+      case "subscribe_order":
+        // Subscribe to order updates
+        if (message.orderId) {
+          connection.orderId = message.orderId;
+          this.sendToConnection(connection.ws, {
+            type: "subscription_confirmed",
+            orderId: message.orderId,
             timestamp: new Date(),
           });
+        }
+        break;
+      case "unsubscribe_order":
+        // Unsubscribe from order updates
+        if (connection.orderId === message.orderId) {
+          connection.orderId = undefined;
         }
         break;
       default:
@@ -225,6 +376,169 @@ export class DeliveryWebSocketServer {
     }
   }
 
+  private async handleRiderLocationUpdate(
+    connection: WebSocketConnection,
+    location: any
+  ) {
+    try {
+      // Update rider location in database
+      await prisma.riderProfile.update({
+        where: { userId: connection.userId },
+        data: {
+          currentLat: location.latitude,
+          currentLng: location.longitude,
+          lastLocationUpdate: new Date(),
+        },
+      });
+
+      // Create location log
+      await prisma.riderLocation.create({
+        data: {
+          riderId: connection.userId,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy,
+          speed: location.speed,
+          heading: location.heading,
+          activity: location.activity || "moving",
+          batteryLevel: location.batteryLevel,
+        },
+      });
+
+      // Broadcast location update to relevant deliveries
+      if (connection.deliveryId) {
+        this.broadcastToDelivery(connection.deliveryId, {
+          type: "location_update",
+          riderId: connection.userId,
+          location: {
+            latitude: location.latitude,
+            longitude: location.longitude,
+            timestamp: new Date(),
+            accuracy: location.accuracy,
+            speed: location.speed,
+          },
+        });
+      }
+
+      // Broadcast to stores with active deliveries for this rider
+      this.broadcastRiderLocationToStores(connection.userId, {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        timestamp: new Date(),
+        accuracy: location.accuracy,
+      });
+    } catch (error) {
+      console.error("Error handling rider location update:", error);
+    }
+  }
+
+  private async handleCustomerLocationUpdate(
+    connection: WebSocketConnection,
+    location: any
+  ) {
+    try {
+      // Log customer location update
+      await prisma.locationDataRecord.create({
+        data: {
+          userId: connection.userId,
+          consentId: "customer_location_tracking", // This needs to be created in DB
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy,
+          timestamp: new Date(),
+          purpose: "customer_location_tracking",
+          collectedAt: new Date(),
+          retentionExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+          isAnonymized: false,
+          source: "customer_app",
+        },
+      });
+
+      // Broadcast customer location to relevant parties (admins, support)
+      this.broadcastToAdmins({
+        type: "customer_location_update",
+        customerId: connection.userId,
+        location: {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          timestamp: new Date(),
+          accuracy: location.accuracy,
+        },
+      });
+
+      console.log(
+        `Customer ${connection.userId} location updated: ${location.latitude}, ${location.longitude}`
+      );
+    } catch (error) {
+      console.error("Error handling customer location update:", error);
+    }
+  }
+
+  private async handleStoreLocationUpdate(
+    connection: WebSocketConnection,
+    location: any
+  ) {
+    try {
+      // Find store managed by this user
+      const store = await prisma.store.findFirst({
+        where: {
+          managerId: connection.userId,
+          isActive: true,
+        },
+      });
+
+      if (!store) {
+        console.error(`No active store found for manager ${connection.userId}`);
+        return;
+      }
+
+      // Update store location
+      await prisma.store.update({
+        where: { id: store.id },
+        data: {
+          latitude: location.latitude,
+          longitude: location.longitude,
+        },
+      });
+
+      // Log store location update
+      await prisma.locationDataRecord.create({
+        data: {
+          userId: connection.userId,
+          consentId: "store_location_tracking", // This needs to be created in DB
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy,
+          timestamp: new Date(),
+          purpose: "store_location_tracking",
+          collectedAt: new Date(),
+          retentionExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+          isAnonymized: false,
+          source: "store_app",
+        },
+      });
+
+      // Broadcast store location to relevant parties (admins, riders with deliveries)
+      this.broadcastToAdmins({
+        type: "store_location_update",
+        storeId: store.id,
+        storeName: store.name,
+        managerId: connection.userId,
+        location: {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          timestamp: new Date(),
+          accuracy: location.accuracy,
+        },
+      });
+
+      console.log(
+        `Store ${store.name} (${store.id}) location updated: ${location.latitude}, ${location.longitude}`
+      );
+    } catch (error) {
+      console.error("Error handling store location update:", error);
+    }
+  }
   broadcastToDelivery(deliveryId: string, message: any) {
     const connections = this.connections.get(deliveryId) || [];
     connections.forEach((connection) => {
@@ -266,6 +580,50 @@ export class DeliveryWebSocketServer {
         this.sendToConnection(connection.ws, message);
       }
     });
+  }
+
+  // Broadcast to all admin users
+  broadcastToAdmins(message: any) {
+    for (const connections of Array.from(this.userConnections.values())) {
+      connections.forEach((connection: WebSocketConnection) => {
+        if (
+          connection.userType === "admin" &&
+          connection.ws.readyState === WebSocket.OPEN
+        ) {
+          this.sendToConnection(connection.ws, message);
+        }
+      });
+    }
+  }
+
+  // Broadcast system status updates to admins
+  broadcastSystemStatusUpdate(statusData: any) {
+    const message = {
+      type: "system_status_update",
+      data: statusData,
+      timestamp: new Date(),
+    };
+    this.broadcastToAdmins(message);
+  }
+
+  // Broadcast new user registration to admins
+  broadcastNewUserRegistration(userData: any) {
+    const message = {
+      type: "new_user_registration",
+      user: userData,
+      timestamp: new Date(),
+    };
+    this.broadcastToAdmins(message);
+  }
+
+  // Broadcast payment events to admins
+  broadcastPaymentEvent(paymentData: any) {
+    const message = {
+      type: "payment_event",
+      payment: paymentData,
+      timestamp: new Date(),
+    };
+    this.broadcastToAdmins(message);
   }
 
   // Broadcast order status updates

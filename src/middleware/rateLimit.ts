@@ -1,106 +1,101 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 interface RateLimitConfig {
-  windowMs: number; // Time window in milliseconds
-  maxAttempts: number; // Maximum attempts allowed
-  blockDurationMs: number; // How long to block after max attempts
-  progressiveDelay: boolean; // Whether to add progressive delays
+  windowMs: number;
+  maxAttempts: number;
+  blockDurationMs: number;
+  progressiveDelay: boolean;
 }
 
 const LOGIN_RATE_LIMIT: RateLimitConfig = {
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 5 * 60 * 1000, // 5 minutes
   maxAttempts: 5,
-  blockDurationMs: 30 * 60 * 1000, // 30 minutes block
-  progressiveDelay: true,
-};
-
-const ADMIN_LOGIN_RATE_LIMIT: RateLimitConfig = {
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxAttempts: 60, // Higher limit for admins
-  blockDurationMs: 10 * 60 * 1000, // 10 minutes block (shorter for admins)
-  progressiveDelay: false, // No progressive delay for admins
+  blockDurationMs: 60 * 1000, // 1 minute
+  progressiveDelay: false,
 };
 
 export class RateLimiter {
-  static async getClientIP(request: NextRequest): Promise<string> {
-    // Try to get real IP from various headers
-    const forwarded = request.headers.get("x-forwarded-for");
-    const realIP = request.headers.get("x-real-ip");
-    const clientIP = request.headers.get("x-client-ip");
+  /* ---------------- IP UTILITY ---------------- */
+  static async getClientIP(request: any): Promise<string> {
+    if (request?.headers?.get) {
+      const forwarded = request.headers.get("x-forwarded-for");
+      const realIP = request.headers.get("x-real-ip");
+      const clientIP = request.headers.get("x-client-ip");
 
-    if (forwarded) {
-      return forwarded.split(",")[0].trim();
-    }
-    if (realIP) {
-      return realIP;
-    }
-    if (clientIP) {
-      return clientIP;
+      if (forwarded) return forwarded.split(",")[0].trim();
+      if (realIP) return realIP;
+      if (clientIP) return clientIP;
     }
 
-    // Fallback to a hashed version of the IP for privacy
+    if (request?.headers && typeof request.headers === "object") {
+      const forwarded =
+        request.headers["x-forwarded-for"] ||
+        request.headers["x-real-ip"] ||
+        request.headers["x-client-ip"];
+
+      if (typeof forwarded === "string") {
+        return forwarded.split(",")[0].trim();
+      }
+    }
+
     return "unknown";
   }
 
+  /* ---------------- RATE LIMIT CHECK ---------------- */
   static async checkLoginAttempts(
     identifier: string,
-    ipAddress: string,
-    request: NextRequest
+    ipAddress: string
   ): Promise<{
     allowed: boolean;
     remainingAttempts: number;
     blockUntil?: Date;
-    delayMs?: number;
+    delayMs: number;
+    Ws: number;
   }> {
     const now = new Date();
     const windowStart = new Date(now.getTime() - LOGIN_RATE_LIMIT.windowMs);
 
-    // Get recent login attempts for this identifier/IP combination
-    const recentAttempts = await prisma.loginAttempt.findMany({
-      where: {
-        OR: [
-          { identifier, createdAt: { gte: windowStart } },
-          { ipAddress, createdAt: { gte: windowStart } },
-        ],
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const [identifierAttempts, ipAttempts] = await Promise.all([
+      prisma.loginAttempt.findMany({
+        where: { identifier, createdAt: { gte: windowStart } },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.loginAttempt.findMany({
+        where: { ipAddress, createdAt: { gte: windowStart } },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
 
-    const failedAttempts = recentAttempts.filter(
-      (attempt: any) => !attempt.success
-    );
-    const totalAttempts = recentAttempts.length;
+    const allAttempts = [...identifierAttempts, ...ipAttempts];
+    const failedAttempts = allAttempts.filter((a) => !a.success);
 
-    // Check if currently blocked
     const lastFailedAttempt = failedAttempts[0];
+    const blockUntil = new Date(
+      lastFailedAttempt?.createdAt?.getTime() + LOGIN_RATE_LIMIT.blockDurationMs
+    );
     if (
       lastFailedAttempt &&
       failedAttempts.length >= LOGIN_RATE_LIMIT.maxAttempts
     ) {
-      const blockUntil = new Date(
-        lastFailedAttempt.createdAt.getTime() + LOGIN_RATE_LIMIT.blockDurationMs
-      );
-
       if (now < blockUntil) {
         return {
           allowed: false,
           remainingAttempts: 0,
           blockUntil,
+          delayMs: LOGIN_RATE_LIMIT.blockDurationMs,
+          Ws: Math.ceil((new Date(blockUntil).getTime() - Date.now()) / 1000),
         };
       }
     }
 
-    // Calculate remaining attempts
     const remainingAttempts = Math.max(
       0,
       LOGIN_RATE_LIMIT.maxAttempts - failedAttempts.length
     );
 
-    // Calculate progressive delay if enabled
-    let delayMs: number | undefined;
+    let delayMs = 0;
     if (LOGIN_RATE_LIMIT.progressiveDelay && failedAttempts.length > 0) {
-      // Exponential backoff: 1s, 2s, 4s, 8s, 16s...
       delayMs = Math.min(16000, Math.pow(2, failedAttempts.length - 1) * 1000);
     }
 
@@ -108,9 +103,11 @@ export class RateLimiter {
       allowed: remainingAttempts > 0,
       remainingAttempts,
       delayMs,
+      Ws: Math.ceil((new Date(blockUntil).getTime() - Date.now()) / 1000),
     };
   }
 
+  /* ---------------- RECORD ATTEMPT ---------------- */
   static async recordLoginAttempt(
     identifier: string,
     ipAddress: string,
@@ -118,9 +115,9 @@ export class RateLimiter {
     success: boolean,
     failureReason?: string,
     userId?: string
-  ): Promise<any> {
+  ) {
     try {
-      const attempt = await prisma.loginAttempt.create({
+      return await prisma.loginAttempt.create({
         data: {
           identifier,
           ipAddress,
@@ -130,29 +127,33 @@ export class RateLimiter {
           userId: userId || undefined,
         },
       });
-      return attempt;
     } catch (error) {
-      // Log error but don't fail the request
       console.error("Failed to record login attempt:", error);
       return null;
     }
   }
 
-  static async createRateLimitResponse(
+  /* ---------------- RESPONSE ---------------- */
+  static createRateLimitResponse(
     message: string,
-    retryAfter?: number
-  ): Promise<NextResponse> {
+    retryAfterMs?: number
+  ): NextResponse {
     const response = NextResponse.json(
       {
         error: "Too Many Requests",
         message,
-        retryAfter,
+        retryAfterSeconds: retryAfterMs
+          ? Math.ceil(retryAfterMs / 1000)
+          : undefined,
       },
       { status: 429 }
     );
 
-    if (retryAfter) {
-      response.headers.set("Retry-After", retryAfter.toString());
+    if (retryAfterMs) {
+      response.headers.set(
+        "Retry-After",
+        Math.ceil(retryAfterMs / 1000).toString()
+      );
     }
 
     return response;

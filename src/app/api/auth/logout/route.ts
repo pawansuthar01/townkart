@@ -2,15 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { DeviceTracker } from "@/middleware/deviceTracking";
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("🚪 Logout API called");
-    console.log(
-      "Request headers:",
-      Object.fromEntries(request.headers.entries())
-    );
-
     const session = await getServerSession(authOptions);
     console.log("Session check result:", {
       hasSession: !!session,
@@ -33,86 +28,92 @@ export async function POST(request: NextRequest) {
       select: { isActive: true, phoneVerified: true },
     });
 
-    if (!user || !user.isActive || !user.phoneVerified) {
-      console.log("❌ User account is not active or verified", {
-        userId: session.user.id,
-        isActive: user?.isActive,
-        phoneVerified: user?.phoneVerified,
-      });
+    if (!user) {
       return NextResponse.json(
-        { success: false, message: "Account is not active or verified" },
-        { status: 403 }
+        { success: false, message: "Account not found" },
+        { status: 404 }
       );
     }
 
-    console.log("🔄 Starting logout cleanup for user:", session.user.id);
+    const currentSessionToken = session.sessionToken;
 
-    // Get ALL active sessions for this user
-    const activeSessions = await prisma.session.findMany({
+    if (!currentSessionToken) {
+      return NextResponse.json(
+        { success: false, message: "Invalid session" },
+        { status: 400 }
+      );
+    }
+
+    // Find the current active session
+    const currentSession = await prisma.session.findFirst({
       where: {
         userId: session.user.id,
+        sessionToken: currentSessionToken,
         isActive: true,
+        expires: {
+          gt: new Date(),
+        },
       },
       include: {
         device: true,
       },
     });
 
-    console.log(
-      `Found ${activeSessions.length} active sessions to clean up for user ${session.user.id}`
-    );
-    console.log(
-      "Active sessions:",
-      activeSessions.map((s) => ({
-        id: s.id,
-        deviceId: s.deviceId,
-        createdAt: s.createdAt,
-      }))
-    );
-
-    // Clean up each active session
-    for (const sessionRecord of activeSessions) {
-      // Log the logout in device login log for each session
-      await prisma.deviceLoginLog.create({
-        data: {
-          userId: session.user.id,
-          deviceId: sessionRecord.deviceId || "unknown",
-          loginType: "LOGOUT",
-          ipAddress: sessionRecord.ipAddress || "unknown",
-          userAgent: sessionRecord.userAgent || "",
-          location: sessionRecord.location || {},
-          deviceType: sessionRecord.device?.deviceType || "unknown",
-          riskLevel: "LOW",
-          isSuspicious: false,
-        },
+    if (!currentSession) {
+      console.log("ℹ️ Current session not found or already inactive");
+      return NextResponse.json({
+        success: true,
+        message: "User is already logged out",
+        sessionsCleaned: 0,
       });
-
-      // Mark session as inactive
-      await prisma.session.update({
-        where: { id: sessionRecord.id },
-        data: {
-          isActive: false,
-          lastActivity: new Date(),
-        },
-      });
-
-      // Update device last login info if device exists
-      if (sessionRecord.deviceId) {
-        await prisma.device.update({
-          where: { id: sessionRecord.deviceId },
-          data: {
-            lastLoginAt: new Date(),
-          },
-        });
-      }
     }
 
-    console.log("✅ Database logout cleanup completed");
+    // Log the logout using DeviceTracker
+    await DeviceTracker.logDeviceLogin(
+      session.user.id,
+      currentSession.deviceId || undefined,
+      "LOGOUT",
+      {
+        deviceInfo: {
+          deviceId: currentSession.deviceId || "unknown",
+          deviceType: currentSession.device?.deviceType || "unknown",
+        },
+        locationInfo: {
+          ip: currentSession.ipAddress || "unknown",
+          ...(currentSession.location as any),
+        },
+        userAgent: currentSession.userAgent || "",
+      },
+      "LOW",
+      ["User manually logged out from current device"]
+    );
+
+    // Mark current session as inactive
+    await prisma.session.update({
+      where: { id: currentSession.id },
+      data: {
+        isActive: false,
+        lastActivity: new Date(),
+      },
+    });
+
+    // Deactivate the device since user is logging out from it
+    if (currentSession.deviceId) {
+      await prisma.device.update({
+        where: { id: currentSession.deviceId },
+        data: {
+          isActive: false,
+        },
+      });
+    }
+
+    console.log("✅ Current session logout cleanup completed");
 
     return NextResponse.json({
       success: true,
-      message: "Logout cleanup completed",
-      sessionsCleaned: activeSessions.length,
+      message: "Successfully logged out from current device",
+      sessionsCleaned: 1,
+      deviceType: currentSession.device?.deviceType,
     });
   } catch (error: any) {
     console.error("Logout API error:", error);

@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Send email with invitation link
-    const invitationUrl = `${process.env.NEXTAUTH_URL}/auth/register?token=${token}`;
+    const invitationUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/auth/invitation?token=${token}`;
     const subject = "Invitation to join TownKart as Store Manager";
     const emailMessage = `You've been invited to join TownKart as a store manager. Click the button below to complete your registration.
 

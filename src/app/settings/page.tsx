@@ -108,7 +108,7 @@ export default function SettingsPage() {
           setSettings((prev) => ({ ...prev, ...data.settings }));
           localStorage.setItem(
             `settings_${user.id}`,
-            JSON.stringify(settingsWithCache),
+            JSON.stringify(settingsWithCache)
           );
         }
       } catch (error) {
@@ -150,7 +150,7 @@ export default function SettingsPage() {
         const settingsWithCache = { ...settings, _cacheTime: Date.now() };
         localStorage.setItem(
           `settings_${user.id}`,
-          JSON.stringify(settingsWithCache),
+          JSON.stringify(settingsWithCache)
         );
         alert("Settings saved successfully!");
       } else {
@@ -210,7 +210,6 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-4xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
@@ -488,7 +487,7 @@ export default function SettingsPage() {
                         onChange={(e) =>
                           handlePasswordChange(
                             "currentPassword",
-                            e.target.value,
+                            e.target.value
                           )
                         }
                       />

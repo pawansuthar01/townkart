@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession();
-    if (!session?.user?.id || !session.user.roles?.includes("ADMIN")) {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id || !session.user.activeRole?.includes("ADMIN")) {
       return NextResponse.json(
         { error: "Unauthorized - Admin access required" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -165,7 +166,7 @@ export async function GET(request: NextRequest) {
     console.error("Get all riders locations error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

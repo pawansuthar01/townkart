@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
-
+import { authOptions } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { deliveryId: string } },
+  { params }: { params: { deliveryId: string } }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -45,7 +45,7 @@ export async function GET(
     if (!delivery) {
       return NextResponse.json(
         { error: "Delivery not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -57,14 +57,14 @@ export async function GET(
     if (isCustomer && delivery.order.customerId !== session.user.id) {
       return NextResponse.json(
         { error: "Unauthorized to view this delivery" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
     if (isRider && delivery.rider?.id !== session.user.id) {
       return NextResponse.json(
         { error: "Unauthorized to view this delivery" },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -111,7 +111,7 @@ export async function GET(
     console.error("Get delivery location error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

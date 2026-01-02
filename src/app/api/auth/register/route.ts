@@ -7,76 +7,8 @@ import { OTPService } from "@/lib/otpService";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, fullName, phoneNumber, role, token } =
+    const { email, password, fullName, phoneNumber, role } =
       registerSchema.parse(body);
-
-    // Check for invitation token if role is not CUSTOMER
-    let invitation = null;
-    if (role !== "CUSTOMER") {
-      if (!token) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Invitation token is required for this role",
-          },
-          { status: 400 }
-        );
-      }
-
-      invitation = await prisma.invitation.findUnique({
-        where: { token },
-      });
-
-      if (!invitation) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Invalid invitation token",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (invitation.status !== "APPROVED") {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Invitation is not approved yet",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (invitation.expiresAt < new Date()) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Invitation has expired",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (invitation.invitedEmail !== email) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Email does not match the invitation",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (invitation.role !== role) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Role does not match the invitation",
-          },
-          { status: 400 }
-        );
-      }
-    }
 
     // Check if user already exists
     const existingUser = await prisma.user.findFirst({
@@ -123,41 +55,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Mark invitation as used if it exists
-    if (invitation) {
-      await prisma.invitation.update({
-        where: { id: invitation.id },
-        data: {
-          status: "USED",
-          usedAt: new Date(),
-          usedBy: user.id,
-        },
-      });
-    }
-
-    // Send OTP using the new service
-    const result = await OTPService.sendOTP(phoneNumber, email, "REGISTER");
-
-    if (!result.success) {
-      // Delete the created user if OTP sending failed
-      await prisma.user.delete({
-        where: { id: user.id },
-      });
-
-      return NextResponse.json(
-        { success: false, message: result.message },
-        { status: 429 }
-      );
-    }
-
     return NextResponse.json({
       success: true,
-      message: result.message,
+      message: "Registration successful. OTP verification required.",
       data: {
         userId: user.id,
         phoneNumber,
         otpSent: true,
-        channels: result.channels,
+        userInfo: user,
       },
     });
   } catch (error: any) {

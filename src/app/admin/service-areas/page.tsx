@@ -38,6 +38,7 @@ import {
   MapIntegration,
   MapLocation,
   MapMarker,
+  MapServiceArea,
 } from "@/components/shared/MapIntegration";
 
 interface ServiceArea {
@@ -72,6 +73,10 @@ export default function AdminServiceAreasPage() {
     longitude: 74.124,
   });
   const [mapMarkers, setMapMarkers] = useState<MapMarker[]>([]);
+  const [mapServiceAreas, setMapServiceAreas] = useState<MapServiceArea[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(
+    null
+  );
   const [formData, setFormData] = useState({
     name: "",
     city: "",
@@ -109,6 +114,21 @@ export default function AdminServiceAreasPage() {
           `,
         }));
         setMapMarkers(markers);
+
+        // Create map service areas
+        const serviceAreas: MapServiceArea[] = data.data.map(
+          (area: ServiceArea) => ({
+            id: area.id,
+            center: {
+              latitude: area.centerLat,
+              longitude: area.centerLng,
+            },
+            radiusKm: area.radiusKm,
+            name: area.name,
+            isActive: area.isActive,
+          })
+        );
+        setMapServiceAreas(serviceAreas);
       }
     } catch (error) {
       console.error("Failed to fetch service areas:", error);
@@ -117,13 +137,48 @@ export default function AdminServiceAreasPage() {
     }
   };
 
+  // Create draggable marker for location selection
+  const draggableMarker: MapMarker | undefined = selectedLocation
+    ? {
+        id: "selected-location",
+        latitude: selectedLocation.latitude,
+        longitude: selectedLocation.longitude,
+        title: "Selected Location",
+        type: "shop",
+        draggable: true,
+      }
+    : undefined;
+
   // Handle map click to set coordinates
   const handleMapClick = (location: MapLocation) => {
+    setSelectedLocation(location);
     setFormData({
       ...formData,
       centerLat: location.latitude.toString(),
       centerLng: location.longitude.toString(),
     });
+  };
+
+  // Handle draggable marker drag end
+  const handleMarkerDragEnd = (location: MapLocation) => {
+    setSelectedLocation(location);
+    setFormData({
+      ...formData,
+      centerLat: location.latitude.toString(),
+      centerLng: location.longitude.toString(),
+    });
+  };
+
+  // Use current map center as location
+  const useMapCenter = () => {
+    if (mapCenter) {
+      setSelectedLocation(mapCenter);
+      setFormData({
+        ...formData,
+        centerLat: mapCenter.latitude.toString(),
+        centerLng: mapCenter.longitude.toString(),
+      });
+    }
   };
 
   useEffect(() => {
@@ -442,65 +497,78 @@ export default function AdminServiceAreasPage() {
               <CardTitle>Service Areas ({serviceAreas.length})</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Area Name</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Center Coordinates</TableHead>
-                    <TableHead>Radius</TableHead>
-                    <TableHead>Stores</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {serviceAreas.map((area) => (
-                    <TableRow key={area.id}>
-                      <TableCell className="font-medium">{area.name}</TableCell>
-                      <TableCell>
-                        {area.city}, {area.state}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {area.centerLat.toFixed(6)}, {area.centerLng.toFixed(6)}
-                      </TableCell>
-                      <TableCell>{area.radiusKm} km</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Store className="h-4 w-4" />
-                          {area._count.stores}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={area.isActive ? "default" : "secondary"}
-                        >
-                          {area.isActive ? "ACTIVE" : "INACTIVE"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditDialog(area)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteArea(area.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Area Name</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Center Coordinates
+                      </TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Radius
+                      </TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        Stores
+                      </TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {serviceAreas.map((area) => (
+                      <TableRow key={area.id}>
+                        <TableCell className="font-medium">
+                          {area.name}
+                        </TableCell>
+                        <TableCell>
+                          {area.city}, {area.state}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm hidden sm:table-cell">
+                          {area.centerLat.toFixed(6)},{" "}
+                          {area.centerLng.toFixed(6)}
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          {area.radiusKm} km
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <div className="flex items-center gap-1">
+                            <Store className="h-4 w-4" />
+                            {area._count.stores}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={area.isActive ? "default" : "secondary"}
+                          >
+                            {area.isActive ? "ACTIVE" : "INACTIVE"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEditDialog(area)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteArea(area.id)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -508,21 +576,42 @@ export default function AdminServiceAreasPage() {
         <TabsContent value="map" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Service Areas Map</CardTitle>
-              <p className="text-sm text-gray-600">
-                Click on the map to set coordinates for new service areas
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Service Areas Map</CardTitle>
+                  <p className="text-sm text-gray-600">
+                    Click on the map or drag the marker to set coordinates for
+                    new service areas
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={useMapCenter}>
+                  <MapPin className="mr-2 h-4 w-4" />
+                  Use Map Center
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <MapIntegration
                 center={mapCenter}
                 zoom={10}
                 markers={mapMarkers}
+                serviceAreas={mapServiceAreas}
+                draggableMarker={draggableMarker}
                 onMapClick={handleMapClick}
+                onDraggableMarkerDragEnd={handleMarkerDragEnd}
                 height="500px"
                 interactive={true}
                 showControls={true}
               />
+              {selectedLocation && (
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>Selected Location:</strong>{" "}
+                    {selectedLocation.latitude.toFixed(6)},{" "}
+                    {selectedLocation.longitude.toFixed(6)}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

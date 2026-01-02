@@ -43,6 +43,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
 
 interface InvitationData {
   id: string;
@@ -78,7 +79,8 @@ export default function InvitationAcceptancePage() {
   // Form states
   const [formData, setFormData] = useState({
     fullName: "",
-    phoneNumber: "",
+    phoneNumber: invitationData?.invitedPhone || "",
+    email: invitationData?.invitedEmail || "",
     password: "",
     confirmPassword: "",
     // Rider specific
@@ -89,16 +91,15 @@ export default function InvitationAcceptancePage() {
     emergencyPhone: "",
     documents: [] as File[],
     // Store manager specific
-    selectedStoreId: "",
+    selectedStoreId: invitationData?.storeId || "",
   });
 
   const [stores, setStores] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const { status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-
   useEffect(() => {
     if (token) {
       validateInvitation();
@@ -107,21 +108,37 @@ export default function InvitationAcceptancePage() {
       setIsValidating(false);
     }
   }, [token]);
-
+  useEffect(() => {
+    checkLoginThanLogout();
+  }, [status]);
+  const checkLoginThanLogout = async () => {
+    if (status === "authenticated") {
+      console.log("User is logged in, logging out to accept invitation...");
+      await fetch(`/api/auth/logout`, { method: "POST" });
+      signOut({ redirect: false });
+    }
+  };
   const validateInvitation = async () => {
     try {
       const response = await fetch(
         `/api/auth/validate-invitation?token=${token}`
       );
       const data = await response.json();
-
-      if (data.valid) {
+      if (data.success) {
         setInvitationData(data.invitation);
+        setFormData((prev) => ({
+          ...prev,
+          email: data.invitation.invitedEmail,
+          phoneNumber: data.invitation.invitedPhone,
+        }));
         // Check if email/phone is already registered
         await checkExistingUser(
           data.invitation.invitedEmail,
           data.invitation.invitedPhone
         );
+        if (data.invitation?.role === "STORE_MANAGER") {
+          await fetchStores();
+        }
       } else {
         setError(data.message || "Invalid invitation");
       }
@@ -131,6 +148,8 @@ export default function InvitationAcceptancePage() {
       setIsValidating(false);
     }
   };
+  console.log(invitationData);
+  console.log();
 
   const checkExistingUser = async (email: string, phone?: string) => {
     try {
@@ -142,6 +161,7 @@ export default function InvitationAcceptancePage() {
 
       if (response.ok) {
         const data = await response.json();
+        console.log("Existing user check:", data);
         if (data.exists) {
           setExistingUser(data.user);
           setShowDeleteDialog(true);
@@ -160,9 +180,12 @@ export default function InvitationAcceptancePage() {
 
   const fetchStores = async () => {
     try {
+      console.log("Fetching stores for store manager...");
       const response = await fetch("/api/admin/stores?limit=1000");
+      console.log(response);
       if (response.ok) {
         const data = await response.json();
+        console.log("Fetched stores:", data);
         setStores(data.data || []);
         // Pre-select store if specified in invitation
         if (invitationData?.storeId) {
@@ -264,6 +287,7 @@ export default function InvitationAcceptancePage() {
       submitData.append("token", token!);
       submitData.append("fullName", formData.fullName);
       submitData.append("phoneNumber", formData.phoneNumber);
+      submitData.append("email", formData.email);
       submitData.append("password", formData.password);
       submitData.append("role", invitationData!.role);
 
@@ -291,11 +315,13 @@ export default function InvitationAcceptancePage() {
       if (response.ok) {
         const data = await response.json();
         setSuccess(
-          "Account created successfully! Your application is pending approval."
+          "Application submitted successfully! Your application is pending admin approval."
         );
         setTimeout(() => {
-          router.push("/auth/login");
-        }, 3000);
+          router.push(
+            `/rider/waiting?email=${encodeURIComponent(invitationData?.invitedEmail || "")}`
+          );
+        }, 2000);
       } else {
         const errorData = await response.json();
         setError(errorData.error || "Failed to create account");
@@ -404,7 +430,7 @@ export default function InvitationAcceptancePage() {
                   Basic Information
                 </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-4">
                   <div>
                     <Label htmlFor="fullName">Full Name</Label>
                     <Input
@@ -420,21 +446,38 @@ export default function InvitationAcceptancePage() {
                     />
                   </div>
 
-                  <div>
-                    <Label htmlFor="phoneNumber">Phone Number</Label>
-                    <Input
-                      id="phoneNumber"
-                      type="tel"
-                      placeholder="+919876543210"
-                      value={formData.phoneNumber}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          phoneNumber: e.target.value,
-                        }))
-                      }
-                      required
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="email">Email Address</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={invitationData?.invitedEmail || formData.email}
+                        disabled={invitationData?.invitedEmail ? true : false}
+                        className="bg-gray-50"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Email from invitation (cannot be changed)
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="phoneNumber">Phone Number</Label>
+                      <Input
+                        id="phoneNumber"
+                        type="tel"
+                        value={
+                          invitationData?.invitedPhone || formData.phoneNumber
+                        }
+                        disabled={invitationData?.invitedPhone ? true : false}
+                        className="bg-gray-50"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Phone from invitation (cannot be changed)
+                      </p>
+                    </div>
                   </div>
                 </div>
 

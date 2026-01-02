@@ -73,53 +73,94 @@ export class LocationService {
   }
 
   /**
-   * SERVER-SAFE: IP → GEO lookup
+   * SERVER-SAFE: IP → GEO lookup with fallback
    */
   static async lookupIP(ip: string): Promise<any> {
+    // Skip lookup for local/private IPs
+    if (this.isPrivateIP(ip)) {
+      return {
+        ip,
+        country_name: "Local",
+        city: "Local",
+        region: "Local",
+        latitude: 0,
+        longitude: 0,
+      };
+    }
+
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
       const url = `https://ipapi.co/${ip}/json/`;
       const res = await fetch(url, {
-        headers: {
-          "User-Agent": "TownKart/1.0",
-        },
+        headers: { "User-Agent": "TownKart/1.0" },
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
       if (!res.ok) {
-        // Handle rate limiting or other HTTP errors
-        console.warn(
-          `IP lookup failed for ${ip}: ${res.status} ${res.statusText}`
-        );
+        console.warn(`IP lookup failed for ${ip}: ${res.status}`);
         return null;
       }
 
-      const text = await res.text();
-      if (!text || text.trim() === "") {
-        console.warn(`IP lookup returned empty response for ${ip}`);
+      const data = await res.json();
+
+      // Validate response has required fields
+      if (!data || typeof data !== "object") {
+        console.warn(`Invalid IP lookup response for ${ip}`);
         return null;
       }
 
-      try {
-        return JSON.parse(text);
-      } catch (parseError) {
-        console.error(
-          `IP lookup returned invalid JSON for ${ip}:`,
-          text.substring(0, 100)
-        );
-        return null;
+      return data;
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        console.warn(`IP lookup timeout for ${ip}`);
+      } else {
+        console.error(`IP lookup error for ${ip}:`, err.message);
       }
-    } catch (err) {
-      console.error("IP lookup failed:", err);
       return null;
     }
   }
 
   /**
-   * Reverse GPS → Address lookup
+   * Check if IP is private/local
+   */
+  private static isPrivateIP(ip: string): boolean {
+    const parts = ip.split(".");
+    if (parts.length !== 4) return false;
+
+    const first = parseInt(parts[0]);
+    const second = parseInt(parts[1]);
+
+    // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8
+    return (
+      first === 10 ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      first === 127
+    );
+  }
+
+  /**
+   * Reverse GPS → Address lookup with fallback
    */
   static async reverseGeocode(lat: number, lng: number): Promise<any> {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
       const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        console.warn(`Reverse geocode failed: ${res.status}`);
+        return {};
+      }
+
       const d = await res.json();
 
       return {
@@ -128,8 +169,12 @@ export class LocationService {
         state: d.principalSubdivision || null,
         pincode: d.postcode || null,
       };
-    } catch (e) {
-      console.error("Reverse geocode error:", e);
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        console.warn("Reverse geocode timeout");
+      } else {
+        console.error("Reverse geocode error:", err.message);
+      }
       return {};
     }
   }

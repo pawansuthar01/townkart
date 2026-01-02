@@ -1,10 +1,6 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 import { DeviceTracker } from "@/middleware/deviceTracking";
-import { RateLimiter } from "@/middleware/rateLimit";
-import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "./lib/auth";
 
 // Security headers helper function
 function addSecurityHeaders(response: NextResponse) {
@@ -12,10 +8,6 @@ function addSecurityHeaders(response: NextResponse) {
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  response.headers.set(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=()"
-  );
 
   // CORS headers for API routes
   if (response.url?.includes("/api/")) {
@@ -41,12 +33,20 @@ export default withAuth(
   async function middleware(req) {
     const { pathname } = req.nextUrl;
     const token = req.nextauth.token;
+    // Set client information headers for authentication
+    const clientIP = (await DeviceTracker.getClientIP(req)) || "unknown";
+
+    const userAgent = req.headers.get("user-agent") || "unknown";
+
+    // Set headers for NextAuth to use
+    req.headers.set("x-client-ip", clientIP);
+    req.headers.set("x-user-agent", userAgent);
     // Public routes that don't require authentication
     const publicRoutes = [
       "/",
       "/auth/login",
-      "/auth/*",
       "/auth/register",
+      "/auth/invitation",
       "/auth/verify-otp",
       "/unauthorized",
       "/about",
@@ -54,7 +54,6 @@ export default withAuth(
       "/categories",
       "/collections",
       "/cart",
-      "/contact",
       "/wishlist",
       "/products",
       "/support",
@@ -67,12 +66,14 @@ export default withAuth(
       "/api/auth/*",
       "/api/auth/login",
       "/api/auth/register",
+      "/api/auth/check-otp-requirement",
       "/api/auth/[...nextauth]",
       "/api/auth/verify-otp",
       "/api/auth/refresh-token",
       "/api/auth/session",
       "/api/auth/signin",
-      "/api/auth/signout",
+      "/api/auth/signup",
+
       "/api/auth/callback",
       "/api/auth/csrf",
       "/api/auth/providers",
@@ -84,6 +85,8 @@ export default withAuth(
       "/api/products",
       "/api/special-offers",
       "/api/system/status",
+      "/api/admin/stores",
+      "/api/store",
     ];
 
     // Check if the current route is public
@@ -97,28 +100,22 @@ export default withAuth(
     );
 
     if (isPublicRoute || isPublicApiRoute) {
-      // Add security headers for all responses
       const response = NextResponse.next();
       addSecurityHeaders(response);
       return response;
     }
 
     // If no token, redirect to login
-    if (!token) {
+    if (!token || !token.sessionToken) {
       const response = NextResponse.redirect(new URL("/auth/login", req.url));
       addSecurityHeaders(response);
       return response;
     }
 
     // Check if phone number is verified
-    const phoneVerified = token.phoneVerified as boolean;
-    if (!phoneVerified) {
+    if (!token.isVerified) {
       // Allow access to OTP verification pages
-      if (
-        pathname === "/auth/verify-otp" ||
-        pathname === "/verify-otp" ||
-        pathname.startsWith("/api/auth/verify-otp")
-      ) {
+      if (pathname.startsWith("/auth/verify-otp")) {
         const response = NextResponse.next();
         addSecurityHeaders(response);
         return response;
@@ -132,14 +129,9 @@ export default withAuth(
     }
 
     // Check if account is active
-    const isActive = token.isActive as boolean;
-    if (!isActive) {
+    if (!token.isActive) {
       // Allow access to OTP verification pages for account reactivation
-      if (
-        pathname === "/auth/verify-otp" ||
-        pathname === "/verify-otp" ||
-        pathname.startsWith("/api/auth/verify-otp")
-      ) {
+      if (pathname.startsWith("/auth/verify-otp")) {
         const response = NextResponse.next();
         addSecurityHeaders(response);
         return response;
@@ -197,6 +189,7 @@ export default withAuth(
           "/",
           "/auth/login",
           "/auth/register",
+          "/auth/invitation",
           "/auth/verify-otp",
           "/unauthorized",
           "/about",
@@ -207,13 +200,16 @@ export default withAuth(
 
         // Public API routes
         const publicApiRoutes = [
+          "/api/*",
           "/api/auth/login",
           "/api/auth/register",
+          "/api/auth/check-otp-requirement",
           "/api/auth/verify-otp",
           "/api/auth/refresh-token",
           "/api/auth/session",
           "/api/auth/signin",
-          "/api/auth/signout",
+          "/api/auth/signup",
+
           "/api/auth/callback",
           "/api/auth/csrf",
           "/api/auth/providers",
@@ -224,6 +220,8 @@ export default withAuth(
           "/api/products",
           "/api/special-offers",
           "/api/system/status",
+          "/api/store",
+          "/api/admin/stores",
         ];
 
         const isPublicRoute = publicRoutes.some(
@@ -245,14 +243,6 @@ export default withAuth(
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder files (images, icons, etc.)
-     * - api/webhooks (webhook endpoints that bypass auth)
-     */
     "/((?!_next/static|_next/image|favicon.ico|public/|api/webhooks).*)",
   ],
 };

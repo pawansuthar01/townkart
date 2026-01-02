@@ -557,71 +557,85 @@ export default function AdminNotificationsPage() {
           <CardTitle>Sent Notifications ({notifications.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Target Audience</TableHead>
-                <TableHead>Recipients</TableHead>
-                <TableHead>Channels</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Sent At</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {notifications.map((notification) => (
-                <TableRow key={notification.id}>
-                  <TableCell className="font-medium">
-                    {notification.title}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="capitalize">
-                      {notification.type.replace("_", " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">
-                      {getTargetAudienceLabel(notification.targetAudience)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{notification.recipientCount}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      {notification.channels.map((channel) => (
-                        <Badge
-                          key={channel}
-                          variant="outline"
-                          className="text-xs"
-                        >
-                          {channel}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusBadgeVariant(notification.status)}>
-                      {notification.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {new Date(notification.sentAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead className="hidden sm:table-cell">Type</TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Target Audience
+                  </TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Recipients
+                  </TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Channels
+                  </TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Sent At
+                  </TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {notifications.map((notification) => (
+                  <TableRow key={notification.id}>
+                    <TableCell className="font-medium">
+                      {notification.title}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <Badge variant="outline" className="capitalize">
+                        {notification.type.replace("_", " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <Badge variant="secondary">
+                        {getTargetAudienceLabel(notification.targetAudience)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {notification.recipientCount}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <div className="flex gap-1">
+                        {notification.channels.map((channel) => (
+                          <Badge
+                            key={channel}
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            {channel}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={getStatusBadgeVariant(notification.status)}
+                      >
+                        {notification.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {new Date(notification.sentAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="sm">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

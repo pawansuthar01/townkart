@@ -50,13 +50,27 @@ export interface MapRoute {
   showTraffic?: boolean;
 }
 
+export interface MapServiceArea {
+  id: string;
+  center: MapLocation;
+  radiusKm: number;
+  name: string;
+  isActive: boolean;
+  color?: string;
+  fillOpacity?: number;
+  strokeOpacity?: number;
+}
+
 interface MapIntegrationProps {
   center?: MapLocation;
   zoom?: number;
   markers?: MapMarker[];
   routes?: MapRoute[];
+  serviceAreas?: MapServiceArea[];
+  draggableMarker?: MapMarker;
   onMapClick?: (location: MapLocation) => void;
   onMarkerClick?: (marker: MapMarker) => void;
+  onDraggableMarkerDragEnd?: (location: MapLocation) => void;
   showControls?: boolean;
   mapType?: "roadmap" | "satellite" | "hybrid" | "terrain";
   className?: string;
@@ -67,12 +81,15 @@ interface MapIntegrationProps {
 }
 
 export function MapIntegration({
-  center = { latitude: 12.9716, longitude: 77.5946 }, // Bangalore center
+  center = { latitude: 24.9716, longitude: 76.5946 },
   zoom = 14,
   markers = [],
   routes = [],
+  serviceAreas = [],
+  draggableMarker,
   onMapClick,
   onMarkerClick,
+  onDraggableMarkerDragEnd,
   showControls = true,
   mapType = "roadmap",
   className = "",
@@ -85,6 +102,11 @@ export function MapIntegration({
   const [map, setMap] = useState<any>(null);
   const [mapMarkers, setMapMarkers] = useState<Map<string, any>>(new Map());
   const [mapRoutes, setMapRoutes] = useState<Map<string, any>>(new Map());
+  const [mapServiceAreas, setMapServiceAreas] = useState<Map<string, any>>(
+    new Map()
+  );
+  const [draggableMarkerInstance, setDraggableMarkerInstance] =
+    useState<any>(null);
   const [trafficLayer, setTrafficLayer] = useState<any>(null);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -93,10 +115,15 @@ export function MapIntegration({
   );
 
   // Initialize map
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!mapRef.current || typeof window === "undefined") return;
 
-    let timeoutId: NodeJS.Timeout;
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
 
     // Load Google Maps API using centralized loader
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -108,7 +135,7 @@ export function MapIntegration({
       return;
     }
 
-    loadGoogleMaps(apiKey, ["geometry", "places", "directions"])
+    loadGoogleMaps(apiKey, ["geometry", "places"])
       .then(() => {
         initializeMap();
       })
@@ -120,13 +147,20 @@ export function MapIntegration({
       });
 
     // Set a timeout for loading
-    timeoutId = setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       if (!isMapLoaded && !mapError) {
         setMapError(
           "Map loading timed out. Please check your Google Maps API key."
         );
       }
-    }, 10000); // 10 second timeout
+    }, 30000); // 10 second timeout
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
 
     function initializeMap() {
       if (!mapRef.current || !window.google) return;
@@ -163,7 +197,10 @@ export function MapIntegration({
             setMap(mapInstance);
             setIsMapLoaded(true);
             setMapError(null); // Clear any timeout errors
-            clearTimeout(timeoutId); // Clear the timeout
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              timeoutRef.current = null;
+            }
           }
         );
 
@@ -175,7 +212,10 @@ export function MapIntegration({
             setMapError(
               "Google Maps authentication failed. Please check your API key configuration."
             );
-            clearTimeout(timeoutId);
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              timeoutRef.current = null;
+            }
           }
         );
       } catch (error) {
@@ -231,8 +271,13 @@ export function MapIntegration({
   ]);
 
   // Update markers when markers prop changes
+  const markersRef = useRef<string>("");
   useEffect(() => {
     if (!map || !isMapLoaded) return;
+
+    const markersString = JSON.stringify(markers);
+    if (markersString === markersRef.current) return;
+    markersRef.current = markersString;
 
     // Clear existing markers
     mapMarkers.forEach((marker) => marker.setMap(null));
@@ -248,8 +293,13 @@ export function MapIntegration({
   }, [map, markers, isMapLoaded]);
 
   // Update routes when routes prop changes
+  const routesRef = useRef<string>("");
   useEffect(() => {
     if (!map || !isMapLoaded) return;
+
+    const routesString = JSON.stringify(routes);
+    if (routesString === routesRef.current) return;
+    routesRef.current = routesString;
 
     // Clear existing routes
     mapRoutes.forEach((route) => {
@@ -270,6 +320,56 @@ export function MapIntegration({
     });
     setMapRoutes(newRoutes);
   }, [map, routes, isMapLoaded]);
+
+  // Update service areas when serviceAreas prop changes
+  const serviceAreasRef = useRef<string>("");
+  useEffect(() => {
+    if (!map || !isMapLoaded) return;
+
+    const serviceAreasString = JSON.stringify(serviceAreas);
+    if (serviceAreasString === serviceAreasRef.current) return;
+    serviceAreasRef.current = serviceAreasString;
+
+    // Clear existing service areas
+    mapServiceAreas.forEach((circle) => {
+      circle.setMap(null);
+    });
+    setMapServiceAreas(new Map());
+
+    // Add new service areas
+    const newServiceAreas = new Map<string, any>();
+    serviceAreas.forEach((serviceArea) => {
+      const circleInstance = createServiceAreaCircle(map, serviceArea);
+      newServiceAreas.set(serviceArea.id, circleInstance);
+    });
+    setMapServiceAreas(newServiceAreas);
+  }, [map, serviceAreas, isMapLoaded]);
+
+  // Update draggable marker when draggableMarker prop changes
+  const draggableMarkerRef = useRef<string>("");
+  useEffect(() => {
+    if (!map || !isMapLoaded) return;
+
+    const markerString = JSON.stringify(draggableMarker);
+    if (markerString === draggableMarkerRef.current) return;
+    draggableMarkerRef.current = markerString;
+
+    // Clear existing draggable marker
+    if (draggableMarkerInstance) {
+      draggableMarkerInstance.setMap(null);
+      setDraggableMarkerInstance(null);
+    }
+
+    // Add new draggable marker
+    if (draggableMarker) {
+      const markerInstance = createMarker(map, {
+        ...draggableMarker,
+        draggable: true,
+        onDragEnd: onDraggableMarkerDragEnd,
+      });
+      setDraggableMarkerInstance(markerInstance);
+    }
+  }, [map, draggableMarker, isMapLoaded, onDraggableMarkerDragEnd]);
 
   // Create marker
   const createMarker = useCallback(
@@ -329,7 +429,7 @@ export function MapIntegration({
       map: mapInstance,
       suppressMarkers: true,
       polylineOptions: {
-        strokeColor: route.color || "#39B54A", // townkart-accent
+        strokeColor: route.color || "#39B54A",
         strokeWeight: route.strokeWeight || 4,
       },
     });
@@ -384,6 +484,41 @@ export function MapIntegration({
 
     return { directionsRenderer };
   }, []);
+
+  // Create service area circle
+  const createServiceAreaCircle = useCallback(
+    (mapInstance: any, serviceArea: MapServiceArea) => {
+      const circleOptions = {
+        strokeColor:
+          serviceArea.color || (serviceArea.isActive ? "#10B981" : "#6B7280"),
+        strokeOpacity: serviceArea.strokeOpacity || 0.8,
+        strokeWeight: 2,
+        fillColor:
+          serviceArea.color || (serviceArea.isActive ? "#10B981" : "#6B7280"),
+        fillOpacity: serviceArea.fillOpacity || 0.1,
+        map: mapInstance,
+        center: {
+          lat: serviceArea.center.latitude,
+          lng: serviceArea.center.longitude,
+        },
+        radius: serviceArea.radiusKm * 1000, // Convert km to meters
+        clickable: false,
+        editable: false,
+        draggable: false,
+      };
+
+      const circle = new window.google.maps.Circle(circleOptions);
+
+      // Add info window on click
+      circle.addListener("click", () => {
+        // Could add info window for service area details
+        console.log("Service area clicked:", serviceArea.name);
+      });
+
+      return circle;
+    },
+    []
+  );
 
   // Get marker icon based on type
   const getMarkerIcon = (marker: MapMarker) => {

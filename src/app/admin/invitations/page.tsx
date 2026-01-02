@@ -636,108 +636,122 @@ export default function AdminInvitationsPage() {
               <LoadingSpinner className="w-8 h-8" />
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Assignment</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Notifications</TableHead>
-                  <TableHead>Sent By</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead>Actions</TableHead>
-                  <TableHead>Url</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invitations.map((invitation) => (
-                  <TableRow key={invitation.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">
-                          {invitation.invitedEmail}
-                        </div>
-                        {invitation.invitedPhone && (
-                          <div className="text-sm text-gray-500">
-                            {invitation.invitedPhone}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {invitation.role === "STORE_MANAGER"
-                        ? "Store Manager"
-                        : invitation.role}
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-600">
-                      {getAssignmentDisplay(invitation)}
-                    </TableCell>
-                    <TableCell>{getStatusBadge(invitation.status)}</TableCell>
-                    <TableCell>
-                      {getNotificationStatusDisplay(invitation)}
-                    </TableCell>
-                    <TableCell>
-                      {invitation.invitedByUser?.fullName || "System"}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(invitation.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(invitation.expiresAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        {invitation.status === "PENDING" && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                handleStatusChange(invitation.id, "approve")
-                              }
-                            >
-                              <Check className="w-3 h-3 mr-1" />
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                handleStatusChange(invitation.id, "reject")
-                              }
-                            >
-                              <X className="w-3 h-3 mr-1" />
-                              Reject
-                            </Button>
-                          </>
-                        )}
-                        {invitation.status === "APPROVED" && (
-                          <div className="text-sm text-gray-500">Approved</div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            copyToClipboard(
-                              `${window.location.origin}/auth/register?token=${invitation.id}`
-                            )
-                          }
-                        >
-                          <Copy className="w-3 h-3 mr-1" />
-                          Copy Link
-                        </Button>
-                      </div>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead className="hidden sm:table-cell">Role</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Assignment
+                    </TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Notifications
+                    </TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Sent By
+                    </TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Created
+                    </TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Expires
+                    </TableHead>
+                    <TableHead>Actions</TableHead>
+                    <TableHead className="hidden sm:table-cell">Url</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {invitations.map((invitation) => (
+                    <TableRow key={invitation.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">
+                            {invitation.invitedEmail}
+                          </div>
+                          {invitation.invitedPhone && (
+                            <div className="text-sm text-gray-500">
+                              {invitation.invitedPhone}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {invitation.role === "STORE_MANAGER"
+                          ? "Store Manager"
+                          : invitation.role}
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-600 hidden sm:table-cell">
+                        {getAssignmentDisplay(invitation)}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(invitation.status)}</TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {getNotificationStatusDisplay(invitation)}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {invitation.invitedByUser?.fullName || "System"}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {new Date(invitation.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {new Date(invitation.expiresAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          {invitation.status === "PENDING" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleStatusChange(invitation.id, "approve")
+                                }
+                              >
+                                <Check className="w-3 h-3 mr-1" />
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleStatusChange(invitation.id, "reject")
+                                }
+                              >
+                                <X className="w-3 h-3 mr-1" />
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                          {invitation.status === "APPROVED" && (
+                            <div className="text-sm text-gray-500">
+                              Approved
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              copyToClipboard(
+                                `${window.location.origin}/auth/invitation?token=${invitation.id}`
+                              )
+                            }
+                          >
+                            <Copy className="w-3 h-3 mr-1" />
+                            Copy Link
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

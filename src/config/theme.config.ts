@@ -375,7 +375,7 @@ export const CSS_VARIABLES = {
 // Utility Functions
 export const getColor = (
   color: keyof typeof THEME_CONFIG.colors,
-  shade: string = "500",
+  shade = 500
 ) => {
   const colorObj = THEME_CONFIG.colors[color];
   return colorObj[shade as keyof typeof colorObj] || colorObj[500];
@@ -386,7 +386,7 @@ export const getSpacing = (size: keyof typeof THEME_CONFIG.spacing) => {
 };
 
 export const getFontSize = (
-  size: keyof typeof THEME_CONFIG.typography.fontSize,
+  size: keyof typeof THEME_CONFIG.typography.fontSize
 ) => {
   return THEME_CONFIG.typography.fontSize[size];
 };
